@@ -8,7 +8,7 @@ data pipelines over Apache Spark. It consists in multiple sub-projects:
    [Protocol Buffers 3](https://developers.google.com/protocol-buffers/docs/proto3) (
     which is also compatible with JSON).
 - a serving library, called
-  [karps-server](https://github.com/krapsh/kraps-server), that implements this specification on top of Spark.
+  [karps-server](https://github.com/tjhunter/karps), that implements this specification on top of Spark.
   It is written in Scala and is loaded as a standard Spark package.
 - a client written in Haskell that sends pipelines to Spark for execution. In
   addition, this client serves as an experimental platform for whole-program optimization and verification, as well as compiler-enforced type checking.
@@ -27,7 +27,7 @@ experience and comes with beautiful introspection tools courtesy of the
 [TensorBoard server](https://www.tensorflow.org/how_tos/summaries_and_tensorboard/). Using
 Tensorboard, you can visualize, drill down, introspect the graph of computations:
 
-![image](https://github.com/krapsh/kraps-haskell/raw/master/notebooks/ihaskell-tensorboard.png)
+![image](https://github.com/tjhunter/karps-haskell/raw/master/notebooks/ihaskell-tensorboard.png)
 
 
 ## Examples.
