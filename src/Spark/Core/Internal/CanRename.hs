@@ -42,7 +42,7 @@ class CanRename a txt where
 infixl 1 @@
 
 
-instance forall ref a. CanRename (ColumnData ref a) FieldName where
+instance forall ref a. CanRename (Column ref a) FieldName where
   c @@ fn = c { _cReferingPath = Just fn }
 
 
@@ -71,7 +71,7 @@ instance forall s. (s ~ String) => CanRename DynColumn s where
   x @@ _ = x
 
 
-instance forall loc a s. (s ~ String) => CanRename (ComputeNode loc a) s where
+instance forall loc a s. (s ~ String) => CanRename (TopLevelNode loc a) s where
   -- There is no need to update the id, as this field is not involved
   -- in the calculation of the id.
   -- TODO: make this fail immediately? If the name is wrong, it is
@@ -79,6 +79,6 @@ instance forall loc a s. (s ~ String) => CanRename (ComputeNode loc a) s where
   (@@) cn name = cn { _cnName = Just nn } where
     nn = NodeName . T.pack $ name
 
-instance forall loc a s. (s ~ String) => CanRename (Try (ComputeNode loc a)) s where
+instance forall loc a s. (s ~ String) => CanRename (Try (TopLevelNode loc a)) s where
   (Right n) @@ str = Right (n @@ str)
   (Left n) @@ _ = Left n

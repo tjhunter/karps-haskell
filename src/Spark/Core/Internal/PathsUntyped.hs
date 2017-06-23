@@ -29,14 +29,14 @@ import Spark.Core.Internal.Utilities
 import Spark.Core.Try
 import Spark.Core.StructuresInternal(unNodeId)
 
-instance GraphVertexOperations UntypedNode where
+instance GraphVertexOperations UntypedTopNode where
   vertexToId = VertexId . unNodeId . nodeId
   expandVertexAsVertices n =
     nodeParents n
       ++ fromMaybe [] (nodeLogicalParents n)
       ++ nodeLogicalDependencies n
 
-instance GraphOperations UntypedNode NodeEdge where
+instance GraphOperations UntypedTopNode NodeEdge where
   expandVertex n =
     -- The logical parents are more important than the parents
     let
@@ -50,7 +50,7 @@ instance GraphOperations UntypedNode NodeEdge where
       loDeps = (const (DataStructureEdge LogicalEdge) &&& id) <$> nodeLogicalDependencies n
     in loParents ++ parents' ++ loDeps
 
-instance HasNodeName UntypedNode where
+instance HasNodeName UntypedTopNode where
   getNodeName = nodeName
   assignPath n p = updateNode n $ \n' -> n' { _cnPath = p }
 
@@ -60,10 +60,10 @@ instance HasNodeName UntypedNode where
 -- This does not update the nodeIds
 -- This must happen before the pruning is performed, otherwise the node IDs will
 -- not match.
-tieNodes :: ComputeDag UntypedNode StructureEdge -> ComputeDag UntypedNode StructureEdge
+tieNodes :: ComputeDag UntypedTopNode StructureEdge -> ComputeDag UntypedTopNode StructureEdge
 tieNodes cd =
   let g = computeGraphToGraph cd
-      f :: UntypedNode -> [(UntypedNode, StructureEdge)] -> Identity UntypedNode
+      f :: UntypedTopNode -> [(UntypedTopNode, StructureEdge)] -> Identity UntypedTopNode
       f v l =
         let parents' = V.fromList [n | (n, e) <- l, e == ParentEdge]
             logDeps = V.fromList [n | (n, e) <- l, e == LogicalEdge]
@@ -77,7 +77,7 @@ tieNodes cd =
 
 -- Assigs the paths, and drops the scoping edges.
 assignPathsUntyped :: (HasCallStack) =>
-  ComputeDag UntypedNode NodeEdge -> Try (ComputeDag UntypedNode StructureEdge)
+  ComputeDag UntypedTopNode NodeEdge -> Try (ComputeDag UntypedTopNode StructureEdge)
 assignPathsUntyped cd = do
   let pathCGraph = _getPathCDag cd
   paths <- computePaths pathCGraph

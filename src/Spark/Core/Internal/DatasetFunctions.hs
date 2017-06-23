@@ -39,7 +39,7 @@ module Spark.Core.Internal.DatasetFunctions(
   nodeType,
   untypedDataset,
   untypedLocalData,
-  updateNode,
+  updateComputeNode,
   updateNodeOp,
   broadcastPair,
   -- Developer conversions
@@ -89,40 +89,41 @@ import Spark.Core.Internal.TypesGenerics
 import Spark.Core.Internal.TypesFunctions
 
 -- | (developer) The operation performed by this node.
-nodeOp :: ComputeNode loc a -> NodeOp
-nodeOp = _cnOp
+nodeOp :: TopLevelNode loc a -> NodeOp
+nodeOp = _cnOp . _getComputeNode
 
 -- | The nodes this node depends on directly.
-nodeParents :: ComputeNode loc a -> [UntypedNode]
-nodeParents = V.toList . _cnParents
+nodeParents :: TopLevelNode loc a -> [UntypedComputeTopNode]
+nodeParents = (untyped . _topToComputeNode <$>) . V.toList . _cnParents . _getComputeNode
 
 -- | (developer) Returns the logical parenst of a node.
-nodeLogicalParents :: ComputeNode loc a -> Maybe [UntypedNode]
-nodeLogicalParents = (V.toList <$>) . _cnLogicalParents
+nodeLogicalParents :: TopLevelNode loc a -> Maybe [UntypedComputeTopNode]
+nodeLogicalParents = ((untyped . _topToComputeNode <$>) . V.toList <$>) . _cnLogicalParents . _getComputeNode
 
 -- | Returns the logical dependencies of a node.
-nodeLogicalDependencies :: ComputeNode loc a -> [UntypedNode]
-nodeLogicalDependencies = V.toList . _cnLogicalDeps
+nodeLogicalDependencies :: TopLevelNode loc a -> [UntypedComputeTopNode]
+nodeLogicalDependencies = (untyped . _topToComputeNode <$>) . V.toList . _cnLogicalDeps . _getComputeNode
 
 -- | The name of a node.
 -- TODO: should be a NodePath
-nodeName :: ComputeNode loc a -> NodeName
-nodeName node = fromMaybe (_defaultNodeName node) (_cnName node)
+nodeName :: TopLevelNode loc a -> NodeName
+nodeName node = fromMaybe (_defaultNodeName node) (_cnName . _getComputeNode $ node)
 
 {-| The path of a node, as resolved.
 
 This path includes information about the logical parents (after resolution).
 -}
-nodePath :: ComputeNode loc a -> NodePath
+nodePath :: TopLevelNode loc a -> NodePath
 nodePath node =
-  if V.null . unNodePath . _cnPath $ node
+  if V.null . unNodePath . _cnPath . _getComputeNode $ node
     then NodePath . V.singleton . nodeName $ node
-    else _cnPath node
+    else _cnPath . _getComputeNode $ node
 
 -- | The type of the node
 -- TODO have nodeType' for dynamic types as well
-nodeType :: ComputeNode loc a -> SQLType a
-nodeType = SQLType . _cnType
+nodeType :: ComputeNode loc ref a -> SQLType a
+nodeType (ComputeNodeTop cns) = SQLType . _cnType $ cns
+nodeType (ComputeNodeCol cd) = SQLType . _cType $ cd
 
 {-| The identity function.
 
@@ -133,10 +134,10 @@ side effect is *not* reevaluated.
 This operation is typically used when establishing an ordering between some
 operations such as caching or side effects, along with `logicalDependencies`.
 -}
-identity :: ComputeNode loc a -> ComputeNode loc a
+identity :: TopLevelNode loc a -> TopLevelNode loc a
 identity n = n2 `parents` [untyped n]
   where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) name
-        name = if _cnLocality n == Local
+        name = if _cnLocality ( _getComputeNode n) == Local
                 then "org.spark.LocalIdentity"
                 else "org.spark.Identity"
 
@@ -170,7 +171,7 @@ Unlike Spark, Karps is stricter with the uncaching operation:
 Karps performs escape analysis and will refuse to run programs with caching
 issues.
 -}
-uncache :: ComputeNode loc a -> ComputeNode loc a
+uncache :: TopLevelNode loc a -> TopLevelNode loc a
 uncache  n = n2 `parents` [untyped n]
   where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameUnpersist
 
@@ -211,7 +212,7 @@ _opnameUnion = "org.spark.Union"
 
 -- | Converts to a dataframe and drops the type info.
 -- This always works.
-asDF :: ComputeNode LocDistributed a -> DataFrame
+asDF :: TopLevelNode LocDistributed a -> DataFrame
 asDF = pure . _unsafeCastNode
 
 -- | Attempts to convert a dataframe into a (typed) dataset.
@@ -225,25 +226,25 @@ asDS = _asTyped
 
 -- | Converts a local node to a local frame.
 -- This always works.
-asLocalObservable :: ComputeNode LocLocal a -> LocalFrame
+asLocalObservable :: TopLevelNode LocLocal a -> LocalFrame
 asLocalObservable = pure . _unsafeCastNode
 
 asObservable :: forall a. (SQLTypeable a) => LocalFrame -> Try (LocalData a)
 asObservable = _asTyped
 
 -- | Converts any node to an untyped node
-untyped :: ComputeNode loc a -> UntypedNode
+untyped :: ComputeNode loc RefSelf a -> UntypedComputeTopNode
 untyped = _unsafeCastNode
 
-untyped' :: Try (ComputeNode loc a) -> UntypedNode'
+untyped' :: Try (TopLevelNode loc a) -> UntypedComputeTopNode'
 untyped' = fmap untyped
 
 
-untypedDataset :: ComputeNode LocDistributed a -> UntypedDataset
+untypedDataset :: TopLevelNode LocDistributed a -> UntypedDataset
 untypedDataset = _unsafeCastNode
 
 {-| Removes type informatino from an observable. -}
-untypedLocalData :: ComputeNode LocLocal a -> UntypedLocalData
+untypedLocalData :: TopLevelNode LocLocal a -> UntypedLocalData
 untypedLocalData = _unsafeCastNode
 
 {-| Adds parents to the node.
@@ -254,9 +255,10 @@ use logicalParents.
 If you want to add some timing dependencies between nodes,
 use depends.
 -}
-parents :: ComputeNode loc a -> [UntypedNode] -> ComputeNode loc a
-parents node l = updateNode node $ \n ->
-  n { _cnParents = V.fromList l V.++ _cnParents n }
+parents :: TopLevelNode loc a -> [UntypedComputeTopNode] -> TopLevelNode loc a
+parents node l = let l2 = _getComputeNode <$> l in
+    updateComputeNode node $ \n ->
+      n { _cnParents = V.fromList l2 V.++ _cnParents n }
 
 {-| Establishes a naming convention on this node: the path of this node will be
 determined as if the parents of this node were the list provided (and without
@@ -272,11 +274,12 @@ This set can be a super set of the actual logical parents.
 The check is lazy (done during the analysis phase). An error (if any) will
 only be reported during analysis.
 -}
-logicalParents :: ComputeNode loc a -> [UntypedNode] -> ComputeNode loc a
-logicalParents node l = updateNode node $ \n ->
-  n { _cnLogicalParents = pure . V.fromList $ l }
+logicalParents :: TopLevelNode loc a -> [UntypedComputeTopNode] -> TopLevelNode loc a
+logicalParents node l = let l2 = _getComputeNode <$> l in
+  updateComputeNode node $ \n ->
+    n { _cnLogicalParents = pure . V.fromList $ l2 }
 
-logicalParents' :: Try (ComputeNode loc a) -> [UntypedNode'] -> Try (ComputeNode loc a)
+logicalParents' :: Try (TopLevelNode loc a) -> [UntypedComputeTopNode'] -> Try (TopLevelNode loc a)
 logicalParents' n' l' = do
   n <- n'
   l <- sequence l'
@@ -289,22 +292,23 @@ All the nodes given will be guaranteed to be executed before the current node.
 If there are any failures, this node will also be treated as a failure (even
 if the parents are all successes).
 -}
-depends :: ComputeNode loc a -> [UntypedNode] -> ComputeNode loc a
-depends node l = updateNode node $ \n ->
-  n { _cnLogicalDeps = V.fromList l }
+depends :: TopLevelNode loc a -> [UntypedComputeTopNode] -> TopLevelNode loc a
+depends node l = let l2 = _getComputeNode <$> l in
+  updateComputeNode node $ \n ->
+    n { _cnLogicalDeps = V.fromList l2 }
 
 
 -- (internal)
 -- Tries to update the locality of a node. This is a checked cast.
 -- TODO: remove, it is only used to cast to local frame
 castLocality :: forall a loc loc'. (CheckedLocalityCast loc') =>
-    ComputeNode loc a -> Try (ComputeNode loc' a)
+    TopLevelNode loc a -> Try (TopLevelNode loc' a)
 castLocality node =
   let
-    loc2 = _cnLocality node
+    loc2 = _cnLocality (_getComputeNode node)
     locs = unTypedLocality <$> (_validLocalityValues :: [TypedLocality loc'])
   in if locs == [loc2] then
-    pure $ node { _cnLocality = loc2 }
+    pure $ updateComputeNode node (\n -> n { _cnLocality = loc2 })
   else
     tryError $ sformat ("Wrong locality :"%shown%", expected: "%shown) loc2 locs
 
@@ -312,25 +316,34 @@ castLocality node =
 -- The id of a node. If it is not set in the node, it will be
 -- computed from scratch.
 -- This is a potentially long operation.
-nodeId :: ComputeNode loc a -> NodeId
-nodeId = _cnNodeId
+nodeId :: TopLevelNode loc a -> NodeId
+nodeId = _cnNodeId . _getComputeNode
+
+-- -- (internal)
+-- -- This operation should always be used to make sure that the
+-- -- various caches inside the compute node are maintained.
+-- updateNode :: TopLevelNode loc a -> (TopLevelNode loc a -> TopLevelNode loc' b) -> TopLevelNode loc' b
+-- updateNode ds f = ds2 { _cnNodeId = id2 } where
+--   ds2 = f ds
+--   id2 = _nodeId ds2
 
 -- (internal)
 -- This operation should always be used to make sure that the
 -- various caches inside the compute node are maintained.
-updateNode :: ComputeNode loc a -> (ComputeNode loc a -> ComputeNode loc' b) -> ComputeNode loc' b
-updateNode ds f = ds2 { _cnNodeId = id2 } where
+updateComputeNode :: TopLevelNode loc a -> (TopNode loc a -> TopNode loc' b) -> TopLevelNode loc' b
+updateComputeNode tln f = ComputeNodeTop $ ds2 { _cnNodeId = id2 } where
+  ds = _getComputeNode tln
   ds2 = f ds
   id2 = _nodeId ds2
 
-
-updateNodeOp :: ComputeNode loc a -> NodeOp -> ComputeNode loc a
-updateNodeOp n no = updateNode n (\n' -> n' { _cnOp = no })
+updateNodeOp :: TopLevelNode loc a -> NodeOp -> TopLevelNode loc a
+updateNodeOp n no = updateComputeNode n (\n' -> n' { _cnOp = no })
 
 -- (internal)
 -- The locality of the node
-nodeLocality :: ComputeNode loc a -> TypedLocality loc
-nodeLocality = TypedLocality . _cnLocality
+nodeLocality :: ComputeNode loc ref a -> TypedLocality loc
+nodeLocality (ComputeNodeTop cnc) = TypedLocality . _cnLocality $ cnc
+nodeLocality (ComputeNodeCol _) = TypedLocality Distributed
 
 -- (internal)
 emptyDataset :: NodeOp -> SQLType a -> Dataset a
@@ -357,11 +370,11 @@ dataframe dt cells' = do
 
 -- | (internal)
 placeholderTyped :: forall a loc. (IsLocality loc) =>
-  SQLType a -> ComputeNode loc a
+  SQLType a -> TopLevelNode loc a
 placeholderTyped tp = _unsafeCastNode n where
-  n = placeholder (unSQLType tp) :: ComputeNode loc Cell
+  n = placeholder (unSQLType tp) :: TopLevelNode loc Cell
 
-placeholder :: forall loc. (IsLocality loc) => DataType -> ComputeNode loc Cell
+placeholder :: forall loc. (IsLocality loc) => DataType -> TopLevelNode loc Cell
 placeholder tp =
   let
     t = SQLType tp
@@ -374,50 +387,50 @@ placeholder tp =
 
 -- | (internal) conversion
 fun1ToOpTyped :: forall a loc a' loc'. (IsLocality loc) =>
-  SQLType a -> (ComputeNode loc a -> ComputeNode loc' a') -> NodeOp
+  SQLType a -> (TopLevelNode loc a -> TopLevelNode loc' a') -> NodeOp
 fun1ToOpTyped sqlt f = nodeOp $ f (placeholderTyped sqlt)
 
 -- | (internal) conversion
 fun2ToOpTyped :: forall a1 a2 a loc1 loc2 loc. (IsLocality loc1, IsLocality loc2) =>
-  SQLType a1 -> SQLType a2 -> (ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> ComputeNode loc a) -> NodeOp
+  SQLType a1 -> SQLType a2 -> (TopLevelNode loc1 a1 -> TopLevelNode loc2 a2 -> TopLevelNode loc a) -> NodeOp
 fun2ToOpTyped sqlt1 sqlt2 f = nodeOp $ f (placeholderTyped sqlt1) (placeholderTyped sqlt2)
 
 -- | (internal) conversion
 nodeOpToFun1 :: forall a1 a2 loc1 loc2. (SQLTypeable a2, IsLocality loc2) =>
-  NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2
+  NodeOp -> TopLevelNode loc1 a1 -> TopLevelNode loc2 a2
 nodeOpToFun1 = nodeOpToFun1Typed (buildType :: SQLType a2)
 
 -- | (internal) conversion
 nodeOpToFun1Typed :: forall a1 a2 loc1 loc2. (IsLocality loc2) =>
-  SQLType a2 -> NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2
+  SQLType a2 -> NodeOp -> TopLevelNode loc1 a1 -> TopLevelNode loc2 a2
 nodeOpToFun1Typed sqlt no node =
-  let n2 = _emptyNode no sqlt :: ComputeNode loc2 a2
+  let n2 = _emptyNode no sqlt :: TopLevelNode loc2 a2
   in n2 `parents` [untyped node]
 
 -- | (internal) conversion
 nodeOpToFun1Untyped :: forall loc1 loc2. (IsLocality loc2) =>
-  DataType -> NodeOp -> ComputeNode loc1 Cell -> ComputeNode loc2 Cell
+  DataType -> NodeOp -> TopLevelNode loc1 Cell -> TopLevelNode loc2 Cell
 nodeOpToFun1Untyped dt no node =
-  let n2 = _emptyNode no (SQLType dt) :: ComputeNode loc2 Cell
+  let n2 = _emptyNode no (SQLType dt) :: TopLevelNode loc2 Cell
   in n2 `parents` [untyped node]
 
 -- | (internal) conversion
 nodeOpToFun2 :: forall a a1 a2 loc loc1 loc2. (SQLTypeable a, IsLocality loc) =>
-  NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> ComputeNode loc a
+  NodeOp -> TopLevelNode loc1 a1 -> TopLevelNode loc2 a2 -> TopLevelNode loc a
 nodeOpToFun2 = nodeOpToFun2Typed (buildType :: SQLType a)
 
 -- | (internal) conversion
 nodeOpToFun2Typed :: forall a a1 a2 loc loc1 loc2. (IsLocality loc) =>
-  SQLType a -> NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> ComputeNode loc a
+  SQLType a -> NodeOp -> TopLevelNode loc1 a1 -> TopLevelNode loc2 a2 -> TopLevelNode loc a
 nodeOpToFun2Typed sqlt no node1 node2 =
-  let n2 = _emptyNode no sqlt :: ComputeNode loc a
+  let n2 = _emptyNode no sqlt :: TopLevelNode loc a
   in n2 `parents` [untyped node1, untyped node2]
 
 -- | (internal) conversion
 nodeOpToFun2Untyped :: forall loc1 loc2 loc3. (IsLocality loc3) =>
-  DataType -> NodeOp -> ComputeNode loc1 Cell -> ComputeNode loc2 Cell -> ComputeNode loc3 Cell
+  DataType -> NodeOp -> TopLevelNode loc1 Cell -> TopLevelNode loc2 Cell -> TopLevelNode loc3 Cell
 nodeOpToFun2Untyped dt no node1 node2 =
-  let n2 = _emptyNode no (SQLType dt) :: ComputeNode loc3 Cell
+  let n2 = _emptyNode no (SQLType dt) :: TopLevelNode loc3 Cell
   in n2 `parents` [untyped node1, untyped node2]
 
 
@@ -434,8 +447,24 @@ broadcastPair ds ld = n `parents` [untyped ds, untyped ld]
 
 -- ******* INSTANCES *********
 
+_prettyShowColOp :: GeneralizedColOp -> T.Text
+_prettyShowColOp = undefined
+
+instance Show ColumnData where
+  show c =
+    let
+      name = case _cReferingPath c of
+        Just fn -> show' fn
+        Nothing -> _prettyShowColOp . _cOp $ c
+      txt = fromString "{}{{}}->{}" :: TF.Format
+      -- path = T.pack . show . _cReferingPath $ c
+      -- no = prettyShowColOp . colOp $ c
+      fields = T.pack . show . _cType $ c
+      nn = prettyNodePath . nodePath . _cOrigin $ c
+    in T.unpack $ toStrict $ TF.format txt (name, fields, nn)
+
 -- Put here because it depends on some private functions.
-instance forall loc a. Show (ComputeNode loc a) where
+instance forall loc a. Show (TopLevelNode loc a) where
   show ld = let
     txt = fromString "{}@{}{}{}" :: TF.Format
     loc :: T.Text
@@ -447,7 +476,7 @@ instance forall loc a. Show (ComputeNode loc a) where
     fields = T.pack . show . nodeType $ ld in
       T.unpack $ toStrict $ TF.format txt (np, no, loc, fields)
 
-instance forall loc a. A.ToJSON (ComputeNode loc a) where
+instance forall loc a. A.ToJSON (TopLevelNode loc a) where
   toJSON node = A.object [
     "locality" .= nodeLocality node,
     "path" .= nodePath node,
@@ -461,44 +490,58 @@ instance forall loc. A.ToJSON (TypedLocality loc) where
   toJSON (TypedLocality Local) = A.String "local"
   toJSON (TypedLocality Distributed) = A.String "distributed"
 
-unsafeCastDataset :: ComputeNode LocDistributed a -> ComputeNode LocDistributed b
-unsafeCastDataset ds = ds { _cnType = _cnType ds }
+unsafeCastDataset :: TopLevelNode LocDistributed a -> TopLevelNode LocDistributed b
+unsafeCastDataset ds = updateComputeNode ds $ \n -> n { _cnType = _cnType n }
 
--- TODO: figure out the story around haskell types vs datatypes
--- Should we have equivalence classes for haskell, so that a tuple has the
--- same type as a structure?
--- Probably not, it breaks the correspondence.
--- Probably, it makes the metadata story easier.
-castType :: SQLType a -> ComputeNode loc b -> Try (ComputeNode loc a)
-castType sqlt n = do
+castType :: SQLType a -> ComputeNode loc ref b -> Try (ComputeNode loc ref a)
+castType sqlt (n@(ComputeNodeTop tn)) = do
   let dt = unSQLType sqlt
   let dt' = unSQLType (nodeType n)
   if dt `compatibleTypes` dt'
-    then let n' = updateNode n (\node -> node { _cnType = dt }) in
+    then let n' = updateComputeNode (_topToComputeNode tn) (\node -> node { _cnType = dt }) in
       pure (_unsafeCastNode n')
     else tryError $ sformat ("castType: Casting error: dataframe has type "%sh%" incompatible with type "%sh) dt' dt
+castType _ _ = undefined
 
-castType' :: SQLType a -> Try (ComputeNode loc Cell) -> Try (ComputeNode loc a)
+castType' :: SQLType a -> Try (ComputeNode loc RefUnknown Cell) -> Try (TopLevelNode loc a)
 castType' sqlt df = df >>= castType sqlt
 
-_asTyped :: forall loc a. (SQLTypeable a) => Try (ComputeNode loc Cell) -> Try (ComputeNode loc a)
+{-| This transform (implemented in an unsafe manner) should be guaranteed by the type system. -}
+-- TODO: rename: as _getTopNode
+_getComputeNode :: TopLevelNode loc a -> TopNode loc a
+_getComputeNode = forceRight . _asComputeNode
+
+_topToComputeNode :: TopNode loc a -> TopLevelNode loc a
+_topToComputeNode = ComputeNodeTop
+
+-- TODO: rename: as _asTopNode
+_asComputeNode :: ComputeNode loc ref a -> Try (TopNode loc a)
+_asComputeNode (ComputeNodeTop x) = pure x
+_asComputeNode (ComputeNodeCol y) = tryError $ sformat ("_asComputeNode: error: tried to cast a generic compute node to a top node: "%sh) y
+
+-- _unsafeToComputeNode :: ComputeNode loc ref a -> TopNodeData
+-- _unsafeToComputeNode = forceRight . _asComputeNode
+
+_asTyped :: forall loc a. (SQLTypeable a) => Try (ComputeNode loc RefUnknown Cell) -> Try (TopLevelNode loc a)
 _asTyped = castType' (buildType :: SQLType a)
 
 -- Performs an unsafe type recast.
 -- This is useful for internal code that knows whether
 -- this operation is legal or not through some other means.
 -- This may still throw an error if the cast is illegal.
-_unsafeCastNode :: ComputeNode loc1 a -> ComputeNode loc2 b
-_unsafeCastNode x = x {
-    _cnType = _cnType x,
-    _cnLocality = _cnLocality x
+_unsafeCastNode :: ComputeNode loc1 ref1 a -> ComputeNode loc2 ref2 b
+_unsafeCastNode x = ComputeNodeTop $ y {
+    _cnType = _cnType y,
+    _cnLocality = _cnLocality y
   }
+  where y = forceRight (_asComputeNode x)
 
-_unsafeCastNodeTyped :: TypedLocality loc2 -> ComputeNode loc1 a -> ComputeNode loc2 b
-_unsafeCastNodeTyped l x = x {
-    _cnType = _cnType x,
+_unsafeCastNodeTyped :: TypedLocality loc2 -> TopLevelNode loc1 a -> TopLevelNode loc2 b
+_unsafeCastNodeTyped l x = ComputeNodeTop $ y {
+    _cnType = _cnType y,
     _cnLocality = unTypedLocality l
   }
+  where y = forceRight (_asComputeNode x)
 
 --
 _unsafeCastLoc :: CheckedLocalityCast loc' =>
@@ -523,20 +566,20 @@ checkLocalityValidity x =
 
 -- Computes the ID of a node.
 -- Since this is a complex operation, it should be cached by each node.
-_nodeId :: ComputeNode loc a -> NodeId
+_nodeId :: TopNode loc a -> NodeId
 _nodeId node =
   let c1 = SHA.init
-      f2 = unNodeId . nodeId
-      c2 = hashUpdateNodeOp c1 (nodeOp node)
-      c3 = SHA.updates c2 $ f2 <$> nodeParents node
-      c4 = SHA.updates c3 $ f2 <$> nodeLogicalDependencies node
+      f2 = unNodeId . _cnNodeId
+      c2 = hashUpdateNodeOp c1 (_cnOp node)
+      c3 = SHA.updates c2 $ f2 <$> (V.toList . _cnParents) node
+      c4 = SHA.updates c3 $ f2 <$> (V.toList . _cnLogicalDeps) node
       -- c6 = SHA.update c4 $ (BS.concat . LBS.toChunks) b
   in
     -- Using base16 encoding to make sure it is readable.
     -- Not sure if it is a good idea in general.
     (NodeId . encode . SHA.finalize) c4
 
-_defaultNodeName :: ComputeNode loc a -> NodeName
+_defaultNodeName :: TopLevelNode loc a -> NodeName
 _defaultNodeName node =
   let opName = (prettyShowOp . nodeOp) node
       namePieces = T.splitOn (T.pack ".") opName
@@ -550,14 +593,14 @@ _defaultNodeName node =
 -- Create a new empty node. Also performs a locality check to
 -- make sure the info being provided is correct.
 _emptyNode :: forall loc a. (IsLocality loc) =>
-  NodeOp -> SQLType a -> ComputeNode loc a
+  NodeOp -> SQLType a -> TopLevelNode loc a
 _emptyNode op sqlt = _emptyNodeTyped (_getTypedLocality :: TypedLocality loc) sqlt op
 
 _emptyNodeTyped :: forall loc a.
-  TypedLocality loc -> SQLType a -> NodeOp -> ComputeNode loc a
-_emptyNodeTyped tloc (SQLType dt) op = updateNode (_unsafeCastNodeTyped tloc ds) id where
-  ds :: ComputeNode loc a
-  ds = ComputeNode {
+  TypedLocality loc -> SQLType a -> NodeOp -> TopLevelNode loc a
+_emptyNodeTyped tloc (SQLType dt) op = updateComputeNode (_unsafeCastNodeTyped tloc ds) id where
+  ds :: TopLevelNode loc a
+  ds = ComputeNodeTop TopNode {
     _cnName = Nothing,
     _cnOp = op,
     _cnType = dt,
@@ -570,7 +613,7 @@ _emptyNodeTyped tloc (SQLType dt) op = updateNode (_unsafeCastNodeTyped tloc ds)
   }
 
 emptyNodeStandard :: forall loc a.
-  TypedLocality loc -> SQLType a -> T.Text -> ComputeNode loc a
+  TypedLocality loc -> SQLType a -> T.Text -> TopLevelNode loc a
 emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
   so = StandardOperator {
          soName = name,

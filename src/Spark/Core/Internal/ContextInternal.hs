@@ -113,7 +113,7 @@ It performs the naming, node deduplication and cycle detection.
 
 TODO(kps) use the caching information to have a correct fringe
 -}
-buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
+buildComputationGraph :: TopLevelNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
   assignPathsUntyped cg

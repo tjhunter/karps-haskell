@@ -16,7 +16,7 @@ module Spark.Core.Internal.Pruning(
 import Data.HashMap.Strict as HM
 
 import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID)
-import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge)
+import Spark.Core.Internal.DatasetStructures(UntypedComputeTopNode, StructureEdge)
 import Spark.Core.Internal.DAGFunctions
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions
@@ -80,10 +80,10 @@ pruneGraph c getNodeId f g =
   in g'
 
 pruneGraphDefault ::
-  NodeCache -> Graph UntypedNode StructureEdge -> Graph UntypedNode StructureEdge
+  NodeCache -> Graph UntypedComputeTopNode StructureEdge -> Graph UntypedComputeTopNode StructureEdge
 pruneGraphDefault c = pruneGraph c nodeId _createNodeCache
 
-_createNodeCache :: UntypedNode -> NodeCacheInfo -> UntypedNode
+_createNodeCache :: UntypedComputeTopNode -> NodeCacheInfo -> UntypedComputeTopNode
 _createNodeCache n nci =
   let name = "org.spark.PlaceholderCache"
       no = NodePointer (Pointer (nciComputation nci) (nciPath nci))
