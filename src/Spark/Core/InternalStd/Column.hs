@@ -16,8 +16,8 @@ datasets, dataframes, observables, etc.
 
 This module is meant to be imported qualified.
 -}
-module Spark.Core.Internal.ColumnStandard(
-  asDoubleCol
+module Spark.Core.InternalStd.Column(
+  asDouble
 ) where
 
 
@@ -25,5 +25,8 @@ import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.TypesGenerics(buildType)
 
-asDoubleCol :: (Num a) => Column ref a -> Column ref Double
-asDoubleCol = makeColOp1 "double" buildType
+{-| Converts a numeric column to a column of doubles. 
+
+Some loss of precision may occur.-}
+asDouble :: (Num a) => Column ref a -> Column ref Double
+asDouble = makeColOp1 "double" buildType

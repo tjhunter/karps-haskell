@@ -2,7 +2,7 @@
 
 {-| The standard library of functions that operate on datasets.
 -}
-module Spark.Core.Internal.DatasetStandard(
+module Spark.Core.InternalStd.Dataset(
   autocache,
   cache,
   uncache,
@@ -34,9 +34,6 @@ cache :: Dataset a -> Dataset a
 cache  n = n2 `parents` [untyped n]
   where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameCache
 
--- (internal)
-opnameCache :: T.Text
-opnameCache = "org.spark.Cache"
 
 
 {-| Uncaches the dataset.
@@ -56,9 +53,6 @@ uncache :: ComputeNode loc a -> ComputeNode loc a
 uncache  n = n2 `parents` [untyped n]
   where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameUnpersist
 
--- (internal)
-opnameUnpersist :: T.Text
-opnameUnpersist = "org.spark.Unpersist"
 
 {-| Automatically caches the dataset on a need basis, and performs deallocation
 when the dataset is not required.
@@ -92,8 +86,6 @@ identity n = n2 `parents` [untyped n]
                 else "org.spark.Identity"
 
 
-opnameAutocache :: T.Text
-opnameAutocache = "org.spark.Autocache"
 
 
 {-| Low-level operator that takes an observable and propagates it along the

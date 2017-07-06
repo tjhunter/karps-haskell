@@ -12,13 +12,17 @@ module Spark.Core.Internal.Caching(
   CacheGraph,
   AutocacheGen(..),
   checkCaching,
-  fillAutoCache
+  fillAutoCache,
+  opnameCache,
+  opnameAutocache,
+  opnameUnpersist
 ) where
 
 import Control.Monad.Identity
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
+import qualified Data.Text as T
 import Control.Arrow((&&&))
 import Data.Foldable
 import Data.Set(Set)
@@ -84,6 +88,17 @@ fillAutoCache cacheFun acGen g = do
   acg <- _fillAutoCache acGen cg
   let acg' = graphMapVertices' fst acg
   return acg'
+
+-- (internal)
+opnameCache :: T.Text
+opnameCache = "org.spark.Cache"
+
+-- (internal)
+opnameUnpersist :: T.Text
+opnameUnpersist = "org.spark.Unpersist"
+
+opnameAutocache :: T.Text
+opnameAutocache = "org.spark.Autocache"
 
 
 -- Some internal types to guarantee more correctness

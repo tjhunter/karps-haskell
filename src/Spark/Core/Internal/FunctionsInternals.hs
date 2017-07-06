@@ -40,7 +40,6 @@ import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.DatasetStandard
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions
 import Spark.Core.Internal.LocalDataFunctions

@@ -1,5 +1,5 @@
 
-module Spark.Core.Internal.ObservableStandard(
+module Spark.Core.InternalStd.Observable(
   asDouble) where
 
 import Spark.Core.Internal.ColumnStandard
