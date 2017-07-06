@@ -31,6 +31,9 @@ module Spark.Core.Internal.ColumnFunctions(
   genColOp,
   homoColOp2,
   makeColOp1,
+  unColumn',
+  column',
+  tryCol',
   -- -- Developer API (projection builders)
   -- dynamicProjection,
   -- stringToDynColProj,
@@ -46,8 +49,8 @@ module Spark.Core.Internal.ColumnFunctions(
   -- Public functions
   applyCol1,
   untypedCol,
-  colFromObs,
-  colFromObs',
+  -- colFromObs,
+  -- colFromObs',
   castTypeCol,
   castCol,
   castCol',
@@ -62,6 +65,7 @@ import Data.Text.Lazy(toStrict)
 import Data.Maybe(fromMaybe)
 import Data.List(find)
 import Formatting
+import Debug.Trace(trace)
 
 import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.DatasetFunctions
@@ -86,8 +90,11 @@ colType = SQLType . _cType
 
 {-| Converts a type column to an antyped column.
 -}
-untypedCol :: Column ref a -> DynColumn
-untypedCol = pure . dropColType . dropColReference
+untypedCol :: Column ref a -> Column'
+untypedCol = column'. pure . dropColType . dropColReference
+
+unColumn' :: Column' -> DynColumn
+unColumn' (Column' x) = x
 
 {-| Drops the type information, but kees the reference.
 -}
@@ -100,9 +107,9 @@ In this case, one must supply the reference (which can be obtained from
 another column with colRef, or from a dataset), and a type (which can be
 built using the buildType function).
 -}
-castCol :: ColumnReference ref -> SQLType a -> DynColumn -> Try (Column ref a)
+castCol :: ColumnReference ref -> SQLType a -> Column' -> Try (Column ref a)
 castCol r sqlt dc =
-  dc >>= castTypeCol sqlt >>= _checkedCastRefColData r
+  unColumn' dc >>= castTypeCol sqlt >>= _checkedCastRefColData r
 
 {-| Casts a dynamic column to a statically typed column, but does not attempt
 to enforce a single origin at the type level.
@@ -110,7 +117,7 @@ to enforce a single origin at the type level.
 This is useful when building a dataset from a dataframe: the origin information
 cannot be conveyed since it is not available in the first place.
 -}
-castCol' :: SQLType a -> DynColumn -> Try (Column UnknownReference a)
+castCol' :: SQLType a -> Column' -> Try (Column UnknownReference a)
 castCol' = castCol ColumnReference
 
 
@@ -133,10 +140,10 @@ broadcast ld c = ColumnData {
     _cReferingPath = Nothing
   }
 
-broadcast' :: LocalFrame -> DynColumn -> DynColumn
-broadcast' lf dc = do
-  ld <- lf
-  c <- dc
+broadcast' :: Observable' -> Column' -> Column'
+broadcast' lf dc = column' $ do
+  ld <- unObservable' lf
+  c <- unColumn' dc
   return $ broadcast ld c
 
 -- (internal)
@@ -154,13 +161,13 @@ This is useful when casting dynamic columns to typed columns.
 colRef :: Column ref a -> ColumnReference ref
 colRef _ = ColumnReference
 
--- | Takes an observable and makes it available as a column of the same type.
-colFromObs :: (HasCallStack) => LocalData a -> Column (LocalData a) a
-colFromObs = missing "colFromObs"
-
--- | Takes a dynamic observable and makes it available as a dynamic column.
-colFromObs' :: (HasCallStack) => LocalFrame -> DynColumn
-colFromObs' = missing "colFromObs'"
+-- -- | Takes an observable and makes it available as a column of the same type.
+-- colFromObs :: (HasCallStack) => LocalData a -> Column (LocalData a) a
+-- colFromObs = missing "colFromObs"
+--
+-- -- | Takes a dynamic observable and makes it available as a dynamic column.
+-- colFromObs' :: (HasCallStack) => LocalFrame -> DynColumn
+-- colFromObs' = missing "colFromObs'"
 
 -- | (internal)
 colFieldName :: ColumnData ref a -> FieldName
@@ -168,17 +175,22 @@ colFieldName c =
   fromMaybe (unsafeFieldName . _prettyShowColOp . _cOp $ c)
     (_cReferingPath c)
 
+column' :: Try (Column ref a) -> Column'
+column' x = Column' $ dropColType . dropColReference <$> x
+
+tryCol' :: Try Column' -> Column'
+tryCol' (Left x) = Column' (Left x)
+tryCol' (Right c) = c
+
 {-| A converience function for applying one-argument typed functions to
 dynamic column.
 -}
-applyCol1 :: forall x y. (SQLTypeable x) => (forall ref. Column ref x -> Column ref y) -> DynColumn -> DynColumn
-applyCol1 f dc = do
-  c <- dc
+applyCol1 :: forall x y. (SQLTypeable x) => (forall ref. Column ref x -> Column ref y) -> Column' -> Column'
+applyCol1 f dc = column' $ do
+  c <- unColumn' dc
   let t = buildType :: SQLType x
   c1 <- castCol (colRef c) t dc
-  let c2 = f c1
-  untypedCol c2
-
+  return $ f c1
 
 -- ******** Operations on column operations ********
 
@@ -261,13 +273,13 @@ iEmptyCol :: Dataset a -> SQLType b -> FieldPath -> Column a b
 iEmptyCol = _emptyColData
 
 -- | (internal) Creates a new column with a dynamic type.
-colExtraction :: Dataset a -> DataType -> FieldPath -> DynColumn
-colExtraction ds dt fp = pure $ dropColReference $ _emptyColData ds (SQLType dt) fp
+colExtraction :: Dataset a -> DataType -> FieldPath -> Column'
+colExtraction ds dt fp = column' . pure . dropColReference $ _emptyColData ds (SQLType dt) fp
 
 -- | Homogeneous operation betweet 2 columns.
 homoColOp2 :: T.Text -> Column ref x -> Column ref x -> Column ref x
 homoColOp2 opName c1 c2 =
-  let co = GenColFunction opName (V.fromList (colOp <$> [c1, c2]))
+  let co = trace "homoColOp2:co" $ GenColFunction opName (V.fromList (colOp <$> [c1, c2]))
   in ColumnData {
       _cOrigin = _cOrigin c1,
       _cType = _cType c1,
@@ -302,10 +314,10 @@ _emptyColData ds sqlt path = ColumnData {
   _cReferingPath = Nothing
 }
 
-_homoColOp2' :: T.Text -> DynColumn -> DynColumn -> DynColumn
-_homoColOp2' opName c1' c2' = do
-  c1 <- c1'
-  c2 <- c2'
+_homoColOp2' :: T.Text -> Column' -> Column' -> Column'
+_homoColOp2' opName c1' c2' = column' $ do
+  c1 <- unColumn' c1'
+  c2 <- unColumn' c2'
   -- TODO check same origin
   return $ homoColOp2 opName c1 c2
 
@@ -324,16 +336,22 @@ instance forall ref a. Show (Column ref a) where
       nn = prettyNodePath . nodePath . _cOrigin $ c
     in T.unpack $ toStrict $ TF.format txt (name, fields, nn)
 
+instance Show Column' where
+  show (Column' x) = show x
+
+instance Eq Column' where
+  (Column' x1) == (Column' x2) = x1 == x2
+
 -- *********** Arithmetic operations **********
 
 
 instance forall a. HomoBinaryOp2 a a a where
   _liftFun = BinaryOpFun id id
 
-instance forall ref a. HomoBinaryOp2 (Column ref a) DynColumn DynColumn where
+instance forall ref a. HomoBinaryOp2 (Column ref a) Column' Column' where
   _liftFun = BinaryOpFun untypedCol id
 
-instance forall ref a. HomoBinaryOp2 DynColumn (Column ref a) DynColumn where
+instance forall ref a. HomoBinaryOp2 Column' (Column ref a) Column' where
   _liftFun = BinaryOpFun id untypedCol
 
 instance (Fractional x) => Fractional (Column ref x) where
@@ -349,7 +367,7 @@ instance (Num x) => Num (Column ref x) where
   fromInteger _ = missing "Num (Column x): fromInteger"
   negate _ = missing "Num (Column x): negate"
 
-instance Num DynColumn where
+instance Num Column' where
   (+) = _homoColOp2' "+"
   (*) = _homoColOp2' "*"
   abs _ = missing "Num (DynColumn x): abs"

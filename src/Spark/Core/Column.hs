@@ -33,8 +33,8 @@ module Spark.Core.Column(
   -- * Column functions
   colType,
   untypedCol,
-  colFromObs,
-  colFromObs',
+  -- colFromObs,
+  -- colFromObs',
   applyCol1,
   ) where
 

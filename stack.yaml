@@ -9,5 +9,5 @@ extra-deps:
 resolver: lts-7.13
 pvp-bounds: both
 build:
-  library-profiling: true
-  executable-profiling: true
+  library-profiling: false
+  executable-profiling: false

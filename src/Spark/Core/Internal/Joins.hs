@@ -34,7 +34,7 @@ join = joinInner
 
 {-| Untyped version of the standard join.
 -}
-join' :: DynColumn -> DynColumn -> DynColumn -> DynColumn -> DataFrame
+join' :: Column' -> Column' -> Column' -> Column' -> DataFrame
 join' = joinInner'
 
 {-| Explicit inner join.
@@ -45,7 +45,7 @@ joinInner key1 val1 key2 val2 = unsafeCastDataset (forceRight df) where
 
 {-| Untyped version of the inner join.
 -}
-joinInner' :: DynColumn -> DynColumn -> DynColumn -> DynColumn -> DataFrame
+joinInner' :: Column' -> Column' -> Column' -> Column' -> DataFrame
 joinInner' key1 val1 key2 val2 = do
   df1 <- pack' (struct' [key1, val1])
   df2 <- pack' (struct' [key2, val2])
@@ -76,18 +76,18 @@ The resulting dataframe has 2 columns:
  Note: this is a low-level operation. Users may want to use broadcastObs instead.
 -}
 -- TODO: what is the difference with broadcastPair???
-joinObs' :: DynColumn -> LocalFrame -> DataFrame
+joinObs' :: Column' -> LocalFrame -> DataFrame
 joinObs' dc lf = do
   let df = pack' dc
   dc' <- df
-  c <- asCol' df
+  c <- unColumn' (asCol' df)
   o <- lf
   st <- structTypeFromFields [(unsafeFieldName "values", unSQLType (colType c)), (unsafeFieldName "broadcast", unSQLType (nodeType o))]
   let sqlt = SQLType (StrictType (Struct st))
   return $ emptyDataset NodeBroadcastJoin sqlt `parents` [untyped dc', untyped o]
 
-_joinTypeInner :: DynColumn -> DynColumn -> DynColumn -> Try DataType
+_joinTypeInner :: Column' -> Column' -> Column' -> Try DataType
 _joinTypeInner kcol col1 col2 = do
-  cs <- sequence [kcol, col1, col2]
+  cs <- sequence (unColumn' <$> [kcol, col1, col2])
   st <- structTypeFromFields $ (colFieldName &&& unSQLType . colType) <$> cs
   return $ StrictType (Struct st)

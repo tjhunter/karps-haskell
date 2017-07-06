@@ -15,6 +15,7 @@ import Control.Monad.Except
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.DatasetFunctions
+import Spark.Core.Internal.DatasetStandard
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.PathsUntyped()
 import Spark.Core.Internal.DAGStructures
