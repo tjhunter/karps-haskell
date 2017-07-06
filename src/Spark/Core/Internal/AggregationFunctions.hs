@@ -142,7 +142,7 @@ _collectAgg' dt =
   }
 
 applyUntypedUniAgg3 :: (DataType -> AggTry UniversalAggregatorOp) -> Column' -> LocalFrame
-applyUntypedUniAgg3 f dc = do
+applyUntypedUniAgg3 f dc = asObs' $ do
   c <- (trace "applyUntypedUniAgg3: c" $ unColumn' dc)
   let uaot = f . unSQLType . colType $ c
   uao <- tryEither uaot

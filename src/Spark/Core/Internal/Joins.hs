@@ -64,7 +64,7 @@ joinObs :: (HasCallStack) => Column ref val -> LocalData val' -> Dataset (val, v
 joinObs c ld =
   -- TODO: has a forcing at the last moment so that we can at least
   -- have stronger guarantees in the type coercion.
-  unsafeCastDataset $ forceRight $ joinObs' (untypedCol c) (pure (untypedLocalData ld))
+  unsafeCastDataset $ forceRight $ joinObs' (untypedCol c) (asObs' . pure . untypedLocalData $ ld)
 
 {-| Broadcasts an observable along side a dataset to make it available as
 an extra column.
@@ -81,7 +81,7 @@ joinObs' dc lf = do
   let df = pack' dc
   dc' <- df
   c <- unColumn' (asCol' df)
-  o <- lf
+  o <- unObservable' lf
   st <- structTypeFromFields [(unsafeFieldName "values", unSQLType (colType c)), (unsafeFieldName "broadcast", unSQLType (nodeType o))]
   let sqlt = SQLType (StrictType (Struct st))
   return $ emptyDataset NodeBroadcastJoin sqlt `parents` [untyped dc', untyped o]

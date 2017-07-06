@@ -16,6 +16,7 @@ module Spark.Core.Internal.DatasetFunctions(
   asDF,
   asDS,
   asObs',
+  obsTry,
   asLocalObservable,
   asObservable,
   -- Standard functions
@@ -136,15 +137,19 @@ asDS = _asTyped
 
 asObs' :: Try (ComputeNode LocLocal a) -> Observable'
 asObs' (Left x) = Observable' (Left x)
-asObs' (Right x) = Observable' (asLocalObservable x)
+asObs' (Right x) = asLocalObservable x
+
+obsTry :: Try Observable' -> Observable'
+obsTry (Left x) = Observable' (Left x)
+obsTry (Right x) = x
 
 -- | Converts a local node to a local frame.
 -- This always works.
 asLocalObservable :: ComputeNode LocLocal a -> LocalFrame
-asLocalObservable = pure . _unsafeCastNode
+asLocalObservable = Observable' . pure . _unsafeCastNode
 
 asObservable :: forall a. (SQLTypeable a) => LocalFrame -> Try (LocalData a)
-asObservable = _asTyped
+asObservable = _asTyped . unObservable'
 
 -- | Converts any node to an untyped node
 untyped :: ComputeNode loc a -> UntypedNode

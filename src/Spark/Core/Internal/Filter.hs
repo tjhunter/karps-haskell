@@ -38,6 +38,11 @@ may not be strict.
 filterOpt :: Column ref (Maybe a) -> Column ref b -> Dataset (a, b)
 filterOpt = missing "filterOpt"
 
+{-| Returns the data for which another column is not defined.
+-}
+filterNone :: Column ref (Maybe a) -> Column ref b -> Dataset b
+filterNone = missing "filterOpt"
+
 {-| Only keeps the strict values of a column.
 -}
 filterMaybe :: Column ref (Maybe a) -> Dataset a

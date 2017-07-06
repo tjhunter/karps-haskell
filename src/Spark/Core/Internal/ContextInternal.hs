@@ -204,7 +204,7 @@ getTargetNodes :: (HasCallStack) => Computation -> [UntypedLocalData]
 getTargetNodes comp =
   let
     fun2 :: (HasCallStack) => UntypedNode -> UntypedLocalData
-    fun2 n = case asLocalObservable <$> castLocality n of
+    fun2 n = case (unObservable' . asLocalObservable) <$> castLocality n of
       Right (Right x) -> x
       err -> failure $ sformat ("_getNodes:fun2: err="%shown%" n="%shown) err n
     finalNodeNames = cTerminalNodes comp
@@ -218,7 +218,7 @@ getTargetNodes comp =
 -}
 getObservables :: Computation -> [UntypedLocalData]
 getObservables comp =
-  let fun n = case asLocalObservable <$> castLocality n of
+  let fun n = case (unObservable' . asLocalObservable) <$> castLocality n of
           Right (Right x) -> return x
           _ -> Nothing
   in catMaybes $ fun <$> cNodes comp

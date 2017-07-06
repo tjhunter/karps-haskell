@@ -17,7 +17,6 @@ import Debug.Trace(trace)
 
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.ColumnStructures
-import Spark.Core.Internal.DatasetFunctions(asObs')
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.FunctionsInternals(projectColFunction2')
 import Spark.Core.Internal.Utilities
@@ -89,10 +88,10 @@ instance GeneralizedHomo2 (LocalData x) (Column ref x) where
   _projectHomo o1 c2 = _projectHomo (broadcast o1 c2) c2
 
 instance GeneralizedHomo2 (Column ref x) LocalFrame where
-  _projectHomo c1 o2' = _projectHomo c1 (broadcast' (asObs' o2') (untypedCol c1))
+  _projectHomo c1 o2' = _projectHomo c1 (broadcast' o2' (untypedCol c1))
 
 instance GeneralizedHomo2 LocalFrame (Column ref x) where
-  _projectHomo o1' c2 = _projectHomo (broadcast' (asObs' o1') (untypedCol c2)) c2
+  _projectHomo o1' c2 = _projectHomo (broadcast' o1' (untypedCol c2)) c2
 
 instance GeneralizedHomo2 LocalFrame LocalFrame where
   _projectHomo o1' o2' f =

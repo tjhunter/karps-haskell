@@ -279,7 +279,7 @@ colExtraction ds dt fp = column' . pure . dropColReference $ _emptyColData ds (S
 -- | Homogeneous operation betweet 2 columns.
 homoColOp2 :: T.Text -> Column ref x -> Column ref x -> Column ref x
 homoColOp2 opName c1 c2 =
-  let co = trace "homoColOp2:co" $ GenColFunction opName (V.fromList (colOp <$> [c1, c2]))
+  let co = GenColFunction opName (V.fromList (colOp <$> [c1, c2]))
   in ColumnData {
       _cOrigin = _cOrigin c1,
       _cType = _cType c1,

@@ -35,7 +35,7 @@ import Control.Monad.Logger(runStdoutLoggingT)
 import Spark.Core.Internal.Client(BatchComputationResult)
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.DatasetFunctions(untypedLocalData)
+import Spark.Core.Internal.DatasetFunctions(untypedLocalData, asObs')
 import Spark.Core.Internal.ContextIOInternal
 import Spark.Core.Internal.RowGenericsFrom(FromSQL, cellToValue)
 import Spark.Core.Internal.RowStructures(Cell)
@@ -85,12 +85,12 @@ throws an exception if any error happens.
  -}
 exec1Def :: (FromSQL a) => LocalData a -> IO a
 exec1Def ld = do
-  c <- exec1Def' (pure (untypedLocalData ld))
+  c <- exec1Def' . asObs' . pure . untypedLocalData $ ld
   _forceEither $ cellToValue c
 
 exec1Def' :: LocalFrame -> IO Cell
 exec1Def' lf = do
-  ld <- _getOrThrow lf
+  ld <- _getOrThrow (unObservable' lf)
   res <- execStateDef (executeCommand1' ld)
   _getOrThrow res
 

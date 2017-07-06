@@ -182,13 +182,13 @@ projectColFunction f o =
       f' x = column' $ dropColType . f <$> castTypeCol sqltx x
       f'' :: Column' -> Column'
       f'' x = tryCol' $ f' <$> unColumn' x
-      o2 = projectColFunctionUntyped f'' o'
+      o2 = unObservable' $ projectColFunctionUntyped f'' o'
       o3 = castType sqlty =<< o2
   in forceRight o3
 
 projectColFunctionUntyped ::
   (Column' -> Column') -> UntypedLocalData -> LocalFrame
-projectColFunctionUntyped f obs = do
+projectColFunctionUntyped f obs = Observable' $ do
   -- Create a placeholder dataset and a corresponding column.
   let dt = unSQLType (nodeType obs)
   -- Pass them to the function.
@@ -213,20 +213,23 @@ complex operations such as broadcasting, etc.
 projectColFunction' ::
     (Column' -> Column') ->
     LocalFrame -> LocalFrame
-projectColFunction' f obs = projectColFunctionUntyped f =<< obs
+projectColFunction' f obs = Observable' $ do
+  cd <- unObservable' obs
+  let x = projectColFunctionUntyped f cd
+  unObservable' x
 
 projectColFunction2' ::
   (Column' -> Column' -> Column') ->
   LocalFrame ->
   LocalFrame ->
   LocalFrame
-projectColFunction2' f o1' o2' = do
+projectColFunction2' f o1' o2' = obsTry $ do
   let f2 :: Column' -> Column'
       f2 dc = f (dc /- "_1") (dc /- "_2")
-  o1 <- o1'
-  o2 <- o2'
+  o1 <- unObservable' o1'
+  o2 <- unObservable' o2'
   let o = iPackTupleObs $ o1 N.:| [o2]
-  projectColFunctionUntyped f2 o
+  return $ projectColFunctionUntyped f2 o
 
 colOpNoBroadcast :: GeneralizedColOp -> Try ColOp
 colOpNoBroadcast = _replaceObservables M.empty

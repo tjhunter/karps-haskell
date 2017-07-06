@@ -143,8 +143,8 @@ the Spark computation graph.
 
 TODO(kps) rename to DynObservable
 -}
-type LocalFrame = Try UntypedLocalData
-newtype Observable' = Observable' { unObservable' :: LocalFrame }
+type LocalFrame = Observable'
+newtype Observable' = Observable' { unObservable' :: Try UntypedLocalData }
 
 type UntypedNode' = Try UntypedNode
 
