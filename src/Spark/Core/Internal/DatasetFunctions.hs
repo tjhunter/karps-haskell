@@ -20,6 +20,7 @@ module Spark.Core.Internal.DatasetFunctions(
   asLocalObservable,
   asObservable,
   -- Standard functions
+  identity,
   union,
   -- Developer
   castLocality,
@@ -297,6 +298,24 @@ emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
   op = if unTypedLocality tloc == Local
           then NodeLocalOp so
           else NodeDistributedOp so
+
+          
+
+{-| The identity function.
+
+Returns a compute node with the same datatype and the same content as the
+previous node. If the operation of the input has a side effect, this side
+side effect is *not* reevaluated.
+
+This operation is typically used when establishing an ordering between some
+operations such as caching or side effects, along with `logicalDependencies`.
+-}
+identity :: ComputeNode loc a -> ComputeNode loc a
+identity n = n2 `parents` [untyped n]
+  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) name
+        name = if unTypedLocality (nodeLocality n) == Local
+                then "org.spark.LocalIdentity"
+                else "org.spark.Identity"
 
 -- ******* INSTANCES *********
 

@@ -11,10 +11,8 @@ module Spark.Core.Internal.AggregationFunctions(
   collect',
   count,
   count',
-  countCol,
-  countCol',
-  sumCol,
-  sumCol',
+  sum,
+  sum',
   -- Developer functions
   AggTry,
   UniversalAggregator(..),
@@ -22,6 +20,7 @@ module Spark.Core.Internal.AggregationFunctions(
   applyUntypedUniAgg3
 ) where
 
+import Prelude hiding(sum)
 import Data.Aeson(Value(Null))
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -47,28 +46,18 @@ import Spark.Core.Try
 If the data type is too small to represent the sum, the value being returned is
 undefined.
 -}
-sumCol :: forall ref a. (Num a, SQLTypeable a, ToSQL a) =>
+sum :: forall ref a. (Num a, SQLTypeable a, ToSQL a) =>
   Column ref a -> LocalData a
-sumCol = applyUAOUnsafe _sumAgg'
+sum = applyUAOUnsafe _sumAgg'
 
-sumCol' :: Column' -> LocalFrame
-sumCol' = applyUntypedUniAgg3 _sumAgg'
+sum' :: Column' -> LocalFrame
+sum' = applyUntypedUniAgg3 _sumAgg'
 
-{-| The number of elements in a column.
+count :: Column ref a -> LocalData Int
+count = applyUAOUnsafe _countAgg'
 
--}
--- TODO use Long for the return data type.
-count :: forall a. Dataset a -> LocalData Int
-count = countCol . asCol
-
-count' :: DataFrame -> LocalFrame
-count' = countCol' . asCol'
-
-countCol :: Column ref a -> LocalData Int
-countCol = applyUAOUnsafe _countAgg'
-
-countCol' :: Column' -> LocalFrame
-countCol' = applyUntypedUniAgg3 _countAgg'
+count' :: Column' -> LocalFrame
+count' = applyUntypedUniAgg3 _countAgg'
 
 
 {-| Collects all the elements of a column into a list.

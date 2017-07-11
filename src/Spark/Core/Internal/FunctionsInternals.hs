@@ -20,6 +20,7 @@ module Spark.Core.Internal.FunctionsInternals(
   pack',
   struct',
   struct,
+  broadcastPair,
   -- Developer tools
   checkOrigin,
   projectColFunction,
@@ -232,6 +233,17 @@ projectColFunction2' f o1' o2' = obsTry $ do
 
 colOpNoBroadcast :: GeneralizedColOp -> Try ColOp
 colOpNoBroadcast = _replaceObservables M.empty
+
+{-| Low-level operator that takes an observable and propagates it along the
+content of an existing dataset.
+
+Users are advised to use the Column-based `broadcast` function instead.
+-}
+broadcastPair :: Dataset a -> LocalData b -> Dataset (a, b)
+broadcastPair ds ld = n `parents` [untyped ds, untyped ld]
+  where n = emptyNodeStandard (nodeLocality ds) sqlt name
+        sqlt = tupleType (nodeType ds) (nodeType ld)
+        name = "org.spark.BroadcastPair"
 
 
 _checkOrigin :: [UntypedColumnData] -> Try [UntypedColumnData]

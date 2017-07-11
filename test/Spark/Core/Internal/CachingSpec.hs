@@ -15,7 +15,7 @@ import Formatting
 import Spark.Core.Try
 import Spark.Core.Functions
 import Spark.Core.Column
-import Spark.Core.ColumnFunctions
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Internal.Caching
 -- Required for instance resolution
 import Spark.Core.StructuresInternal()
@@ -162,8 +162,8 @@ spec = do
       let ds = dataset l
       let ds' = autocache ds
       let c1 = asCol ds'
-      let s1 = sumCol c1
-      let s2 = count ds'
+      let s1 = C.sum c1
+      let s2 = C.count (asCol ds')
       let x = s1 + s2
       let g = traceHint "g=" (intErrors x)
       g `shouldSatisfy` isRight

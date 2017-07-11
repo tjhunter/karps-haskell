@@ -10,7 +10,7 @@ import GHC.Generics
 import Data.Either(isRight)
 
 import Spark.Core.Functions
-import Spark.Core.ColumnFunctions
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Dataset
 import Spark.Core.Column
 import Spark.Core.Row
@@ -47,10 +47,10 @@ spec = do
       let tds2 = castType sqlt1 (groupAsDS g2)
       tds2 `shouldSatisfy` isRight
     it "simple reduce" $ do
-      let ds2 = g `aggKey` sumCol
+      let ds2 = g `aggKey` C.sum
       let tds3 = castType sqlt1 ds2
       tds3 `shouldSatisfy` isRight
     it "complex reduce" $ do
-      let ds2 = g `aggKey` \c -> sumCol (c + c)
+      let ds2 = g `aggKey` \c -> C.sum (c + c)
       let tds3 = castType sqlt1 ds2
       tds3 `shouldSatisfy` isRight

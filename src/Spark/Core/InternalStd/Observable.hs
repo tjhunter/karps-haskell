@@ -2,7 +2,7 @@
 module Spark.Core.InternalStd.Observable(
   asDouble) where
 
-import Spark.Core.Internal.ColumnStandard
+import qualified Spark.Core.InternalStd.Column as C
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.FunctionsInternals
 import Spark.Core.Internal.TypesGenerics(SQLTypeable)
@@ -10,4 +10,4 @@ import Spark.Core.Internal.TypesGenerics(SQLTypeable)
 {-| Casts a local data as a double.
 -}
 asDouble :: (Num a, SQLTypeable a) => LocalData a -> LocalData Double
-asDouble = projectColFunction asDoubleCol
+asDouble = projectColFunction C.asDouble

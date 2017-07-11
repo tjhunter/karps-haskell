@@ -8,15 +8,16 @@ data columns.
 -}
 module Spark.Core.ColumnFunctions(
   -- * Reductions
-  sumCol,
-  sumCol',
-  countCol,
-  countCol',
+  sum,
+  sum',
+  count,
+  count',
   -- * Casting
-  asDoubleCol
+  asDouble
 ) where
 
+import Prelude hiding(sum)
 import Spark.Core.Internal.ArithmeticsImpl()
-import Spark.Core.Internal.ColumnStandard
+import Spark.Core.InternalStd.Column
 import Spark.Core.Internal.AggregationFunctions
 import Spark.Core.Internal.Projections()

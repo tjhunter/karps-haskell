@@ -11,17 +11,17 @@ import Spark.Core.Dataset
 import Spark.Core.Column
 import Spark.Core.Row
 import Spark.Core.Functions
-import Spark.Core.ColumnFunctions
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.SimpleAddSpec(run)
 import Spark.Core.Internal.LocalDataFunctions(iPackTupleObs)
 import Spark.Core.Internal.DatasetFunctions(untypedLocalData)
 
 myScaler :: Column ref Double -> Column ref Double
 myScaler col =
-  let cnt = asDouble (countCol col)
-      m = sumCol col / cnt
+  let cnt = asDouble (C.count col)
+      m = C.sum col / cnt
       centered = col .- m
-      stdDev = sumCol (centered * centered) / cnt
+      stdDev = C.sum (centered * centered) / cnt
   in centered ./ stdDev
 
 
@@ -30,7 +30,7 @@ spec = do
   describe "local data operations" $ do
     run "broadcastPair_struct" $ do
       let ds = dataset [1] :: Dataset Int
-      let cnt = countCol (asCol ds)
+      let cnt = C.count (asCol ds)
       let c = collect (asCol ds .+ cnt)
       res <- exec1Def c
       res `shouldBe` [2]

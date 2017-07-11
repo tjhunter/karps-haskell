@@ -65,7 +65,6 @@ import Data.Text.Lazy(toStrict)
 import Data.Maybe(fromMaybe)
 import Data.List(find)
 import Formatting
-import Debug.Trace(trace)
 
 import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.DatasetFunctions

@@ -5,11 +5,11 @@ module Spark.Core.ColumnSpec where
 import Test.Hspec
 import Debug.Trace(trace)
 
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Column
 import Spark.Core.Dataset
 import Spark.Core.Functions
 import Spark.Core.Types
-import Spark.Core.ColumnFunctions
 import Spark.Core.Internal.Utilities
 
 data Z
@@ -17,10 +17,10 @@ data Y
 
 myScaler :: Column ref Double -> Column ref Double
 myScaler col =
-  let cnt = asDouble (countCol col)
-      m = sumCol col / cnt
+  let cnt = asDouble (C.count col)
+      m = C.sum col / cnt
       centered = col .- m
-      stdDev = sumCol (centered * centered) / cnt
+      stdDev = C.sum (centered * centered) / cnt
   in centered ./ stdDev
 
 

@@ -13,6 +13,7 @@ import qualified Data.Text as T
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Functions
+import Spark.Core.Column
 import Spark.Core.Dataset
 import Spark.Core.Internal.Paths
 import Spark.Core.Internal.DAGStructures
@@ -182,7 +183,7 @@ spec = do
       withParents `shouldBe` ["c0", "c2/c1", "c2"]
     it "simple test 2" $ do
       let ds = dataset ([1 ,2, 3, 4]::[Int]) @@ "ds"
-      let c = count ds @@ "c"
+      let c = count (asCol ds) @@ "c"
       let c2 = (c + (identity c @@ "id")) `logicalParents` [untyped ds] @@ "c2"
       let withParents = T.unpack . catNodePath . nodePath <$> assignPaths (untyped c2)
       withParents `shouldBe`  ["ds", "c2/c","c2/id","c2"]
