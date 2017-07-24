@@ -343,8 +343,8 @@ instance forall loc a. A.ToJSON (ComputeNode loc a) where
     "_type" .= (unSQLType . nodeType) node]
 
 instance forall loc. A.ToJSON (TypedLocality loc) where
-  toJSON (TypedLocality Local) = A.String "local"
-  toJSON (TypedLocality Distributed) = A.String "distributed"
+  toJSON (TypedLocality Local) = A.String "LOCAL"
+  toJSON (TypedLocality Distributed) = A.String "DISTRIBUTED"
 
 unsafeCastDataset :: ComputeNode LocDistributed a -> ComputeNode LocDistributed b
 unsafeCastDataset ds = ds { _cnType = _cnType ds }

@@ -27,6 +27,7 @@ import GHC.Generics (Generic)
 import Data.Hashable(Hashable)
 import Data.List(intercalate)
 import qualified Data.Aeson as A
+import Data.Aeson((.=), (.:))
 import Data.String(IsString(..))
 import Data.Vector(Vector)
 import qualified Data.Vector as V
@@ -131,10 +132,12 @@ instance A.FromJSON NodeName where
   parseJSON x = NodeName <$> A.parseJSON x
 
 instance A.ToJSON NodePath where
-  toJSON = A.toJSON . unNodePath
+  toJSON (NodePath l) = A.object ["path" .= A.toJSON l]
 
 instance A.FromJSON NodePath where
-  parseJSON x = NodePath <$> A.parseJSON x
+  parseJSON = A.withObject "NodePath" $ \o -> do
+    l <- o .: "path"
+    return $ NodePath l
 
 instance A.ToJSON FieldName where
   toJSON = A.toJSON . unFieldName

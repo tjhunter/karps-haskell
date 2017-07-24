@@ -85,7 +85,7 @@ data NodeComputationFailure = NodeComputationFailure {
 -- **** AESON INSTANCES ***
 
 instance ToJSON LocalSessionId where
-  toJSON = toJSON . unLocalSession
+  toJSON lsi = object ["id" .= (unLocalSession lsi)]
 
 instance FromJSON RDDId where
   parseJSON x = RDDId <$> parseJSON x

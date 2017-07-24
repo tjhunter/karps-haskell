@@ -19,11 +19,12 @@ import Control.Concurrent(threadDelay)
 import Control.Lens((^.))
 import Control.Monad.State(mapStateT, get)
 import Control.Monad(forM, forM_)
-import Data.Aeson(toJSON, FromJSON)
+import Data.Aeson(toJSON, FromJSON, object, (.=))
 import Data.Functor.Identity(runIdentity)
 import Data.Text(Text, pack)
 import qualified Data.Text as T
 import qualified Network.Wreq as W
+import qualified Data.Aeson as A
 import Network.Wreq(responseBody)
 import Control.Monad.Trans(lift)
 import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
@@ -293,9 +294,18 @@ _sendComputation session comp = do
   let base' = _compEndPoint session (cId comp)
   let url = base' <> "/create"
   logInfoN $ "Sending computations at url: " <> url <> "with nodes: " <> show' (cNodes comp)
-  _ <- _post url (toJSON (cNodes comp))
+  _ <- _post url (_createComputationRequest comp)
   return ()
 
+_createComputationRequest :: Computation -> A.Value 
+_createComputationRequest comp =
+  object [
+    "session" .= toJSON (cSessionId comp),
+    "requested_computation" .= toJSON (cId comp),
+    "graph" .= (object [
+      "nodes" .= (toJSON (cNodes comp))
+    ])]
+  
 _computationStatus :: (MonadLoggerIO m) =>
   SparkSession -> ComputationID -> NodePath -> m PossibleNodeStatus
 _computationStatus session compId npath = do
