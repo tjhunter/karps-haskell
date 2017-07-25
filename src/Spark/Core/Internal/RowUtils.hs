@@ -78,10 +78,43 @@ _j2Cell :: Value -> DataType -> TryCell
 _j2Cell Null (StrictType t) =
   throwError $ sformat ("_j2Cell: Expected "%shown%", got null") t
 _j2Cell Null (NullableType _) = pure Empty
-_j2Cell x (StrictType t) = _j2CellS x t
+_j2Cell (Object o) dt =
+  let t = case dt of
+        StrictType t' -> t'
+        NullableType t' -> t'
+      isNullable_ = case dt of
+        StrictType _ -> False
+        NullableType _ -> True
+  in case (HM.toList o, t) of
+    ([], _) | isNullable_ -> pure Empty
+    ([(n, Number x)], IntType) | n == "intValue" ->
+      case floatingOrInteger x :: Either Double Int of
+        Left _ -> throwError $ sformat ("_j2Cell: Could not cast as int "%shown) x
+        Right i -> pure (IntElement i)
+    ([(n, String x)], StringType) | n == "stringValue" ->
+      pure . StringElement $ x
+    ([(n, Bool x)], BoolType) | n == "boolValue" ->
+      pure . BoolElement $ x
+    ([(n, Number x)], DoubleType) | n == "doubleValue" ->
+      pure . DoubleElement . toRealFloat $ x
+    ([(n, Object x)], ArrayType at) | n == "arrayValue" ->
+      case HM.lookup "values" x of
+        -- It could be a default empty value
+        Nothing -> return (RowArray V.empty)
+        Just (Array v) ->
+          let trys = flip _j2Cell at <$> v in
+            RowArray <$> sequence trys
+        Just y ->
+          throwError $ sformat ("_j2Cell:array: Expected array, got "%sh) y
+    ([(fname, fval)], _) -> throwError $ sformat ("_j2Cell: Unrecognized field "%sh%"->"%sh%" for expected type"%sh) fname fval dt
+    (l, _) -> throwError $ sformat ("_j2Cell: Expected one element, got "%shown) l
+_j2Cell x dt = _j2CellS x t where
+  t = case dt of
+    StrictType t' -> t'
+    NullableType t' -> t'
 -- We do not express optional types at cell level. They have to be
 -- encoded in the data type.
-_j2Cell x (NullableType t) = _j2CellS x t
+-- _j2Cell x (NullableType t) = _j2CellS x t
 --_j2Cell x t = throwError $ sformat ("_j2Cell: Could not match value "%shown%" with type "%shown) x t
 
 _j2CellS :: Value -> StrictDataType -> TryCell

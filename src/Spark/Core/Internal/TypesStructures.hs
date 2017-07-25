@@ -18,7 +18,6 @@ module Spark.Core.Internal.TypesStructures where
 
 import Data.Aeson
 import Data.Vector(Vector)
-import Control.Monad(guard)
 import qualified Data.Vector as V
 import qualified Data.Aeson as A
 import qualified Data.Text as T
@@ -102,7 +101,7 @@ instance Show (SQLType a) where
 
 
 -- QUICKCHECK INSTANCES
-
+-- TODO: move these outside to testing
 
 instance Arbitrary StructField where
   arbitrary = do
@@ -139,24 +138,24 @@ _toJSDT :: StrictDataType -> Nullable -> Value
 _toJSDT sdt nl =
   let nullable = (if nl == CanNull then A.Bool True else A.Bool False) :: A.Value
       _primitive :: T.Text -> A.Value
-      _primitive s = object ["strict_type" .= A.String s, "nullable" .= nullable ]
+      _primitive s = object ["basicType" .= A.String s, "nullable" .= nullable ]
   in case sdt of
     IntType -> _primitive "INT"
     DoubleType -> _primitive "DOUBLE"
     StringType -> _primitive "STRING"
     BoolType -> _primitive "BOOL"
     (Struct struct) ->
-      object ["struct_type" .= (toJSON struct), "nullable" .= nullable]
+      object ["structType" .= toJSON struct, "nullable" .= nullable]
     (ArrayType at) ->
-      object ["array_type" .= (toJSON at), "nullable" .= nullable]
+      object ["arrayType" .= toJSON at, "nullable" .= nullable]
 
 instance ToJSON StructType where
   toJSON (StructType fields) =
     let
       _fieldToJson (StructField (FieldName n) dt) =
-        object ["field_name" .= A.String n,"field_type" .= toJSON dt]
+        object ["fieldName" .= A.String n,"fieldType" .= toJSON dt]
       fs = _fieldToJson <$> V.toList fields
-    in object [ "fields" .= fs ]
+    in object ["fields" .= fs]
 
 -- Spark drops the info at the highest level.
 instance ToJSON DataType where
@@ -167,46 +166,50 @@ instance ToJSON DataType where
 
 instance FromJSON DataType where
   parseJSON = withObject "DataType" $ \o -> do
-    nullable <- o .: "nullable"
-    let aj = o .: "array_type"
-    let p = o .: "basic_type"
-    dt <- (aj) <|> p
+    -- The standard JSON encoding may not encode the default values
+    nullable <- o .:? "nullable" .!= False
+    let _parsePrimitive x = case x of
+            A.String "INT" -> return IntType
+            A.String "DOUBLE" -> return DoubleType
+            A.String "STRING" -> return StringType
+            A.String "BOOL" -> return BoolType
+            _ -> fail ("DataType: cannot parse primitive " ++ show x)
+    let p = (o .: "basicType") >>= _parsePrimitive
+    let aj = o .: "arrayType"
+    let st = o .: "structType"
+    dt <- (Struct <$> st) <|> (ArrayType <$> aj) <|> p
     let c = if nullable then NullableType else StrictType
     return (c dt)
 
 instance FromJSON StructField where
   parseJSON = withObject "StructField" $ \o -> do
-    n <- o .: "name"
-    dt <- o .: "type"
-    nullable <- o .: "nullable"
-    let c = if nullable then NullableType else StrictType
-    return $ StructField (FieldName n) (c dt)
+    n <- o .: "fieldName"
+    dt <- o .: "fieldType"
+    return $ StructField (FieldName n) dt
 
 instance FromJSON StructType where
   parseJSON = withObject "StructType" $ \o -> do
-    tp <- o .: "type"
-    guard (tp == T.pack "struct")
     fs <- o .: "fields"
     return (StructType fs)
 
-instance FromJSON StrictDataType where
-  parseJSON (A.String s) = case s of
-    "integer" -> return IntType
-    "double" -> return DoubleType
-    "string" -> return StringType
-    "bool" -> return BoolType
-    -- TODO: figure out which one is correct
-    "boolean" -> return BoolType
-    _ -> fail ("StrictDataType: unknown type " ++ T.unpack s)
-  parseJSON (Object o) = do
-    tp <- o .: "type"
-    case T.pack tp of
-      "struct" -> Struct <$> parseJSON (Object o)
-      "array" -> do
-        dt <- o .: "elementType"
-        containsNull <- o .: "containsNull"
-        let c = if containsNull then NullableType else StrictType
-        return $ ArrayType (c dt)
-      s -> fail ("StrictDataType: unknown type " ++ T.unpack s)
-
-  parseJSON x = fail ("StrictDataType: cannot parse " ++ show x)
+-- instance FromJSON StrictDataType where
+--   parseJSON (A.String s) = case s of
+--     "integer" -> return IntType
+--     "double" -> return DoubleType
+--     "string" -> return StringType
+--     "bool" -> return BoolType
+--     -- TODO: figure out which one is correct
+--     "boolean" -> return BoolType
+--     _ -> fail ("StrictDataType: unknown type " ++ T.unpack s)
+--   parseJSON (Object o) = do
+--     tp <- o .: "type"
+--     case T.pack tp of
+--       "struct" -> Struct <$> parseJSON (Object o)
+--       "array" -> do
+--         dt <- o .: "elementType"
+--         containsNull <- o .: "containsNull"
+--         let c = if containsNull then NullableType else StrictType
+--         return $ ArrayType (c dt)
+--       s -> fail ("StrictDataType: unknown type " ++ T.unpack s)
+--
+--   parseJSON x = fail ("StrictDataType: cannot parse " ++ show x)

@@ -299,7 +299,7 @@ emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
           then NodeLocalOp so
           else NodeDistributedOp so
 
-          
+
 
 {-| The identity function.
 
@@ -336,11 +336,11 @@ instance forall loc a. A.ToJSON (ComputeNode loc a) where
   toJSON node = A.object [
     "locality" .= nodeLocality node,
     "path" .= nodePath node,
-    "op" .= (simpleShowOp . nodeOp $ node),
-    "extra" .= (extraNodeOpData . nodeOp $ node),
+    "opName" .= (simpleShowOp . nodeOp $ node),
+    "opExtra" .= A.object ["content" .= (pretty . extraNodeOpData . nodeOp $ node)],
     "parents" .= (nodePath <$> nodeParents node),
     "logicalDependencies" .= (nodePath <$> nodeLogicalDependencies node),
-    "_type" .= (unSQLType . nodeType) node]
+    "inferedType" .= (unSQLType . nodeType) node]
 
 instance forall loc. A.ToJSON (TypedLocality loc) where
   toJSON (TypedLocality Local) = A.String "LOCAL"

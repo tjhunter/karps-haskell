@@ -297,22 +297,26 @@ _sendComputation session comp = do
   _ <- _post url (_createComputationRequest comp)
   return ()
 
-_createComputationRequest :: Computation -> A.Value 
+_createComputationRequest :: Computation -> A.Value
 _createComputationRequest comp =
   object [
     "session" .= toJSON (cSessionId comp),
-    "requested_computation" .= toJSON (cId comp),
-    "graph" .= (object [
-      "nodes" .= (toJSON (cNodes comp))
-    ])]
-  
+    "computation" .= toJSON (cId comp),
+    "requested_computation_old" .= toJSON (cId comp),
+    "graph" .= object [
+      "nodes" .= toJSON (cNodes comp)
+    ]]
+
 _computationStatus :: (MonadLoggerIO m) =>
   SparkSession -> ComputationID -> NodePath -> m PossibleNodeStatus
 _computationStatus session compId npath = do
   let base' = _compEndPointStatus session compId
   let rest = prettyNodePath npath
   let url = base' <> rest
-  _ <- _get url
+  status1 <- _get url
+  let z = status1 ^. responseBody
+  logDebugN $ "_computationStatus:status1: " <> T.pack (show z)
+  status0 <- liftIO $ W.get (T.unpack url)
   status <- liftIO (W.asJSON =<< W.get (T.unpack url) :: IO (W.Response PossibleNodeStatus))
   let s = status ^. responseBody
   return s

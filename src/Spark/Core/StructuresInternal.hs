@@ -149,4 +149,4 @@ instance Ord FieldName where
   compare f1 f2 = compare (unFieldName f1) (unFieldName f2)
 
 instance A.ToJSON ComputationID where
-  toJSON = A.toJSON . unComputationID
+  toJSON cid = A.object ["id" .= unComputationID cid]

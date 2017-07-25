@@ -27,6 +27,7 @@ import qualified Crypto.Hash.SHA256 as SHA
 
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
+import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.Try
 
 -- (internal)
@@ -139,8 +140,10 @@ extraNodeOpData (NodeStructuredTransform st) = toJSON st
 extraNodeOpData (NodeDistributedLit dt lst) =
   -- The backend deals with all the details translating the augmented type
   -- as a SQL datatype.
-  A.object [ "cellType" .= toJSON dt,
-             "content" .= toJSON lst]
+  A.object [ "cellType" .= toJSON (arrayType' dt),
+             "cell" .= A.object [
+              "arrayValue" .= A.object [
+                "values" .= toJSON lst]]]
 extraNodeOpData (NodeDistributedOp so) = soExtra so
 extraNodeOpData (NodeGroupedReduction ao) = toJSON ao
 extraNodeOpData (NodeAggregatorReduction ua) =
@@ -220,15 +223,23 @@ instance A.ToJSON AggField where
 
 instance A.ToJSON AggOp where
   toJSON (AggUdaf ua ucn fp) = A.object [
-    "aggOp" .= T.pack "udaf",
-    "udafApplication" .= toJSON ua,
-    "className" .= ucn,
-    "field" .= toJSON fp]
+    "udaf" .= A.object [
+      "udafApplication" .= toJSON ua,
+      "className" .= ucn,
+      "field" .= toJSON fp
+    ]]
   toJSON (AggFunction sfn v) = A.object [
-    "aggOp" .= toJSON (T.pack "function"),
-    "functionName" .= toJSON sfn,
-    "fields" .= toJSON (V.toList v)]
-  toJSON (AggStruct v) = toJSON (V.toList v)
+    "op" .= A.object [
+      "functionName" .= toJSON sfn,
+      "inputs" .= toJSON (_field <$> V.toList v)
+    ]]
+  toJSON (AggStruct v) = A.object [
+    "struct" .= A.object [
+      "fields" .= toJSON (_field <$> V.toList v)
+    ]]
+
+_field :: A.ToJSON a => a -> A.Value
+_field fp = A.object ["path" .= fp]
 
 _hashUpdateJson :: SHA.Ctx -> A.Value -> SHA.Ctx
 _hashUpdateJson ctx val = SHA.update ctx bs where
