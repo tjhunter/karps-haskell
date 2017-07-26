@@ -3,7 +3,8 @@
 module Spark.Core.Internal.RowUtils(
   jsonToCell,
   checkCell,
-  rowArray
+  rowArray,
+  rowCell
 ) where
 
 import Data.Aeson
@@ -42,6 +43,8 @@ checkCell dt c = case _checkCell dt c of
 rowArray :: [Cell] -> Cell
 rowArray = RowArray . V.fromList
 
+rowCell :: [Cell] -> Cell
+rowCell = RowElement . Row . V.fromList
 
 -- Returns an error message if something wrong is found
 _checkCell :: DataType -> Cell -> Maybe Text
@@ -59,6 +62,7 @@ _checkCell' sdt c = case (sdt, c) of
     pure $ sformat ("Expected a strict value of type "%sh%" but no value") sdt
   (IntType, IntElement _) -> Nothing
   (StringType, StringElement _) -> Nothing
+  (Struct s, RowElement (Row l)) -> _checkCell' (Struct s) (RowArray l)
   (Struct (StructType fields), RowArray cells') ->
     if V.length fields == V.length cells'
       then
@@ -106,6 +110,18 @@ _j2Cell (Object o) dt =
             RowArray <$> sequence trys
         Just y ->
           throwError $ sformat ("_j2Cell:array: Expected array, got "%sh) y
+    ([(n, Object x)], Struct (StructType fields)) | n == "structValue" ->
+      case HM.lookup "values" x of
+        -- It could be a default empty value
+        Nothing -> return (RowArray V.empty)
+        Just (Array v) | V.length v == V.length fields ->
+          let ftypes = structFieldType <$> fields
+              trys = uncurry _j2Cell <$> (v `V.zip` ftypes) in
+            RowElement . Row <$> sequence trys
+        Just (Array v) ->
+          throwError $ sformat ("_j2Cell:struct: Got "%sh%" elements but type fields are"%sh) (V.length v) fields
+        Just y ->
+          throwError $ sformat ("_j2Cell:struct: Expected array, got "%sh) y
     ([(fname, fval)], _) -> throwError $ sformat ("_j2Cell: Unrecognized field "%sh%"->"%sh%" for expected type"%sh) fname fval dt
     (l, _) -> throwError $ sformat ("_j2Cell: Expected one element, got "%shown) l
 _j2Cell x dt = _j2CellS x t where

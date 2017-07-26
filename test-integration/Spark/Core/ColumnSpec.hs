@@ -38,12 +38,12 @@ spec = do
       let x = untypedLocalData (1 :: LocalData Double)
       let x2 = iPackTupleObs (x :| [x])
       res <- exec1Def x2
-      res `shouldBe` rowArray [DoubleElement 1, DoubleElement 1]
+      res `shouldBe` rowCell [DoubleElement 1, DoubleElement 1]
     run "LocalPack" $ do
       let x = untypedLocalData (1 :: LocalData Int)
       let x2 = iPackTupleObs (x :| [x])
       res <- exec1Def x2
-      res `shouldBe` rowArray [IntElement 1, IntElement 1]
+      res `shouldBe` rowCell [IntElement 1, IntElement 1]
     run "BroadcastPair" $ do
       let x = 1 :: LocalData Int
       let ds = dataset [2, 3] :: Dataset Int

@@ -19,7 +19,8 @@ data Cell =
     | DoubleElement !Double
     | StringElement !T.Text
     | BoolElement !Bool
-    | RowArray !(Vector Cell) deriving (Show, Eq)
+    | RowArray !(Vector Cell)
+    | RowElement !Row deriving (Show, Eq)
 
 -- | A Row of data: the basic data structure to transport information
 -- TODO rename to rowCells
@@ -46,8 +47,8 @@ instance ToJSON Cell where
   toJSON (StringElement s) = object ["stringValue" .= toJSON s]
   toJSON (RowArray arr) = object ["arrayValue" .=
     object ["values" .= toJSON arr]]
+  toJSON (RowElement row) = object ["structValue" .= toJSON row]
 
 -- | Row
 instance ToJSON Row where
-  toJSON (Row x) = object ["structValue" .=
-    object ["values" .= toJSON x]]
+  toJSON (Row x) = object ["values" .= toJSON x]

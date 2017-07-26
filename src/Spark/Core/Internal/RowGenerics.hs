@@ -54,7 +54,7 @@ instance ToSQL a => ToSQL (Maybe a) where
   _valueToCell Nothing = Empty
 
 instance (ToSQL a, ToSQL b) => ToSQL (a, b) where
-  _valueToCell (x, y) = RowArray (V.fromList [valueToCell x, valueToCell y])
+  _valueToCell (x, y) = RowElement (Row (V.fromList [valueToCell x, valueToCell y]))
 
 instance ToSQL Int where
   _valueToCell = IntElement
@@ -98,7 +98,7 @@ instance (GToSQL a) => GToSQL (M1 S c a) where
 instance (GToSQL a) => GToSQL (M1 D c a) where
   _g2buffer (M1 x) =
     case _g2buffer x of
-      ConsData cs -> BuiltCell $ RowArray (V.fromList cs)
+      ConsData cs -> BuiltCell $ RowElement (Row (V.fromList cs))
       BuiltCell cell -> BuiltCell cell
 
 -- | Products: encode multiple arguments to constructors

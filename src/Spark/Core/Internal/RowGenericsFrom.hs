@@ -100,6 +100,7 @@ instance (FromSQL a1, FromSQL a2) => FromSQL (a1, a2) where
     [x1, x2] ->
       liftA2 (,) (_cellToValue x1) (_cellToValue x2)
     l -> throwError $ sformat ("FromSQL: Expected 2 elements but got "%sh) l
+  _cellToValue (RowElement (Row xs)) = _cellToValue (RowArray xs)
   _cellToValue x = throwError $ sformat ("FromSQL(,): Decoding array from "%shown) x
 
 -- ******* GENERIC ********
@@ -130,6 +131,8 @@ instance GFromSQL U1 where
 instance (GFromSQL a, GFromSQL b) => GFromSQL (a :*: b) where
   -- Switching to tape-reading mode
   _gFcell ev (D2Normal (RowArray arr)) = _gFcell ev (D2Cons (V.toList arr))
+  _gFcell ev (D2Normal (RowElement (Row arr))) =
+    _gFcell ev (D2Normal (RowArray arr))
   -- Advancing into the reader
   _gFcell ev (D2Cons l) = do
     let (ev1 :*: ev2) = ev
@@ -150,6 +153,8 @@ instance (GFromSQL a, Constructor c) => GFromSQL (M1 C c a) where
     return (d, M1 x)
 
 instance (GFromSQL a, Selector c) => GFromSQL (M1 S c a) where
+  _gFcell ev (D2Normal (RowElement (Row arr))) =
+    _gFcell ev (D2Normal (RowArray arr))
   _gFcell ev (D2Normal (RowArray arr)) = do
     let ev' = unM1 ev
     let l = V.toList arr
@@ -161,6 +166,7 @@ instance (GFromSQL a, Selector c) => GFromSQL (M1 S c a) where
     return (d', M1 x)
 
 instance (GFromSQL a, Datatype c) => GFromSQL (M1 D c a) where
+  _gFcell ev (D2Normal (RowElement (Row r))) = _gFcell ev (D2Normal (RowArray r))
   _gFcell ev (z @ (D2Normal (RowArray _))) = do
     let ev' = unM1 ev
     (d, x) <- _gFcell ev' z
