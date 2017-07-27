@@ -28,9 +28,9 @@ spec = do
       let df = json' dt "/tmp/x.json"
       let c = collect' (asCol' df)
       c1 <- exec1Def' c
-      c1 `shouldBe` rowArray [rowArray [StringElement "x"]]
+      c1 `shouldBe` rowArray [rowCell [StringElement "x"]]
       c2 <- exec1Def' c
-      c2 `shouldBe` rowArray [rowArray [StringElement "x"]]
+      c2 `shouldBe` rowArray [rowCell [StringElement "x"]]
     run "simple inference" $ do
       let xs = [TestStruct7 "x"]
       let js = encode xs
@@ -38,4 +38,4 @@ spec = do
       df <- execStateDef $ jsonInfer "/tmp/x.json"
       let c = collect' (asCol' df)
       c1 <- exec1Def' c
-      c1 `shouldBe` rowArray [rowArray [StringElement "x"]]
+      c1 `shouldBe` rowArray [rowCell [StringElement "x"]]

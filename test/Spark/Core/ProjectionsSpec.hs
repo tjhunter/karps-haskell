@@ -68,7 +68,7 @@ spec = do
   let ds = dataset [Tree 1 3 2]
   -- The untyped elements
   let dt = structType [structField (T.pack "treeId") intType, structField (T.pack "treeWidth") intType, structField (T.pack "treeHeight") intType]
-  let fun (id', height, width) = RowArray $ V.fromList [IntElement id', IntElement height, IntElement width]
+  let fun (id', height, width) = rowCell [IntElement id', IntElement height, IntElement width]
   let df1 = traceHint (T.pack "df1=") $ dataframe dt (fun <$> rawData)
   let ds1 = traceHint (T.pack "ds1=") $ forceRight (asDS df1) :: Dataset Tree
   describe "Simple projection demos" $ do

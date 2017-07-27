@@ -191,25 +191,3 @@ instance FromJSON StructType where
   parseJSON = withObject "StructType" $ \o -> do
     fs <- o .: "fields"
     return (StructType fs)
-
--- instance FromJSON StrictDataType where
---   parseJSON (A.String s) = case s of
---     "integer" -> return IntType
---     "double" -> return DoubleType
---     "string" -> return StringType
---     "bool" -> return BoolType
---     -- TODO: figure out which one is correct
---     "boolean" -> return BoolType
---     _ -> fail ("StrictDataType: unknown type " ++ T.unpack s)
---   parseJSON (Object o) = do
---     tp <- o .: "type"
---     case T.pack tp of
---       "struct" -> Struct <$> parseJSON (Object o)
---       "array" -> do
---         dt <- o .: "elementType"
---         containsNull <- o .: "containsNull"
---         let c = if containsNull then NullableType else StrictType
---         return $ ArrayType (c dt)
---       s -> fail ("StrictDataType: unknown type " ++ T.unpack s)
---
---   parseJSON x = fail ("StrictDataType: cannot parse " ++ show x)
