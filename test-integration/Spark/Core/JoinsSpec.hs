@@ -8,7 +8,7 @@ import Test.Hspec
 import Spark.Core.Context
 import Spark.Core.Dataset
 import Spark.Core.Column
-import Spark.Core.ColumnFunctions
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Row
 import Spark.Core.Functions
 import Spark.Core.SimpleAddSpec(run)
@@ -18,7 +18,7 @@ spec = do
   describe "Path test" $ do
     run "test_path1" $ do
       let ds1 = dataset [1] :: Dataset Int
-      let x1 = sumCol (asCol ds1) @@ "x1"
+      let x1 = C.sum (asCol ds1) @@ "x1"
       let x2 = ((x1 + 1) @@ "x2") `logicalParents` [untyped ds1]
       res <- exec1Def x2
       res `shouldBe` 2

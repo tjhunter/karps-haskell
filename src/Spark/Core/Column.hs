@@ -33,12 +33,16 @@ module Spark.Core.Column(
   -- * Column functions
   colType,
   untypedCol,
-  colFromObs,
-  colFromObs',
-  applyCol1,
+  -- colFromObs,
+  -- colFromObs',
+  applyCol1
   ) where
 
+import Spark.Core.Internal.AggregationFunctions
 import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.FunctionsInternals
 import Spark.Core.Internal.Projections
+import Spark.Core.Internal.ArithmeticsImpl()
+import Spark.Core.InternalStd.Column
+

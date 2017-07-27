@@ -74,7 +74,13 @@ type Column ref a = ColumnData ref a
 
 This column is untyped and may not be properly constructed. Any error
 will be found during the analysis phase at runtime.
+
+This type encapsulates both Dataframes and datasets.
 -}
+data Column' = Column' !DynColumn
+
+{-| (internal) -}
+-- TODO: remove
 type DynColumn = Try (ColumnData UnknownReference Cell)
 
 

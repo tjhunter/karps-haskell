@@ -43,13 +43,14 @@ import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.Joins
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.LocalDataFunctions
-import Spark.Core.Internal.ObservableStandard
 import Spark.Core.Internal.FunctionsInternals()
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.AggregationFunctions
 import Spark.Core.Internal.TypesStructures(SQLType(..))
 import Spark.Core.Internal.Projections
 import Spark.Core.Internal.CanRename
+import Spark.Core.InternalStd.Observable
+import Spark.Core.InternalStd.Dataset
 
 dataset :: (ToSQL a, SQLTypeable a, HasCallStack) => [a] -> Dataset a
 dataset l = emptyDataset op tp where

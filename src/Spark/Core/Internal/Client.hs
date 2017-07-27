@@ -85,7 +85,7 @@ data NodeComputationFailure = NodeComputationFailure {
 -- **** AESON INSTANCES ***
 
 instance ToJSON LocalSessionId where
-  toJSON = toJSON . unLocalSession
+  toJSON lsi = object ["id" .= (unLocalSession lsi)]
 
 instance FromJSON RDDId where
   parseJSON x = RDDId <$> parseJSON x
@@ -119,8 +119,8 @@ instance FromJSON BatchComputationResult where
 
 instance FromJSON NodeComputationSuccess where
   parseJSON = withObject "NodeComputationSuccess" $ \o -> NodeComputationSuccess
-    <$> o .: "content"
-    <*> o .: "type"
+    <$> o .: "cell"
+    <*> o .: "cellType"
 
 -- Because we get a row back, we need to supply a SQLType for deserialization.
 instance FromJSON PossibleNodeStatus where
@@ -134,10 +134,10 @@ instance FromJSON PossibleNodeStatus where
           (NodeFinishedFailure . NodeComputationFailure) <$> o .: pack "finalError"
     in
       withObject "PossibleNodeStatus" $ \o -> do
-      status <- o .: pack "status"
-      case pack status of
-        "running" -> return NodeRunning
-        "finished_success" -> parseSuccess o
-        "finished_failure" -> parseFailure o
-        "scheduled" -> return NodeQueued
-        _ -> failure $ pack ("FromJSON PossibleNodeStatus " ++ show status)
+        status <- o .: pack "status"
+        case pack status of
+          "SCHEDULED" -> return NodeQueued
+          "RUNNING" -> return NodeRunning
+          "FINISHED_SUCCESS" -> parseSuccess o
+          "FINISHED_FAILURE" -> parseFailure o
+          _ -> failure $ pack ("FromJSON PossibleNodeStatus " ++ show status)

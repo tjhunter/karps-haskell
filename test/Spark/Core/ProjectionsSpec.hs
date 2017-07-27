@@ -23,6 +23,7 @@ import Spark.Core.Types
 import Spark.Core.Try
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions
+import Spark.Core.Internal.ColumnFunctions(unColumn')
 
 
 data Tree = Tree {
@@ -67,16 +68,16 @@ spec = do
   let ds = dataset [Tree 1 3 2]
   -- The untyped elements
   let dt = structType [structField (T.pack "treeId") intType, structField (T.pack "treeWidth") intType, structField (T.pack "treeHeight") intType]
-  let fun (id', height, width) = RowArray $ V.fromList [IntElement id', IntElement height, IntElement width]
+  let fun (id', height, width) = rowCell [IntElement id', IntElement height, IntElement width]
   let df1 = traceHint (T.pack "df1=") $ dataframe dt (fun <$> rawData)
   let ds1 = traceHint (T.pack "ds1=") $ forceRight (asDS df1) :: Dataset Tree
   describe "Simple projection demos" $ do
     it "should get a node" $ do
       ds `shouldBe` ds1
     it "Failing dynamic projection on dataframe" $ do
-      df1/-"xx" `shouldSatisfy` isLeft
+      (unColumn' (df1/-"xx")) `shouldSatisfy` isLeft
     it "Failing dynamic projection on dataset" $ do
-      ds1/-"xx" `shouldSatisfy` isLeft
+      (unColumn' (ds1/-"xx")) `shouldSatisfy` isLeft
     it "Basic arithmetic on DS cols" $ do
       let c1 = ds1//treeWidth'
       let c2 = (c1 + c1)

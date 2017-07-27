@@ -88,6 +88,7 @@ type UntypedNode = ComputeNode LocUnknown Cell
 -- Used internally by columns.
 type UntypedDataset = Dataset Cell
 
+{-| (internal) An observable which has no associated type information. -}
 type UntypedLocalData = LocalData Cell
 
 {-| A typed collection of distributed data.
@@ -115,6 +116,7 @@ type, which represents types only accessible at runtime).
 TODO(kps) rename to Observable
 -}
 type LocalData a = ComputeNode LocLocal a
+type Observable a = LocalData a
 
 
 {-|
@@ -141,7 +143,8 @@ the Spark computation graph.
 
 TODO(kps) rename to DynObservable
 -}
-type LocalFrame = Try UntypedLocalData
+type LocalFrame = Observable'
+newtype Observable' = Observable' { unObservable' :: Try UntypedLocalData }
 
 type UntypedNode' = Try UntypedNode
 

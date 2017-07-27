@@ -233,7 +233,7 @@ _applyAggOp dt ao ugd = traceHint ("_applyAggOp dt=" <> show' dt <> " ao=" <> sh
   let c1 = untypedCol (_keyCol ugd) @@ T.unpack "_1"
       c2 = untypedCol (_valueCol ugd) @@ T.unpack "_2"
       s = struct' [c1, c2]
-      p = pack1 <$> s
+      p = pack' s
       ds = forceRight p
       -- The structure of the result dataframe
       keyDt = unSQLType (colType (_keyCol ugd))

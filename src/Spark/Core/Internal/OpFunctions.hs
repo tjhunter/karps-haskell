@@ -27,7 +27,9 @@ import qualified Crypto.Hash.SHA256 as SHA
 
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
+import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.Try
+import Spark.Core.StructuresInternal(FieldName)
 
 -- (internal)
 -- The serialized type of a node operation, as written in
@@ -133,14 +135,16 @@ _prettyShowSGO (ColumnSemiGroupLaw sfn) = sfn
 -- type of some operations.
 extraNodeOpData :: NodeOp -> A.Value
 extraNodeOpData (NodeLocalLit dt cell) =
-  A.object [ "type" .= toJSON dt,
-             "content" .= toJSON cell]
+  A.object [ "cellType" .= toJSON dt,
+             "cell" .= toJSON cell]
 extraNodeOpData (NodeStructuredTransform st) = toJSON st
 extraNodeOpData (NodeDistributedLit dt lst) =
   -- The backend deals with all the details translating the augmented type
   -- as a SQL datatype.
-  A.object [ "cellType" .= toJSON dt,
-             "content" .= toJSON lst]
+  A.object [ "cellType" .= toJSON (arrayType' dt),
+             "cell" .= A.object [
+              "arrayValue" .= A.object [
+                "values" .= toJSON lst]]]
 extraNodeOpData (NodeDistributedOp so) = soExtra so
 extraNodeOpData (NodeGroupedReduction ao) = toJSON ao
 extraNodeOpData (NodeAggregatorReduction ua) =
@@ -155,7 +159,7 @@ extraNodeOpData (NodeAggregatorLocalReduction _) = A.Null -- TODO: should it sen
 extraNodeOpData (NodePointer p) =
     A.object [
       "computation" .= toJSON (pointerComputation p),
-      "path" .= toJSON (pointerPath p)
+      "localPath" .= toJSON (pointerPath p)
     ]
 
 -- Adds the content of a node op to a hash.
@@ -185,25 +189,32 @@ prettyShowColFun txt cols =
 _isSym :: T.Text -> Bool
 _isSym txt = all isSymbol (T.unpack txt)
 
--- This schema is not great because there is some ambiguity about the final
--- nodes.
--- Someone could craft a JSON that would confuse the object detection.
--- Not sure if this is much of a security risk anyway.
 instance A.ToJSON ColOp where
-  toJSON (ColExtraction fp) = A.object [
-    "colOp" .= T.pack "extraction",
-    "field" .= toJSON fp]
-  toJSON (ColFunction txt cols) = A.object [
-    "colOp" .= T.pack "fun",
-    "function" .= txt,
-    "args" .= (toJSON <$> cols)]
-  toJSON (ColLit _ cell) = A.object [
-    "colOp" .= T.pack "literal",
-    "lit" .= toJSON cell]
-  toJSON (ColStruct v) =
-    let fun (TransformField fn colOp) =
-          A.object ["name" .= T.pack (show fn), "op" .= toJSON colOp]
-    in A.Array $ fun <$> v
+  toJSON = _colJson Nothing
+
+_colJson :: Maybe FieldName -> ColOp -> A.Value
+_colJson m co =
+  let
+    x = case m of
+      Nothing -> []
+      Just fn -> ["fieldName" .= T.pack (show fn)]
+    fs = case co of
+      (ColExtraction fp) -> [ "extraction" .= A.object [
+          "path" .= toJSON fp
+        ]]
+      (ColFunction txt cols) -> ["function" .= A.object [
+          "functionName" .= txt,
+          "inputs" .= toJSON (_colJson Nothing <$> cols)
+        ]]
+      (ColLit _ cell) -> ["literal" .= A.object [
+          "value" .= cell
+        ]]
+      (ColStruct v) ->
+        let fun (TransformField fn colOp) = _colJson (Just fn) colOp
+        in ["struct" .= A.object [
+            "fields" .= toJSON (fun <$> v)
+          ]]
+  in A.object (fs ++ x)
 
 -- instance A.ToJSON AggTransform where
 --   toJSON (OpaqueAggTransform so) = A.object [
@@ -220,15 +231,23 @@ instance A.ToJSON AggField where
 
 instance A.ToJSON AggOp where
   toJSON (AggUdaf ua ucn fp) = A.object [
-    "aggOp" .= T.pack "udaf",
-    "udafApplication" .= toJSON ua,
-    "className" .= ucn,
-    "field" .= toJSON fp]
+    "udaf" .= A.object [
+      "udafApplication" .= toJSON ua,
+      "className" .= ucn,
+      "field" .= toJSON fp
+    ]]
   toJSON (AggFunction sfn v) = A.object [
-    "aggOp" .= toJSON (T.pack "function"),
-    "functionName" .= toJSON sfn,
-    "fields" .= toJSON (V.toList v)]
-  toJSON (AggStruct v) = toJSON (V.toList v)
+    "op" .= A.object [
+      "functionName" .= toJSON sfn,
+      "inputs" .= toJSON (_field <$> V.toList v)
+    ]]
+  toJSON (AggStruct v) = A.object [
+    "struct" .= A.object [
+      "fields" .= toJSON (_field <$> V.toList v)
+    ]]
+
+_field :: A.ToJSON a => a -> A.Value
+_field fp = A.object ["path" .= fp]
 
 _hashUpdateJson :: SHA.Ctx -> A.Value -> SHA.Ctx
 _hashUpdateJson ctx val = SHA.update ctx bs where

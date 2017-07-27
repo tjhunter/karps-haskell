@@ -118,6 +118,7 @@ data ColOp =
     -- | A constant defined for each element.
     -- The type should be the same as for the column
     -- A literal is always direct
+    -- TODO(kps) use a cell instead, or a cell with type.
   | ColLit !DataType !Value
     -- | A structure.
   | ColStruct !(Vector TransformField)

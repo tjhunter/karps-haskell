@@ -15,13 +15,12 @@ module Spark.Core.Internal.DatasetFunctions(
   dataframe,
   asDF,
   asDS,
+  asObs',
+  obsTry,
   asLocalObservable,
   asObservable,
   -- Standard functions
   identity,
-  autocache,
-  cache,
-  uncache,
   union,
   -- Developer
   castLocality,
@@ -41,26 +40,11 @@ module Spark.Core.Internal.DatasetFunctions(
   untypedLocalData,
   updateNode,
   updateNodeOp,
-  broadcastPair,
   -- Developer conversions
-  -- TODO: remove all that
-  fun1ToOpTyped,
-  fun2ToOpTyped,
-  nodeOpToFun1,
-  nodeOpToFun1Typed,
-  nodeOpToFun1Untyped,
-  nodeOpToFun2,
-  nodeOpToFun2Typed,
-  nodeOpToFun2Untyped,
   unsafeCastDataset,
   placeholder,
   castType,
   castType',
-  -- Internal
-  opnameCache,
-  opnameUnpersist,
-  opnameAutocache,
-
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
@@ -124,77 +108,7 @@ nodePath node =
 nodeType :: ComputeNode loc a -> SQLType a
 nodeType = SQLType . _cnType
 
-{-| The identity function.
 
-Returns a compute node with the same datatype and the same content as the
-previous node. If the operation of the input has a side effect, this side
-side effect is *not* reevaluated.
-
-This operation is typically used when establishing an ordering between some
-operations such as caching or side effects, along with `logicalDependencies`.
--}
-identity :: ComputeNode loc a -> ComputeNode loc a
-identity n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) name
-        name = if _cnLocality n == Local
-                then "org.spark.LocalIdentity"
-                else "org.spark.Identity"
-
-{-| Caches the dataset.
-
-This function instructs Spark to cache a dataset with the default persistence
-level in Spark (MEMORY_AND_DISK).
-
-Note that the dataset will have to be evaluated first for the caching to take
-effect, so it is usual to call `count` or other aggregrators to force
-the caching to occur.
--}
-cache :: Dataset a -> Dataset a
-cache  n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameCache
-
--- (internal)
-opnameCache :: T.Text
-opnameCache = "org.spark.Cache"
-
-{-| Uncaches the dataset.
-
-This function instructs Spark to unmark the dataset as cached. The disk and the
-memory used by Spark in the future.
-
-Unlike Spark, Karps is stricter with the uncaching operation:
- - the argument of cache must be a cached dataset
- - once a dataset is uncached, its cached version cannot be used again (i.e. it
-   must be recomputed).
-
-Karps performs escape analysis and will refuse to run programs with caching
-issues.
--}
-uncache :: ComputeNode loc a -> ComputeNode loc a
-uncache  n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameUnpersist
-
--- (internal)
-opnameUnpersist :: T.Text
-opnameUnpersist = "org.spark.Unpersist"
-
-{-| Automatically caches the dataset on a need basis, and performs deallocation
-when the dataset is not required.
-
-This function marks a dataset as eligible for the default caching level in
-Spark. The current implementation performs caching only if it can be established
-that the dataset is going to be involved in more than one shuffling or
-aggregation operation.
-
-If the dataset has no observable child, no uncaching operation is added: the
-autocache operation is equivalent to unconditional caching.
--}
-autocache :: Dataset a -> Dataset a
-autocache n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameAutocache
-
-opnameAutocache :: T.Text
-opnameAutocache = "org.spark.Autocache"
 
 {-| Returns the union of two datasets.
 
@@ -222,14 +136,21 @@ asDF = pure . _unsafeCastNode
 asDS :: forall a. (SQLTypeable a) => DataFrame -> Try (Dataset a)
 asDS = _asTyped
 
+asObs' :: Try (ComputeNode LocLocal a) -> Observable'
+asObs' (Left x) = Observable' (Left x)
+asObs' (Right x) = asLocalObservable x
+
+obsTry :: Try Observable' -> Observable'
+obsTry (Left x) = Observable' (Left x)
+obsTry (Right x) = x
 
 -- | Converts a local node to a local frame.
 -- This always works.
 asLocalObservable :: ComputeNode LocLocal a -> LocalFrame
-asLocalObservable = pure . _unsafeCastNode
+asLocalObservable = Observable' . pure . _unsafeCastNode
 
 asObservable :: forall a. (SQLTypeable a) => LocalFrame -> Try (LocalData a)
-asObservable = _asTyped
+asObservable = _asTyped . unObservable'
 
 -- | Converts any node to an untyped node
 untyped :: ComputeNode loc a -> UntypedNode
@@ -355,12 +276,6 @@ dataframe dt cells' = do
 
 -- *********** function / object conversions *******
 
--- | (internal)
-placeholderTyped :: forall a loc. (IsLocality loc) =>
-  SQLType a -> ComputeNode loc a
-placeholderTyped tp = _unsafeCastNode n where
-  n = placeholder (unSQLType tp) :: ComputeNode loc Cell
-
 placeholder :: forall loc. (IsLocality loc) => DataType -> ComputeNode loc Cell
 placeholder tp =
   let
@@ -372,65 +287,35 @@ placeholder tp =
       Distributed -> NodeDistributedOp so
   in  _emptyNode op t
 
--- | (internal) conversion
-fun1ToOpTyped :: forall a loc a' loc'. (IsLocality loc) =>
-  SQLType a -> (ComputeNode loc a -> ComputeNode loc' a') -> NodeOp
-fun1ToOpTyped sqlt f = nodeOp $ f (placeholderTyped sqlt)
-
--- | (internal) conversion
-fun2ToOpTyped :: forall a1 a2 a loc1 loc2 loc. (IsLocality loc1, IsLocality loc2) =>
-  SQLType a1 -> SQLType a2 -> (ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> ComputeNode loc a) -> NodeOp
-fun2ToOpTyped sqlt1 sqlt2 f = nodeOp $ f (placeholderTyped sqlt1) (placeholderTyped sqlt2)
-
--- | (internal) conversion
-nodeOpToFun1 :: forall a1 a2 loc1 loc2. (SQLTypeable a2, IsLocality loc2) =>
-  NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2
-nodeOpToFun1 = nodeOpToFun1Typed (buildType :: SQLType a2)
-
--- | (internal) conversion
-nodeOpToFun1Typed :: forall a1 a2 loc1 loc2. (IsLocality loc2) =>
-  SQLType a2 -> NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2
-nodeOpToFun1Typed sqlt no node =
-  let n2 = _emptyNode no sqlt :: ComputeNode loc2 a2
-  in n2 `parents` [untyped node]
-
--- | (internal) conversion
-nodeOpToFun1Untyped :: forall loc1 loc2. (IsLocality loc2) =>
-  DataType -> NodeOp -> ComputeNode loc1 Cell -> ComputeNode loc2 Cell
-nodeOpToFun1Untyped dt no node =
-  let n2 = _emptyNode no (SQLType dt) :: ComputeNode loc2 Cell
-  in n2 `parents` [untyped node]
-
--- | (internal) conversion
-nodeOpToFun2 :: forall a a1 a2 loc loc1 loc2. (SQLTypeable a, IsLocality loc) =>
-  NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> ComputeNode loc a
-nodeOpToFun2 = nodeOpToFun2Typed (buildType :: SQLType a)
-
--- | (internal) conversion
-nodeOpToFun2Typed :: forall a a1 a2 loc loc1 loc2. (IsLocality loc) =>
-  SQLType a -> NodeOp -> ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> ComputeNode loc a
-nodeOpToFun2Typed sqlt no node1 node2 =
-  let n2 = _emptyNode no sqlt :: ComputeNode loc a
-  in n2 `parents` [untyped node1, untyped node2]
-
--- | (internal) conversion
-nodeOpToFun2Untyped :: forall loc1 loc2 loc3. (IsLocality loc3) =>
-  DataType -> NodeOp -> ComputeNode loc1 Cell -> ComputeNode loc2 Cell -> ComputeNode loc3 Cell
-nodeOpToFun2Untyped dt no node1 node2 =
-  let n2 = _emptyNode no (SQLType dt) :: ComputeNode loc3 Cell
-  in n2 `parents` [untyped node1, untyped node2]
+emptyNodeStandard :: forall loc a.
+  TypedLocality loc -> SQLType a -> T.Text -> ComputeNode loc a
+emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
+  so = StandardOperator {
+         soName = name,
+         soOutputType = unSQLType sqlt,
+         soExtra = A.Null
+       }
+  op = if unTypedLocality tloc == Local
+          then NodeLocalOp so
+          else NodeDistributedOp so
 
 
-{-| Low-level operator that takes an observable and propagates it along the
-content of an existing dataset.
 
-Users are advised to use the Column-based `broadcast` function instead.
+{-| The identity function.
+
+Returns a compute node with the same datatype and the same content as the
+previous node. If the operation of the input has a side effect, this side
+side effect is *not* reevaluated.
+
+This operation is typically used when establishing an ordering between some
+operations such as caching or side effects, along with `logicalDependencies`.
 -}
-broadcastPair :: Dataset a -> LocalData b -> Dataset (a, b)
-broadcastPair ds ld = n `parents` [untyped ds, untyped ld]
-  where n = emptyNodeStandard (nodeLocality ds) sqlt name
-        sqlt = tupleType (nodeType ds) (nodeType ld)
-        name = "org.spark.BroadcastPair"
+identity :: ComputeNode loc a -> ComputeNode loc a
+identity n = n2 `parents` [untyped n]
+  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) name
+        name = if unTypedLocality (nodeLocality n) == Local
+                then "org.spark.LocalIdentity"
+                else "org.spark.Identity"
 
 -- ******* INSTANCES *********
 
@@ -451,15 +336,15 @@ instance forall loc a. A.ToJSON (ComputeNode loc a) where
   toJSON node = A.object [
     "locality" .= nodeLocality node,
     "path" .= nodePath node,
-    "op" .= (simpleShowOp . nodeOp $ node),
-    "extra" .= (extraNodeOpData . nodeOp $ node),
+    "opName" .= (simpleShowOp . nodeOp $ node),
+    "opExtra" .= A.object ["content" .= (pretty . extraNodeOpData . nodeOp $ node)],
     "parents" .= (nodePath <$> nodeParents node),
     "logicalDependencies" .= (nodePath <$> nodeLogicalDependencies node),
-    "_type" .= (unSQLType . nodeType) node]
+    "inferedType" .= (unSQLType . nodeType) node]
 
 instance forall loc. A.ToJSON (TypedLocality loc) where
-  toJSON (TypedLocality Local) = A.String "local"
-  toJSON (TypedLocality Distributed) = A.String "distributed"
+  toJSON (TypedLocality Local) = A.String "LOCAL"
+  toJSON (TypedLocality Distributed) = A.String "DISTRIBUTED"
 
 unsafeCastDataset :: ComputeNode LocDistributed a -> ComputeNode LocDistributed b
 unsafeCastDataset ds = ds { _cnType = _cnType ds }
@@ -568,15 +453,3 @@ _emptyNodeTyped tloc (SQLType dt) op = updateNode (_unsafeCastNodeTyped tloc ds)
     _cnNodeId = error "_emptyNode: _cnNodeId",
     _cnPath = NodePath V.empty
   }
-
-emptyNodeStandard :: forall loc a.
-  TypedLocality loc -> SQLType a -> T.Text -> ComputeNode loc a
-emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
-  so = StandardOperator {
-         soName = name,
-         soOutputType = unSQLType sqlt,
-         soExtra = A.Null
-       }
-  op = if unTypedLocality tloc == Local
-          then NodeLocalOp so
-          else NodeDistributedOp so

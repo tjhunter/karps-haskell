@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Spark.Core.Internal.RowStructures where
 
 import Data.Aeson
@@ -18,7 +19,8 @@ data Cell =
     | DoubleElement !Double
     | StringElement !T.Text
     | BoolElement !Bool
-    | RowArray !(Vector Cell) deriving (Show, Eq)
+    | RowArray !(Vector Cell)
+    | RowElement !Row deriving (Show, Eq)
 
 -- | A Row of data: the basic data structure to transport information
 -- TODO rename to rowCells
@@ -38,13 +40,15 @@ data Row = Row {
 
 -- | Cell
 instance ToJSON Cell where
-  toJSON Empty = Null
-  toJSON (DoubleElement d) = toJSON d
-  toJSON (IntElement i) = toJSON i
-  toJSON (BoolElement b) = toJSON b
-  toJSON (StringElement s) = toJSON s
-  toJSON (RowArray arr) = toJSON arr
+  toJSON Empty = object []
+  toJSON (DoubleElement d) = object ["doubleValue" .= toJSON d]
+  toJSON (IntElement i) = object ["intValue" .= toJSON i]
+  toJSON (BoolElement b) = object ["boolValue" .= toJSON b]
+  toJSON (StringElement s) = object ["stringValue" .= toJSON s]
+  toJSON (RowArray arr) = object ["arrayValue" .=
+    object ["values" .= toJSON arr]]
+  toJSON (RowElement row) = object ["structValue" .= toJSON row]
 
 -- | Row
 instance ToJSON Row where
-  toJSON (Row x) = toJSON x
+  toJSON (Row x) = object ["values" .= toJSON x]

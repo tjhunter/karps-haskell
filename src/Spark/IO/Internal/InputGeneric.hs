@@ -152,7 +152,7 @@ instance A.ToJSON SparkPath where
   toJSON (SparkPath p) = toJSON p
 
 instance A.ToJSON DataSchema where
-  toJSON InferSchema = "infer_schema"
+  toJSON InferSchema = A.Null
   toJSON (UseSchema dt) = toJSON dt
 
 instance A.ToJSON DataFormat where
@@ -162,11 +162,23 @@ instance A.ToJSON DataFormat where
   toJSON (CustomSourceFormat s) = toJSON s
 
 instance A.ToJSON SourceDescription where
-  toJSON sd = A.object [
-                "inputPath" .= toJSON (inputPath sd),
-                "inputSource" .= toJSON (inputSource sd),
-                "inputSchema" .= toJSON (inputSchema sd),
-                "inputStamp" .= A.Null,
-                "options" .= A.object (f <$> M.toList (sdOptions sd))
-              ] where
-                f (k, v) = unInputOptionKey k .= toJSON v
+  toJSON sd = A.object ([
+                "path" .= toJSON (inputPath sd),
+                "source" .= toJSON (inputSource sd),
+                "options" .= toJSON (f <$> M.toList (sdOptions sd))
+              ] ++ s ++ st) where
+                s = case inputSchema sd of
+                  InferSchema -> []
+                  UseSchema sch -> ["schema" .= toJSON sch]
+                st = case inputStamp sd of
+                  Nothing -> []
+                  Just txt -> ["stamp" .= toJSON txt]
+                f (k, v) =
+                  let x = case v of
+                        InputIntOption _ -> "intValue"
+                        InputDoubleOption _ -> "doubleValue"
+                        InputStringOption _ -> "stringValue"
+                        InputBooleanOption _ -> "boolValue"
+                  in A.object [
+                       "key" .= unInputOptionKey k,
+                       x .= toJSON v ]

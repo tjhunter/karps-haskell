@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- Required by old versions
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Strict #-}
 
 {-| This module contains all the class instances and operators related
 to arithmetics with Datasets, Dataframes, Columns and Observables.
@@ -16,6 +17,8 @@ module Spark.Core.Internal.ArithmeticsImpl(
   (./),
   div'
   ) where
+
+import Debug.Trace(trace)
 
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.DatasetFunctions

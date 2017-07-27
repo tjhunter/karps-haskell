@@ -14,7 +14,7 @@ import Text.RawString.QQ
 import Spark.Core.Dataset
 import Spark.Core.Functions
 import Spark.Core.Column
-import Spark.Core.ColumnFunctions
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.Utilities(pretty)
 import Spark.Core.Internal.OpFunctions(extraNodeOpData)
@@ -30,14 +30,14 @@ spec = do
   describe "Simple examples" $ do
     it "Precdence of renaming" $ do
       let numbers = asCol ds1
-      let s = sumCol numbers
-      let numCount = count ds1
+      let s = C.sum numbers
+      let numCount = C.count numbers
       let avg = s `div` numCount @@ "myaverage"
       _cnName avg `shouldSatisfy` isJust
     it "name for simple integers" $ do
       let numbers = asCol ds1
-      let s = sumCol numbers
-      let numCount = count ds1
+      let s = C.sum numbers
+      let numCount = C.count numbers
       let avg = s `div` numCount @@ "myaverage"
       -- TODO: should it show "value: int" instead?
       -- I think it should show it for distributed nodes only.
@@ -56,7 +56,7 @@ spec = do
     it "packing and unpacking one column" $ do
       let ds1' = pack' . asCol $ ds1
       let d' = pretty . extraNodeOpData . nodeOp <$> ds1'
-      d' `shouldBe` Right (T.pack "{\"cellType\":{\"dt\":\"integer\",\"nullable\":false},\"content\":[1,2,3]}")
+      d' `shouldBe` Right (T.pack "{\"cell\":{\"arrayValue\":{\"values\":[{\"intValue\":1},{\"intValue\":2},{\"intValue\":3}]}},\"cellType\":{\"arrayType\":{\"basicType\":\"INT\",\"nullable\":false},\"nullable\":false}}")
     it "packing and unpacking 2 columns, one with a bad name" $ do
       let col1 = asCol ds1
       let col2 = col1 @@ "other"
