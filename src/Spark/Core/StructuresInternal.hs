@@ -32,11 +32,6 @@ import Data.String(IsString(..))
 import Data.Vector(Vector)
 import qualified Data.Vector as V
 import Data.Text.Encoding as E
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy.Char8 as Char8
-import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Text as T
-
 
 import Spark.Core.Internal.Utilities
 

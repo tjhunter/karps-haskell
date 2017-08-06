@@ -3,7 +3,6 @@ module Main where
 
 import Web.Scotty
 import qualified Data.Text as T
-import Spark.Proto.Types
 
 server :: ScottyM ()
 server = do
@@ -14,5 +13,5 @@ server = do
 
 main :: IO ()
 main = do
-    let x = undefined :: Foo
+    let x = undefined :: Int
     scotty 1234 server

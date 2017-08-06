@@ -18,7 +18,6 @@ module Spark.Core.Internal.TypesStructures where
 
 import Data.Aeson
 import Data.Vector(Vector)
-import qualified Data.ProtocolBuffers as P
 import qualified Data.Vector as V
 import qualified Data.Aeson as A
 import qualified Data.Text as T
@@ -28,8 +27,6 @@ import Control.Applicative
 
 import Spark.Core.StructuresInternal(FieldName(..))
 import Spark.Core.Internal.Utilities
-import qualified Spark.Proto.Types as PTypes
-import Spark.Proto.Utils
 
 -- The core type algebra
 
@@ -194,28 +191,3 @@ instance FromJSON StructType where
   parseJSON = withObject "StructType" $ \o -> do
     fs <- o .: "fields"
     return (StructType fs)
-
-pbfromDataType :: PTypes.SQLType -> ProtoTry DataType
-pbfromDataType pt =
-    let f1 PTypes.IntType = IntType
-        f1 PTypes.DoubleType = DoubleType
-        f1 PTypes.StringType = StringType
-        f1 PTypes.BoolType = BoolType
-        field :: PTypes.StructField -> ProtoTry StructField
-        field x = do
-          x1 <- pbExtract "field_name" (PTypes.sfFieldName x)
-          x2 <- pbExtract "field_type" (PTypes.sfFieldType x)
-          x3 <- pbfromDataType x2
-          return $ StructField (FieldName x1) x3
-        struct :: PTypes.StructType -> ProtoTry StructType
-        struct x =
-          let fs = P.getField (PTypes.stFields x)
-              fs2 = V.fromList <$> (sequence $ field <$> fs)
-          in StructType <$> fs2
-        z1 = f1 <$> (pbExtract "basic_type" (PTypes.stBasicType pt))
-        z2 = ArrayType <$> (pbfromDataType =<< (pbExtract "array_type" (PTypes.stArrayType pt)))
-        z3 = struct =<< (pbExtract "struct_type" (PTypes.stStructType pt))
-        z = z1 <|> z2 <|> (Struct <$> z3)
-    in case P.getField (PTypes.stNullable pt) of
-            Just True -> StrictType <$> z
-            _ -> NullableType <$> z

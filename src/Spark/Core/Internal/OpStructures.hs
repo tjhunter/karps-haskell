@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-|
 A description of the operations that can be performed on
 nodes and columns.
@@ -295,3 +296,12 @@ instance FromJSON HdfsPath where
 instance FromJSON DataInputStamp where
   parseJSON (A.String p) = return (DataInputStamp p)
   parseJSON x = typeMismatch "DataInputStamp" x
+
+instance FromJSON Locality where
+  parseJSON (A.String x) | x == "LOCAL" = return Local
+  parseJSON (A.String x) | x == "DISTRIBUTED" = return Distributed
+  parseJSON x = typeMismatch "Locality" x
+
+instance ToJSON Locality where
+  toJSON Local = toJSON ("LOCAL" :: Text)
+  toJSON Distributed = toJSON ("DISTRIBUTED" :: Text)

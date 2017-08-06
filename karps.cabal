@@ -114,14 +114,18 @@ library
 executable karps-server
   hs-source-dirs:      src-server
   main-is:             Main.hs
-  other-modules:       Spark.Proto.Types
+  other-modules:       Spark.Proto.Types,
+                       Spark.Server.Structures,
+                       Spark.Server.StructureParsing
   default-language:    Haskell2010
   build-depends:       aeson
                      , base
+                     , karps
                      , text
                      , scotty
                      , protobuf
                      , cereal
+                     , containers
 
 test-suite karps-test
   type:                exitcode-stdio-1.0

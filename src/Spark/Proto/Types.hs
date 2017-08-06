@@ -39,11 +39,5 @@ instance Decode StructField
 data StructType = StructType {
   stFields :: Repeated 1 (Message StructField)
 } deriving (Generic, Show)
-
-
-
-
-
-
 instance Encode StructType
 instance Decode StructType
