@@ -31,6 +31,12 @@ import Data.Aeson((.=), (.:))
 import Data.String(IsString(..))
 import Data.Vector(Vector)
 import qualified Data.Vector as V
+import Data.Text.Encoding as E
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy.Char8 as Char8
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Text as T
+
 
 import Spark.Core.Internal.Utilities
 
@@ -150,3 +156,16 @@ instance Ord FieldName where
 
 instance A.ToJSON ComputationID where
   toJSON cid = A.object ["id" .= unComputationID cid]
+
+instance A.FromJSON ComputationID where
+  parseJSON = A.withObject "ComputationID" $ \o -> do
+    x <- o .: "id"
+    return $ ComputationID x
+
+instance A.FromJSON NodeId where
+  parseJSON = A.withObject "NodeId" $ \o -> do
+    x <- o .: "id"
+    return . NodeId . E.encodeUtf8 $ x
+
+instance A.ToJSON NodeId where
+  toJSON (NodeId x) = A.object ["id" .= E.decodeUtf8 x]

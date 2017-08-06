@@ -169,3 +169,5 @@ Also, if someone wants to setup a style checker, it will be really helpful.
 
 The API and design goals are slightly more general than Spark's. A more thorough
 explanation can be found in the `INTRO.md` file.
+
+## Developer tools

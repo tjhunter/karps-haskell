@@ -87,6 +87,11 @@ data NodeComputationFailure = NodeComputationFailure {
 instance ToJSON LocalSessionId where
   toJSON lsi = object ["id" .= (unLocalSession lsi)]
 
+instance FromJSON LocalSessionId where
+  parseJSON = withObject "LocalSessionId" $ \o -> do
+    _id <- o .: "id"
+    return $ LocalSessionId _id
+
 instance FromJSON RDDId where
   parseJSON x = RDDId <$> parseJSON x
 

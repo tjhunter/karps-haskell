@@ -63,7 +63,9 @@ library
                        Spark.Core.StructuresInternal,
                        Spark.Core.Try,
                        Spark.Core.Types,
-                       Spark.IO.Inputs
+                       Spark.IO.Inputs,
+                       Spark.Proto.Types,
+                       Spark.Proto.Utils
   other-modules:       Spark.Core.Internal.CachingUntyped,
                        Spark.Core.Internal.AlgebraStructures,
                        Spark.Core.Internal.AggregationFunctions,
@@ -81,6 +83,7 @@ library
                        base16-bytestring,
                        binary >= 0.7 && < 0.9,
                        bytestring,
+                       cereal,
                        containers,
                        cryptohash-sha256,
                        deepseq,
@@ -90,6 +93,7 @@ library
                        hashable,
                        lens,
                        monad-logger,
+                       protobuf,
                        QuickCheck,
                        random,
                        scientific,
@@ -107,6 +111,17 @@ library
 --  ghc-options:         -fprof-auto --enable-library-profiling -O0 -- -ddump-deriv -O0 -rtsopts=all
   default-language:    Haskell2010
 
+executable karps-server
+  hs-source-dirs:      src-server
+  main-is:             Main.hs
+  other-modules:       Spark.Proto.Types
+  default-language:    Haskell2010
+  build-depends:       aeson
+                     , base
+                     , text
+                     , scotty
+                     , protobuf
+                     , cereal
 
 test-suite karps-test
   type:                exitcode-stdio-1.0
