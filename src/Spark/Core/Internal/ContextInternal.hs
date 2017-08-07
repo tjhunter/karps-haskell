@@ -116,7 +116,7 @@ TODO(kps) use the caching information to have a correct fringe
 buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
-  assignPathsUntyped cg
+  traceHint "buildComputationGraph: res=" $ assignPathsUntyped (traceHint "buildComputationGraph: cg=" cg)
 
 {-| Performs all the operations that are done on the compute graph:
 

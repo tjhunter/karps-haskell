@@ -8,7 +8,7 @@ import Data.Aeson
 
 
 data OpExtra = OpExtra {
-  content :: Text
+  content :: !(Maybe Text)
 } deriving (Show, Generic)
 instance FromJSON OpExtra
 instance ToJSON OpExtra

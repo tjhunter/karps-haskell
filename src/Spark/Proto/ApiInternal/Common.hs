@@ -2,13 +2,10 @@
 
 module Spark.Proto.ApiInternal.Common where
 
-import Data.Text
 import GHC.Generics (Generic)
 import Data.Aeson
 
 import Spark.Core.StructuresInternal
-import Spark.Core.Internal.OpStructures
-import Spark.Core.Internal.TypesStructures
 import Spark.Core.Internal.Client(LocalSessionId)
 
 data NodeMapItem = NodeMapItem {

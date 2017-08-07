@@ -316,7 +316,6 @@ _computationStatus session compId npath = do
   status1 <- _get url
   let z = status1 ^. responseBody
   logDebugN $ "_computationStatus:status1: " <> T.pack (show z)
-  status0 <- liftIO $ W.get (T.unpack url)
   status <- liftIO (W.asJSON =<< W.get (T.unpack url) :: IO (W.Response PossibleNodeStatus))
   let s = status ^. responseBody
   return s

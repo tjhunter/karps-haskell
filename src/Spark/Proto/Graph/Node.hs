@@ -12,12 +12,12 @@ import Spark.Core.Internal.TypesStructures
 import Spark.Proto.Graph.All(OpExtra)
 
 data Node = Node {
-  locality :: !Locality,
+  locality :: !(Maybe Locality), -- It is an enum and may be missing (protobuf reasons)
   path :: !NodePath,
   opName :: !Text,
-  opExtra :: !OpExtra,
-  parents :: ![NodePath],
-  logicalDependencies :: ![NodePath],
+  opExtra :: !(Maybe OpExtra),
+  parents :: !(Maybe [NodePath]),
+  logicalDependencies :: !(Maybe [NodePath]),
   inferedType :: !DataType
 } deriving (Show, Generic)
 instance FromJSON Node

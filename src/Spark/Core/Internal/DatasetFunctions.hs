@@ -23,6 +23,7 @@ module Spark.Core.Internal.DatasetFunctions(
   identity,
   union,
   -- Developer
+  builderDistributedLiteral,
   castLocality,
   emptyDataset,
   emptyLocalData,
@@ -35,6 +36,7 @@ module Spark.Core.Internal.DatasetFunctions(
   nodePath,
   nodeOp,
   nodeParents,
+  nodeShape,
   nodeType,
   untypedDataset,
   untypedLocalData,
@@ -71,6 +73,7 @@ import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.RowUtils
 import Spark.Core.Internal.TypesGenerics
 import Spark.Core.Internal.TypesFunctions
+import qualified Spark.Proto.Row.Common as PRow
 
 -- | (developer) The operation performed by this node.
 nodeOp :: ComputeNode loc a -> NodeOp
@@ -108,7 +111,9 @@ nodePath node =
 nodeType :: ComputeNode loc a -> SQLType a
 nodeType = SQLType . _cnType
 
-
+{-| INTERNAL -}
+nodeShape :: ComputeNode loc a -> NodeShape
+nodeShape node = NodeShape (unSQLType . nodeType $ node) (unTypedLocality . nodeLocality $ node)
 
 {-| Returns the union of two datasets.
 
@@ -273,6 +278,18 @@ dataframe dt cells' = do
   let op = NodeDistributedLit dt jData
   return $ _emptyNode op (SQLType dt)
 
+builderDistributedLiteral :: CoreNodeBuilder
+builderDistributedLiteral = buildOp0Extra $ \cwt -> do
+  cells' <- case PRow.cell cwt of
+    RowArray v -> pure v
+    x -> fail $ "builderDistributedLiteral: Expected an array of cells, got " ++ show x
+  dt <- case PRow.cellType cwt of
+    StrictType (ArrayType at) -> pure at
+    dt' -> fail $ "builderDistributedLiteral: Expected an array type, got " ++ show dt'
+  validCells <- tryEither $ sequence (checkCell dt <$> cells')
+  let jData = toJSON <$> validCells
+  let op = NodeDistributedLit dt jData
+  return $ CoreNodeInfo (NodeShape dt Distributed) op
 
 -- *********** function / object conversions *******
 

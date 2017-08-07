@@ -11,12 +11,14 @@ module Spark.Core.Internal.OpFunctions(
   prettyShowColOp,
   hdfsPath,
   updateSourceStamp,
-  prettyShowColFun
+  prettyShowColFun,
+  buildOp0Extra
 ) where
 
 import qualified Data.Text as T
 import qualified Data.Aeson as A
 import qualified Data.Vector as V
+import Data.Text.Encoding(encodeUtf8)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.HashMap.Strict as HM
@@ -26,6 +28,7 @@ import Data.Char(isSymbol)
 import qualified Crypto.Hash.SHA256 as SHA
 
 import Spark.Core.Internal.OpStructures
+import Spark.Proto.Graph.All(OpExtra(..))
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.Try
@@ -99,6 +102,15 @@ updateSourceStamp (NodeDistributedOp so) (DataInputStamp dis) | soName so == "or
     x -> tryError $ "updateSourceStamp: Expected dict, got " <> show' x
 updateSourceStamp x _ =
   tryError $ "updateSourceStamp: Expected NodeDistributedOp, got " <> show' x
+
+buildOp0Extra :: A.FromJSON a => (a -> Try CoreNodeInfo) -> CoreNodeBuilder
+buildOp0Extra f (OpExtra (Just s)) [] = do
+  let bs = encodeUtf8 s
+  case A.eitherDecodeStrict' bs of
+    Right x -> f x
+    Left msg -> fail $ "buildOp0: parsing of arguments failed: " ++ show msg
+buildOp0Extra _ (OpExtra Nothing) _ = fail $ "buildOp0: missing extra info"
+buildOp0Extra _ _ l = fail $ "buildOp0: did not expect parents, got " ++ show l
 
 _jsonShowAggTrans :: AggTransform -> Text
 _jsonShowAggTrans (OpaqueAggTransform op) = soName op

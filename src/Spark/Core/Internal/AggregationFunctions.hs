@@ -14,6 +14,7 @@ module Spark.Core.Internal.AggregationFunctions(
   sum,
   sum',
   -- Developer functions
+  builderCollect,
   AggTry,
   UniversalAggregator(..),
   applyUAOUnsafe,
@@ -40,6 +41,7 @@ import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.StructuresInternal(emptyFieldPath)
 import Spark.Core.Types
 import Spark.Core.Try
+import Spark.Proto.Graph.All(OpExtra)
 
 {-| The sum of all the elements in a column.
 
@@ -76,6 +78,17 @@ collect' :: Column' -> LocalFrame
 collect' = applyUntypedUniAgg3 _collectAgg'
 
 type AggTry a = Either T.Text a
+
+builderCollect :: OpExtra -> [NodeShape] -> Try CoreNodeInfo
+builderCollect _ [ns] = do
+  uao <- tryEither $ _collectAgg' (nsType ns)
+  let cni = CoreNodeInfo {
+    cniShape = NodeShape (uaoMergeType uao) Local,
+    cniOp = NodeAggregatorReduction uao
+  }
+  return cni
+builderCollect _ l = fail $ "collectOp: wrong arguments: " ++ show l
+
 
 {-|
 This is the universal aggregator: the invariant aggregator and

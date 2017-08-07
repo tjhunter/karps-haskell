@@ -13,6 +13,8 @@ import Data.Vector(Vector)
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
+import Spark.Proto.Graph.All(OpExtra(..))
+import Spark.Core.Try
 
 {-| The name of a SQL function.
 
@@ -100,6 +102,28 @@ data ScalaStaticFunctionApplication = ScalaStaticFunctionApplication {
   -- TODO add the input and output types?
 }
 
+{-| The outside information of a node.
+
+The is the visible information about a node, and the
+only one that should matter when assembling a graph.
+-}
+data NodeShape = NodeShape {
+  nsType :: !DataType,
+  nsLocality :: !Locality
+} deriving (Eq, Show)
+
+{-| The core information that characterizes a node
+(except for the the topological information).
+
+A graph of computation can be reduced to core info and
+DAG informations.
+-}
+data CoreNodeInfo = CoreNodeInfo {
+  cniShape :: !NodeShape,
+  cniOp :: !NodeOp
+} deriving (Eq, Show)
+
+type CoreNodeBuilder = OpExtra -> [NodeShape] -> Try CoreNodeInfo
 
 -- | The different kinds of column operations that are understood by the
 -- backend.
@@ -210,7 +234,8 @@ data UniversalAggregatorOp = UniversalAggregatorOp {
   uaoMergeBuffer :: !SemiGroupOperator
 } deriving (Eq, Show)
 
-
+-- TODO: remove the data types, they are carried at the core
+-- TODO: remove the locality, carried at the core.
 data NodeOp2 =
   -- empty -> local
     NodeLocalLiteral !DataType !Value

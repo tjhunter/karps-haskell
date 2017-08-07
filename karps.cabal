@@ -25,6 +25,7 @@ library
                        Spark.Core.ColumnFunctions,
                        Spark.Core.Dataset,
                        Spark.Core.Functions,
+                       Spark.Core.Internal.AggregationFunctions,
                        Spark.Core.Internal.Arithmetics,
                        Spark.Core.Internal.ArithmeticsImpl,
                        Spark.Core.Internal.Caching,
@@ -65,10 +66,17 @@ library
                        Spark.Core.Types,
                        Spark.IO.Inputs,
                        Spark.Proto.Types,
-                       Spark.Proto.Utils
+                       Spark.Proto.Utils,
+                       Spark.Proto.ApiInternal.Common,
+                       Spark.Proto.ApiInternal.GraphTransformResponse,
+                       Spark.Proto.ApiInternal.PerformGraphTransform,
+                       Spark.Proto.Graph.All,
+                       Spark.Proto.Graph.Graph,
+                       Spark.Proto.Graph.Node,
+                       Spark.Proto.Row.Common,
+                       Spark.Proto.StructuredTransform.Column
   other-modules:       Spark.Core.Internal.CachingUntyped,
                        Spark.Core.Internal.AlgebraStructures,
-                       Spark.Core.Internal.AggregationFunctions,
                        Spark.Core.Internal.FunctionsInternals,
                        Spark.Core.Internal.LocatedBase,
                        Spark.Core.Internal.RowGenerics,
@@ -116,7 +124,8 @@ executable karps-server
   main-is:             Main.hs
   other-modules:       Spark.Proto.Types,
                        Spark.Server.Structures,
-                       Spark.Server.StructureParsing
+                       Spark.Server.StructureParsing,
+                       Spark.Server.Transform
   default-language:    Haskell2010
   build-depends:       aeson
                      , base
@@ -126,6 +135,10 @@ executable karps-server
                      , protobuf
                      , cereal
                      , containers
+                     , unordered-containers
+                     , vector
+                     , wai-extra
+                     , data-default
 
 test-suite karps-test
   type:                exitcode-stdio-1.0

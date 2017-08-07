@@ -5,17 +5,11 @@ module Spark.Server.Structures where
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Dataset(UntypedNode)
-import Spark.Core.Internal.Utilities
-import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Internal.Client
 
-import Data.Text(Text, pack)
-import Data.List.NonEmpty(NonEmpty)
+import Data.Text(Text)
 import Data.Map.Strict(Map)
-import Data.Aeson
-import Data.Aeson.Types(Parser)
-import GHC.Generics
 
 {-| A path that is unique across all the application. -}
 -- TODO: move this to the main data structures.
@@ -23,15 +17,16 @@ data GlobalPath = GlobalPath {
   gpSessionId :: !LocalSessionId,
   gpComputationId :: !ComputationID,
   gpLocalPath :: !NodePath
-}
+} deriving (Eq, Show)
 
 {-| A node that has already been seen before, and for which we have a path -}
 data SeenNode = SeenNode {
   snNodeId :: !NodeId,
   snPath :: !GlobalPath
-}
+} deriving (Eq, Show)
 
-type NodeMap = Map NodeId (NonEmpty GlobalPath)
+-- TODO: use NonEmpty instead
+type NodeMap = Map NodeId [GlobalPath]
 
 {-| The request to transform a (functional) graph to a pinned graph.
 
@@ -43,10 +38,11 @@ data GraphTransform = GraphTransform {
   gtNodes :: ![UntypedNode],
   gtTerminalNodes :: ![UntypedNode],
   gtNodeMap :: !NodeMap
-}
+} deriving (Show)
 
 data GraphTransformSuccess = GraphTransformSuccess {
   gtsNodes :: ![UntypedNode],
+  gtsTerminalNodes :: ![UntypedNode],
   gtsNodeMapUpdate :: !NodeMap
 }
 
@@ -57,26 +53,3 @@ data GraphTransformFailure = GraphTransformFailure {
 data GraphTransformResult =
     GTRSuccess GraphTransformSuccess
   | GTRFailure GraphTransformFailure
-
---
--- instance FromJSON SeenNode where
---   parseJSON = withObject "SeenNode" $ \o -> do
---     s <- o .: "session"
---     nid <- o .: "node"
---     c <- o .: "computation"
---     p <- o .: "path"
---     return $ SeenNode nid (GlobalPath s c p)
---
--- instance FromJSON Graph_ where
---   parseJSON = withObject "Graph" $ \o -> do
---     -- nodes <- o .: "nodes"
---     return (Graph_ undefined)
---
--- instance FromJSON GraphTransform where
---   parseJSON = withObject "GraphTransform" $ \o -> do
---     s <- o .: "session"
---     c <- o .: "computation"
---     g <- o .: "graph"
---     requested_paths <- o .: "requested_paths"
---     node_map <- o .: "available_nodes"
---     return $ GraphTransform s c (gNodes g) requested_paths node_map
