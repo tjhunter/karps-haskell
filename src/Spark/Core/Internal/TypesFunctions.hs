@@ -19,6 +19,7 @@ module Spark.Core.Internal.TypesFunctions(
   structTypeTuple,
   structTypeTuple',
   tupleType,
+  tupleType',
   structName,
   iSingleField,
   -- cellType,
@@ -170,7 +171,10 @@ _compatibleTypesStrict _ _ = False
 
 tupleType :: SQLType a -> SQLType b -> SQLType (a, b)
 tupleType (SQLType dt1) (SQLType dt2) =
-  SQLType $ structType [structField "_1" dt1, structField "_2" dt2]
+  SQLType $ tupleType' dt1 dt2
+
+tupleType' :: DataType -> DataType -> DataType
+tupleType' dt1 dt2 = structType [structField "_1" dt1, structField "_2" dt2]
 
 intType :: DataType
 intType = StrictType IntType
@@ -180,6 +184,7 @@ structField :: T.Text -> DataType -> StructField
 structField txt = StructField (FieldName txt)
 
 -- The strict structure type
+-- TODO: use a non-empty list
 structType :: [StructField] -> DataType
 structType = StrictType . Struct . StructType . V.fromList
 

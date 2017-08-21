@@ -26,6 +26,7 @@ import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.ColumnFunctions(untypedCol, colType, colOp, iUntypedColData, colOrigin, castTypeCol, dropColReference, genColOp)
 import Spark.Core.Internal.DatasetFunctions
+import Spark.Core.Internal.DatasetStd(placeholder)
 import Spark.Core.Internal.LocalDataFunctions()
 import Spark.Core.Internal.FunctionsInternals
 import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields)

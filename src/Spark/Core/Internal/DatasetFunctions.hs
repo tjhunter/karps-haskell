@@ -12,7 +12,7 @@ module Spark.Core.Internal.DatasetFunctions(
   logicalParents,
   logicalParents',
   depends,
-  dataframe,
+  --dataframe,
   asDF,
   asDS,
   asObs',
@@ -20,10 +20,16 @@ module Spark.Core.Internal.DatasetFunctions(
   asLocalObservable,
   asObservable,
   -- Standard functions
-  identity,
-  union,
+  --identity,
+  --union,
   -- Developer
-  builderDistributedLiteral,
+  fromBuilder0Extra,
+  fromBuilder0Extra',
+  fromBuilder1Extra,
+  fromBuilder1,
+  fromBuilder2Extra,
+  fromBuilder2,
+  -- builderDistributedLiteral,
   castLocality,
   emptyDataset,
   emptyLocalData,
@@ -44,9 +50,12 @@ module Spark.Core.Internal.DatasetFunctions(
   updateNodeOp,
   -- Developer conversions
   unsafeCastDataset,
-  placeholder,
+  --placeholder,
   castType,
   castType',
+  -- Operator node functions
+  updateOpNode,
+  updateOpNodeOp,
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
@@ -60,6 +69,7 @@ import Data.ByteString.Base16(encode)
 import Data.Maybe(fromMaybe, listToMaybe)
 import Data.Text.Lazy(toStrict)
 import Data.String(IsString(fromString))
+import Control.Monad(when)
 import Formatting
 
 import Spark.Core.StructuresInternal
@@ -67,13 +77,13 @@ import Spark.Core.Try
 import Spark.Core.Row
 import Spark.Core.Internal.TypesStructures
 import Spark.Core.Internal.DatasetStructures
+import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.OpFunctions
 import Spark.Core.Internal.Utilities
-import Spark.Core.Internal.RowUtils
 import Spark.Core.Internal.TypesGenerics
 import Spark.Core.Internal.TypesFunctions
-import qualified Spark.Proto.Row.Common as PRow
+import Spark.Proto.Graph.All(OpExtra(..))
 
 -- | (developer) The operation performed by this node.
 nodeOp :: ComputeNode loc a -> NodeOp
@@ -115,18 +125,6 @@ nodeType = SQLType . _cnType
 nodeShape :: ComputeNode loc a -> NodeShape
 nodeShape node = NodeShape (unSQLType . nodeType $ node) (unTypedLocality . nodeLocality $ node)
 
-{-| Returns the union of two datasets.
-
-In the context of streaming and differentiation, this union is biased towards
-the left: the left argument expresses the stream and the right element expresses
-the increment.
--}
-union :: Dataset a -> Dataset a -> Dataset a
-union n1 n2 = n `parents` [untyped n1, untyped n2]
-  where n = emptyNodeStandard (nodeLocality n1) (nodeType n1) _opnameUnion
-
-_opnameUnion :: T.Text
-_opnameUnion = "org.spark.Union"
 
 -- | Converts to a dataframe and drops the type info.
 -- This always works.
@@ -244,14 +242,31 @@ nodeId = _cnNodeId
 -- (internal)
 -- This operation should always be used to make sure that the
 -- various caches inside the compute node are maintained.
+{-# DEPRECATED #-}
 updateNode :: ComputeNode loc a -> (ComputeNode loc a -> ComputeNode loc' b) -> ComputeNode loc' b
 updateNode ds f = ds2 { _cnNodeId = id2 } where
   ds2 = f ds
   id2 = _nodeId ds2
 
+-- (internal)
+-- This operation should always be used to make sure that the
+-- various caches inside the compute node are maintained.
+updateOpNode :: OperatorNode -> NodeContext -> (OperatorNode -> OperatorNode) -> OperatorNode
+updateOpNode on nc f = on2 { onId = id2 } where
+  on2 = f on
+  id2 = _opNodeId on2 nc
 
+{-# DEPRECATED #-}
 updateNodeOp :: ComputeNode loc a -> NodeOp -> ComputeNode loc a
 updateNodeOp n no = updateNode n (\n' -> n' { _cnOp = no })
+
+updateOpNodeOp :: OperatorNode -> NodeContext -> NodeOp -> OperatorNode
+updateOpNodeOp n nc no = updateOpNode n nc $ \n' ->
+      n' {
+        onNodeInfo = (onNodeInfo n') {
+          cniOp = no
+        }
+      }
 
 -- (internal)
 -- The locality of the node
@@ -266,43 +281,49 @@ emptyDataset = _emptyNode
 emptyLocalData :: NodeOp -> SQLType a -> LocalData a
 emptyLocalData = _emptyNode
 
-{-| Creates a dataframe from a list of cells and a datatype.
-
-Wil fail if the content of the cells is not compatible with the
-data type.
--}
-dataframe :: DataType -> [Cell] -> DataFrame
-dataframe dt cells' = do
-  validCells <- tryEither $ sequence (checkCell dt <$> cells')
-  let jData = V.fromList (toJSON <$> validCells)
-  let op = NodeDistributedLit dt jData
-  return $ _emptyNode op (SQLType dt)
-
-builderDistributedLiteral :: CoreNodeBuilder
-builderDistributedLiteral = buildOp0Extra $ \cwt -> do
-  cells' <- case PRow.cell cwt of
-    RowArray v -> pure v
-    x -> fail $ "builderDistributedLiteral: Expected an array of cells, got " ++ show x
-  dt <- case PRow.cellType cwt of
-    StrictType (ArrayType at) -> pure at
-    dt' -> fail $ "builderDistributedLiteral: Expected an array type, got " ++ show dt'
-  validCells <- tryEither $ sequence (checkCell dt <$> cells')
-  let jData = toJSON <$> validCells
-  let op = NodeDistributedLit dt jData
-  return $ CoreNodeInfo (NodeShape dt Distributed) op
-
 -- *********** function / object conversions *******
 
-placeholder :: forall loc. (IsLocality loc) => DataType -> ComputeNode loc Cell
-placeholder tp =
-  let
-    t = SQLType tp
-    so = makeOperator "org.spark.Placeholder" t
-    (TypedLocality l) = _getTypedLocality :: TypedLocality loc
-    op = case l of
-      Local -> NodeLocalOp so
-      Distributed -> NodeDistributedOp so
-  in  _emptyNode op t
+fromBuilder0Extra :: A.ToJSON x => NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder0Extra = _fromBuilder []
+
+fromBuilder0Extra' :: (A.ToJSON x, IsLocality loc) => NodeBuilder -> x -> Try (ComputeNode loc Cell)
+fromBuilder0Extra' = error "fromBuilder0Extra'"
+
+--fromBuilder0' :: NodeBuilder -> TypedLocality loc -> Try (ComputeNode loc Cell)
+
+fromBuilder1Extra :: A.ToJSON x => ComputeNode loc1 a1 -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder1Extra cn = _fromBuilder [untyped cn]
+
+fromBuilder1 :: ComputeNode loc1 a1 -> NodeBuilder -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder1 cn nb = fromBuilder1Extra cn nb A.Null
+
+fromBuilder2Extra :: A.ToJSON x => ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder2Extra cn1 cn2 = _fromBuilder [untyped cn1, untyped cn2]
+
+fromBuilder2 :: ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> NodeBuilder -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder2 cn1 cn2 nb = fromBuilder2Extra cn1 cn2 nb A.Null
+
+_fromBuilder :: A.ToJSON x => [UntypedNode] -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+_fromBuilder l nb x tl sqlt = do
+  let json = A.toJSON x
+  let opExtra = if json == A.Null
+          then OpExtra Nothing
+          else OpExtra . Just . pretty $ json
+  let shapes = (cniShape . onNodeInfo . nodeOpNode) <$> l
+  cni <- nbBuilder nb opExtra shapes
+  let builtLocality = nsLocality (cniShape cni)
+  let expectedLocality = unTypedLocality tl
+  let builtType = nsType (cniShape cni)
+  let expectedType = unSQLType sqlt
+  -- Check that the final shape from the builder matches the shape provided.
+  when (builtLocality /= expectedLocality) $
+    fail $ "_fromBuilder: " ++ show (nbName nb) ++ ": built locality (" ++ show builtLocality ++ ") does not match expected locality (" ++ show expectedLocality ++ ")"
+  when (builtType /= expectedType) $
+    fail $ "_fromBuilder: " ++ show (nbName nb) ++ ": built type (" ++ show builtType ++ ") does not match expected type (" ++ show expectedType ++ ")"
+  let n = _emptyNodeTyped tl sqlt (cniOp cni)
+  let n2 = n `parents` l
+  return n2
+
 
 emptyNodeStandard :: forall loc a.
   TypedLocality loc -> SQLType a -> T.Text -> ComputeNode loc a
@@ -317,22 +338,6 @@ emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
           else NodeDistributedOp so
 
 
-
-{-| The identity function.
-
-Returns a compute node with the same datatype and the same content as the
-previous node. If the operation of the input has a side effect, this side
-side effect is *not* reevaluated.
-
-This operation is typically used when establishing an ordering between some
-operations such as caching or side effects, along with `logicalDependencies`.
--}
-identity :: ComputeNode loc a -> ComputeNode loc a
-identity n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) name
-        name = if unTypedLocality (nodeLocality n) == Local
-                then "org.spark.LocalIdentity"
-                else "org.spark.Identity"
 
 -- ******* INSTANCES *********
 
@@ -423,16 +428,18 @@ checkLocalityValidity x =
     else x
 
 
+_nodeId :: ComputeNode loc a -> NodeId
+_nodeId node = _opNodeId (nodeOpNode node) (nodeContext node)
+
 -- Computes the ID of a node.
 -- Since this is a complex operation, it should be cached by each node.
-_nodeId :: ComputeNode loc a -> NodeId
-_nodeId node =
+_opNodeId :: OperatorNode -> NodeContext -> NodeId
+_opNodeId node nc =
   let c1 = SHA.init
-      f2 = unNodeId . nodeId
-      c2 = hashUpdateNodeOp c1 (nodeOp node)
-      c3 = SHA.updates c2 $ f2 <$> nodeParents node
-      c4 = SHA.updates c3 $ f2 <$> nodeLogicalDependencies node
-      -- c6 = SHA.update c4 $ (BS.concat . LBS.toChunks) b
+      f2 = unNodeId . onId
+      c2 = hashUpdateNodeOp c1 (onOp node)
+      c3 = SHA.updates c2 $ f2 <$> ncParents nc
+      c4 = SHA.updates c3 $ f2 <$> ncLogicalDeps nc
   in
     -- Using base16 encoding to make sure it is readable.
     -- Not sure if it is a good idea in general.

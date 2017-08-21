@@ -21,7 +21,7 @@ import Spark.Core.Internal.Client(LocalSessionId)
 import Spark.Core.Internal.ComputeDag(ComputeDag)
 import Spark.Core.Internal.OpStructures(HdfsPath(..))
 import Spark.Core.Internal.Pruning
-import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge)
+import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge, OperatorNode)
 
 -- | The configuration of a remote spark session in Karps.
 data SparkSessionConf = SparkSessionConf {
@@ -78,4 +78,4 @@ type SparkStateT m = LoggingT (SparkStatePureT m)
 A graph of computations. This graph is a direct acyclic graph. Each node is
 associated to a global path.
 -}
-type ComputeGraph = ComputeDag UntypedNode StructureEdge
+type ComputeGraph = ComputeDag OperatorNode StructureEdge

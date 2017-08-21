@@ -91,7 +91,7 @@ insertSourceInfo cg l = do
 inputSourcesRead :: ComputeGraph -> [HdfsPath]
 inputSourcesRead cg =
   -- TODO: make unique elements
-  mapMaybe (hdfsPath.nodeOp.vertexData) (toList (cdVertices cg))
+  mapMaybe (hdfsPath.onOp.vertexData) (toList (cdVertices cg))
 
 -- Here are the steps being run
 --  - node collection + cycle detection
@@ -116,7 +116,9 @@ TODO(kps) use the caching information to have a correct fringe
 buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
-  traceHint "buildComputationGraph: res=" $ assignPathsUntyped (traceHint "buildComputationGraph: cg=" cg)
+  dagWithPaths <- traceHint "buildComputationGraph: res=" $ assignPathsUntyped (traceHint "buildComputationGraph: cg=" cg)
+  let cg' = mapVertexData nodeOpNode dagWithPaths
+  return cg'
 
 {-| Performs all the operations that are done on the compute graph:
 
@@ -132,7 +134,7 @@ performGraphTransforms session cg = do
   -- Tie the nodes to ensure that the node IDs match the topology and
   -- content of the graph.
   -- TODO: make a special function for tying + pruning, it is easy to forget.
-  let tiedCg = tieNodes cg
+  let tiedCg = _sanitizeGraph cg
   let g = computeGraphToGraph tiedCg
   let conf = ssConf session
   let pruned = if confUseNodePrunning conf
@@ -148,6 +150,12 @@ performGraphTransforms session cg = do
     _ -> tryError $ sformat ("Found some caching errors: "%sh) failures
   -- TODO: we could add an extra pruning pass here
 
+{-| Takes a compute graph and reruns the ID computations to ensure that they
+are up to date.
+-}
+_sanitizeGraph :: ComputeGraph -> ComputeGraph
+_sanitizeGraph = error "_sanitizeGraph" -- tieNodes cg
+
 _buildComputation :: SparkSession -> ComputeGraph -> Try Computation
 _buildComputation session cg =
   let sid = ssId session
@@ -162,20 +170,20 @@ _buildComputation session cg =
       return $ Computation sid cid allNodes [p] p terminalNodeIds
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
-_updateVertex :: M.Map HdfsPath DataInputStamp -> UntypedNode -> Try UntypedNode
+_updateVertex :: M.Map HdfsPath DataInputStamp -> OperatorNode -> Try OperatorNode
 _updateVertex m un =
-  let no = nodeOp un in case hdfsPath no of
+  let no = onOp un in case hdfsPath no of
     Just p -> case M.lookup p m of
-      Just dis -> updateSourceStamp no dis <&> updateNodeOp un
+      Just dis -> updateSourceStamp no dis <&> updateOpNodeOp un
       -- TODO: this is for debugging, but it could be eventually relaxed.
       Nothing -> tryError $ "_updateVertex: Expected to find path " <> show' p
     Nothing -> pure un
 
 _updateVertex2 ::
   M.Map HdfsPath DataInputStamp ->
-  UntypedNode ->
-  [(UntypedNode, StructureEdge)] ->
-  Try UntypedNode
+  OperatorNode ->
+  [(OperatorNode, StructureEdge)] ->
+  Try OperatorNode
 _updateVertex2 m un _ =
   _updateVertex m un
 

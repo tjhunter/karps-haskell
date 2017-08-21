@@ -85,7 +85,7 @@ tieNodes cd =
       g2 = runIdentity $ graphMapVertices g f
   in graphToComputeGraph g2
 
--- Assigs the paths, and drops the scoping edges.
+-- Assigns the paths, and drops the scoping edges.
 assignPathsUntyped :: (HasCallStack) =>
   ComputeDag UntypedNode NodeEdge -> Try (ComputeDag UntypedNode StructureEdge)
 assignPathsUntyped cd = do

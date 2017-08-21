@@ -14,7 +14,7 @@ module Spark.Core.Internal.AggregationFunctions(
   sum,
   sum',
   -- Developer functions
-  builderCollect,
+  collectBuilder,
   AggTry,
   UniversalAggregator(..),
   applyUAOUnsafe,
@@ -37,6 +37,7 @@ import Spark.Core.Internal.FunctionsInternals
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.TypesStructures
 import Spark.Core.Internal.Utilities
+import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.StructuresInternal(emptyFieldPath)
 import Spark.Core.Types
@@ -79,15 +80,14 @@ collect' = applyUntypedUniAgg3 _collectAgg'
 
 type AggTry a = Either T.Text a
 
-builderCollect :: OpExtra -> [NodeShape] -> Try CoreNodeInfo
-builderCollect _ [ns] = do
-  uao <- tryEither $ _collectAgg' (nsType ns)
+collectBuilder :: NodeBuilder
+collectBuilder = buildOpD "org.spark.Collect" $ \dt -> do
+  uao <- tryEither $ _collectAgg' dt
   let cni = CoreNodeInfo {
     cniShape = NodeShape (uaoMergeType uao) Local,
     cniOp = NodeAggregatorReduction uao
   }
   return cni
-builderCollect _ l = fail $ "collectOp: wrong arguments: " ++ show l
 
 
 {-|

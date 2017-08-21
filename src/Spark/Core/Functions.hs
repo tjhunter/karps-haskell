@@ -40,7 +40,9 @@ import Spark.Core.Types
 import Spark.Core.Row
 import Spark.Core.Internal.ArithmeticsImpl
 import Spark.Core.Internal.DatasetFunctions
+import Spark.Core.Internal.DatasetStd
 import Spark.Core.Internal.Joins
+import Spark.Core.Internal.CachingUntyped(uncache)
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.LocalDataFunctions
 import Spark.Core.Internal.FunctionsInternals()

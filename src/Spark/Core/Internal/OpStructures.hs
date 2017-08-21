@@ -1,4 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 {-|
 A description of the operations that can be performed on
 nodes and columns.
@@ -6,6 +9,7 @@ nodes and columns.
 module Spark.Core.Internal.OpStructures where
 
 import Data.Text as T
+import GHC.Generics (Generic)
 import Data.Aeson(Value, Value(Null), FromJSON, ToJSON, toJSON)
 import Data.Aeson.Types(typeMismatch)
 import qualified Data.Aeson as A
@@ -107,10 +111,13 @@ data ScalaStaticFunctionApplication = ScalaStaticFunctionApplication {
 The is the visible information about a node, and the
 only one that should matter when assembling a graph.
 -}
+-- TODO this is encoded is a proto
 data NodeShape = NodeShape {
-  nsType :: !DataType,
-  nsLocality :: !Locality
-} deriving (Eq, Show)
+  nsType :: !DataType, -- TODO rename nodeType
+  nsLocality :: !Locality -- TODO rename locality
+} deriving (Eq, Show, Generic)
+instance FromJSON NodeShape
+instance ToJSON NodeShape
 
 {-| The core information that characterizes a node
 (except for the the topological information).
@@ -251,10 +258,14 @@ data NodeOp2 =
 
 {-| A pointer to a node that is assumed to be already computed.
 -}
+-- TODO this is encoded as proto
 data Pointer = Pointer {
-  pointerComputation :: !ComputationID,
-  pointerPath :: !NodePath
-} deriving (Eq, Show)
+  computation :: !ComputationID,
+  path :: !NodePath,
+  shape :: !NodeShape
+} deriving (Eq, Show, Generic)
+instance FromJSON Pointer
+instance ToJSON Pointer
 
 {-
 A node operation.

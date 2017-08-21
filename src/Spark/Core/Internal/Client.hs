@@ -31,7 +31,7 @@ data LocalSessionId = LocalSessionId {
 data Computation = Computation {
   cSessionId :: !LocalSessionId,
   cId :: !ComputationID,
-  cNodes :: ![UntypedNode],
+  cNodes :: ![UntypedNode], -- TODO: check to replace with OperatorNode?
   -- Non-empty
   cTerminalNodes :: ![NodePath],
   -- The node at the top of the computation.
@@ -85,7 +85,7 @@ data NodeComputationFailure = NodeComputationFailure {
 -- **** AESON INSTANCES ***
 
 instance ToJSON LocalSessionId where
-  toJSON lsi = object ["id" .= (unLocalSession lsi)]
+  toJSON lsi = object ["id" .= unLocalSession lsi]
 
 instance FromJSON LocalSessionId where
   parseJSON = withObject "LocalSessionId" $ \o -> do

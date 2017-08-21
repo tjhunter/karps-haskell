@@ -16,7 +16,7 @@ module Spark.Core.Internal.Pruning(
 import Data.HashMap.Strict as HM
 
 import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID)
-import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge)
+import Spark.Core.Internal.DatasetStructures(StructureEdge, OperatorNode, onId, NodeContext(..))
 import Spark.Core.Internal.DAGFunctions
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions
@@ -43,7 +43,8 @@ that the observables are kept by the Spark processes.
 data NodeCacheInfo = NodeCacheInfo {
   nciStatus :: !NodeCacheStatus,
   nciComputation :: !ComputationID,
-  nciPath :: !NodePath
+  nciPath :: !NodePath,
+  nciShape :: !NodeShape
 } deriving (Eq, Show)
 
 type NodeCache = HM.HashMap NodeId NodeCacheInfo
@@ -79,14 +80,12 @@ pruneGraph c getNodeId f g =
       g' = graphMapVertices' repOp comFiltered
   in g'
 
-pruneGraphDefault ::
-  NodeCache -> Graph UntypedNode StructureEdge -> Graph UntypedNode StructureEdge
-pruneGraphDefault c = pruneGraph c nodeId _createNodeCache
 
-_createNodeCache :: UntypedNode -> NodeCacheInfo -> UntypedNode
+pruneGraphDefault ::
+  NodeCache -> Graph OperatorNode StructureEdge -> Graph OperatorNode StructureEdge
+pruneGraphDefault c = pruneGraph c onId _createNodeCache
+
+_createNodeCache :: OperatorNode -> NodeCacheInfo -> OperatorNode
 _createNodeCache n nci =
-  let name = "org.spark.PlaceholderCache"
-      no = NodePointer (Pointer (nciComputation nci) (nciPath nci))
-      n2 = emptyNodeStandard (nodeLocality n) (nodeType n) name
-             `updateNodeOp` no
-  in n2
+  let p = Pointer (nciComputation nci) (nciPath nci) (nciShape nci)
+  in updateOpNodeOp n (NodeContext [] []) (NodePointer p)

@@ -12,7 +12,9 @@ module Spark.Core.Internal.OpFunctions(
   hdfsPath,
   updateSourceStamp,
   prettyShowColFun,
-  buildOp0Extra
+  buildOp0Extra,
+  -- Basic builders:
+  pointerBuilder,
 ) where
 
 import qualified Data.Text as T
@@ -30,6 +32,7 @@ import qualified Crypto.Hash.SHA256 as SHA
 import Spark.Core.Internal.OpStructures
 import Spark.Proto.Graph.All(OpExtra(..))
 import Spark.Core.Internal.Utilities
+import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.Try
 import Spark.Core.StructuresInternal(FieldName)
@@ -109,8 +112,13 @@ buildOp0Extra f (OpExtra (Just s)) [] = do
   case A.eitherDecodeStrict' bs of
     Right x -> f x
     Left msg -> fail $ "buildOp0: parsing of arguments failed: " ++ show msg
-buildOp0Extra _ (OpExtra Nothing) _ = fail $ "buildOp0: missing extra info"
+buildOp0Extra _ (OpExtra Nothing) _ = fail "buildOp0: missing extra info"
 buildOp0Extra _ _ l = fail $ "buildOp0: did not expect parents, got " ++ show l
+
+pointerBuilder :: NodeBuilder
+pointerBuilder = buildOpExtra "org.spark.PlaceholderCache" $ \(p @ (Pointer _ _ shp)) ->
+  return $ CoreNodeInfo shp (NodePointer p)
+
 
 _jsonShowAggTrans :: AggTransform -> Text
 _jsonShowAggTrans (OpaqueAggTransform op) = soName op
@@ -170,8 +178,8 @@ extraNodeOpData (NodeReduction _) = A.Null -- TODO: should it send something?
 extraNodeOpData (NodeAggregatorLocalReduction _) = A.Null -- TODO: should it send something?
 extraNodeOpData (NodePointer p) =
     A.object [
-      "computation" .= toJSON (pointerComputation p),
-      "localPath" .= toJSON (pointerPath p)
+      "computation" .= toJSON (computation p),
+      "localPath" .= toJSON (path p)
     ]
 
 -- Adds the content of a node op to a hash.
