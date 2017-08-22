@@ -30,20 +30,15 @@ transform :: GraphTransform -> GraphTransformResult
 transform gt = trace ("transform: gt=" ++ show gt) $
   case _transform gt of
     Right cg -> GTRSuccess GraphTransformSuccess {
-        gtsNodes = V.toList (vertexData <$> cdVertices cg),
-        gtsTerminalNodes = V.toList (vertexData <$> cdOutputs cg),
+        gtsNodes = V.toList (vertexData <$> gVertices tied),
+        -- gtsTerminalNodes = V.toList (vertexData <$> cdOutputs cg'),
         gtsNodeMapUpdate = M.empty
-      }
+      } where tied = convertToTiedGraph cg
     Left err -> GTRFailure $ GraphTransformFailure (show' err)
 
 _transform :: GraphTransform -> Try ComputeGraph
 _transform gt = do
-  -- Shortcut to get the first node:
-  first <- case gtTerminalNodes gt of
-    [h] -> pure h
-    l -> fail $ "_transform: too many nodes: " ++ show l
-  cg0 <- (tryEither $ buildCGraph first)
-  let cg = trace ("_transform: cg="++show cg0) cg0
+  let g = gtGraph gt
   let c = defaultConf
   let session = SparkSession {
           ssConf = c,
@@ -51,6 +46,6 @@ _transform gt = do
           ssCommandCounter = 0,
           ssNodeCache = HM.empty
         }
-  cg2' <- performGraphTransforms session cg
+  cg2' <- performGraphTransforms session g
   let cg2 = trace ("_transform: cg2'="++show cg2') cg2'
   return cg2

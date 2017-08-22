@@ -286,7 +286,8 @@ _extractColOp x y =
 _aggKey :: UntypedGroupData -> (UntypedColumnData -> Try UntypedLocalData) -> Try UntypedDataset
 _aggKey ugd f =
   let inputDt = unSQLType . colType . _valueCol $ ugd
-      p = placeholder inputDt :: UntypedDataset
+      p = error "_aggKey: not implemented"
+      --p = placeholder inputDt :: UntypedDataset
       startNid = nodeId p in do
   uld <- f (_unsafeCastColData (asCol p))
   case _unrollTransform (PipedGroup ugd) startNid (untyped uld) of

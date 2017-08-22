@@ -6,6 +6,7 @@ module Spark.Server.Structures where
 import Spark.Core.StructuresInternal
 import Spark.Core.Dataset(UntypedNode)
 import Spark.Core.Internal.TypesFunctions()
+import Spark.Core.Internal.ContextStructures(ComputeGraph)
 import Spark.Core.Internal.Client
 
 import Data.Text(Text)
@@ -35,14 +36,13 @@ This request will perform a number of optimizations in the process.
 data GraphTransform = GraphTransform {
   gtSessionId :: !LocalSessionId,
   gtComputationId :: !ComputationID,
-  gtNodes :: ![UntypedNode],
-  gtTerminalNodes :: ![UntypedNode],
+  gtGraph :: !ComputeGraph,
   gtNodeMap :: !NodeMap
 } deriving (Show)
 
 data GraphTransformSuccess = GraphTransformSuccess {
   gtsNodes :: ![UntypedNode],
-  gtsTerminalNodes :: ![UntypedNode],
+  -- gtsTerminalNodes :: ![UntypedNode],
   gtsNodeMapUpdate :: !NodeMap
 }
 

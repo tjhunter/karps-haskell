@@ -10,27 +10,33 @@ import Spark.Core.Try
 
 import Data.Text(Text)
 import Debug.Trace
+import Control.Arrow((&&&))
+import qualified Data.Text as T
 import Control.Monad(when, unless)
 import Data.Either(rights, lefts)
 import Data.Map.Strict(Map)
 import Data.Maybe(fromMaybe)
 import qualified Data.Map.Strict as Map
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.Vector as V
 import Spark.Proto.ApiInternal.PerformGraphTransform(PerformGraphTransform)
 import Spark.Proto.ApiInternal.GraphTransformResponse(GraphTransformResponse(..))
 import Spark.Server.Structures
 import Spark.Core.Internal.Utilities(myGroupBy, pretty)
 import Spark.Core.Internal.DatasetFunctions
-import Spark.Core.Internal.DatasetStructures(ComputeNode(..), unTypedLocality)
+import Spark.Core.Internal.DatasetStructures(ComputeNode(..), unTypedLocality, StructureEdge(..), OperatorNode(..))
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.OpFunctions
+import Spark.Core.Internal.ComputeDag
+import Spark.Core.Internal.DAGStructures
+import Spark.Core.Internal.NodeBuilder
 import qualified Spark.Proto.Graph.Node as PNode
 import qualified Spark.Proto.Graph.Graph as PGraph
 import Spark.Proto.ApiInternal.Common(NodeMapItem(..))
 import qualified Spark.Proto.ApiInternal.PerformGraphTransform as PGraphTransformRequest
 import Spark.Proto.Graph.All(OpExtra(..))
-import Spark.Core.Internal.AggregationFunctions(builderCollect)
-import Spark.Core.Internal.DatasetFunctions(builderDistributedLiteral)
+import Spark.Core.Internal.AggregationFunctions(collectBuilder)
+import Spark.Core.Internal.DatasetStd(literalBuilderD)
 import Spark.Core.Types
 
 {-| Parses an outside transform into a GraphTransform.
@@ -39,30 +45,39 @@ TODO: add some notion of registry to handle unknown operations.
 -}
 parseInput :: PerformGraphTransform -> Try GraphTransform
 parseInput pgt = do
+  let requested = _parseNodeId <$> PGraphTransformRequest.requestedPaths pgt
+  let nodes0 = PGraph.nodes . PGraphTransformRequest.functionalGraph $ pgt
+  -- As inputs, only keep the ids of the nodes that have no parents
+  let inputs = _parseNodeId' <$> filter f nodes0 where
+         f n = case (PNode.parents n, PNode.logicalDependencies n) of
+           (Just (_ : _), _) -> False
+           (_, Just (_ : _)) -> False
+           _ -> True
+  let vertices = f <$> nodes0 where
+        f n = Vertex (_parseNodeId' n) n
+  let edges = concatMap f nodes0 where
+        f n = (g ParentEdge (PNode.parents n)) ++ (g LogicalEdge (PNode.logicalDependencies n)) where
+             nid = _parseNodeId' n
+             g' se np = Edge (_parseNodeId np) nid se
+             g _ Nothing = []
+             g se (Just l) = g' se <$> l
+  -- Make a first graph that checks the topology
+  cg' <- tryEither $ buildCGraphFromList vertices edges inputs requested
+  -- Make a second graph that calls the builders
+  cg2 <- computeGraphMapVertices cg' _buildNode'
   let f1 (NodeMapItem nid p cid sid) = (nid, GlobalPath sid cid p)
-  let nodeMap = myGroupBy (f1 <$> (fromMaybe [] (PGraphTransformRequest.availableNodes pgt)))
-  nodes <- _parseGraph (PGraph.nodes . PGraphTransformRequest.functionalGraph $ pgt) Map.empty
-  let dct = _nodesAsDict nodes
-  let lookup' p = case Map.lookup p dct of
-                    Just un -> Right un
-                    Nothing -> Left p
-  let requested = lookup' <$> (PGraphTransformRequest.requestedPaths pgt)
-  let missingRequested = lefts requested
-  unless (null missingRequested) $
-    fail $ "Some node paths could not be found: " ++ show missingRequested
-  let requestedNodes = rights requested
+  let nodeMap' = myGroupBy (f1 <$> (fromMaybe [] (PGraphTransformRequest.availableNodes pgt)))
   return GraphTransform {
     gtSessionId = PGraphTransformRequest.session pgt,
     gtComputationId = PGraphTransformRequest.computation pgt,
-    gtNodes = nodes,
-    gtTerminalNodes = requestedNodes,
-    gtNodeMap = nodeMap
+    gtGraph = cg2,
+    gtNodeMap = nodeMap'
   }
 
 {-| Writes the response. Nothing fancy here.
 -}
 protoResponse :: GraphTransformResult -> Try GraphTransformResponse
-protoResponse (GTRSuccess (GraphTransformSuccess nodes _ _)) =
+protoResponse (GTRSuccess (GraphTransformSuccess nodes _)) =
   pure $ GraphTransformResponse (PGraph.Graph (_toNode <$> nodes)) []
 protoResponse (GTRFailure (GraphTransformFailure msg)) =
   tryError msg
@@ -75,6 +90,12 @@ data NodeWithDeps = NodeWithDeps {
   nwdParents :: ![UntypedNode],
   nwdLogicalDeps :: ![UntypedNode]
 }
+
+_parseNodeId :: NodePath -> VertexId
+_parseNodeId = VertexId . C8.pack . T.unpack . prettyNodePath
+
+_parseNodeId' :: PNode.Node -> VertexId
+_parseNodeId' = _parseNodeId . PNode.path
 
 _toNode :: UntypedNode -> PNode.Node
 _toNode un = PNode.Node {
@@ -114,41 +135,23 @@ _parseNode nwd = do
   -- Make sure that the node ids are properly computed.
   return un3
 
-_builders :: Map Text CoreNodeBuilder
-_builders = Map.fromList [
-    ("org.spark.Collect", builderCollect),
-    ("org.spark.DistributedLiteral", builderDistributedLiteral)
+{-| The list of all the builders that are loaded in the program by default.
+-}
+_builders :: Map Text BuilderFunction
+_builders = Map.fromList $ (nbName &&& nbBuilder) <$> [
+    collectBuilder,
+    literalBuilderD
   ]
+
+_buildNode' ::  PNode.Node -> [(OperatorNode, StructureEdge)] -> Try OperatorNode
+_buildNode' = error "_buildNode'"
 
 {-| The main builder function. -}
 _buildNode :: Text -> OpExtra -> [NodeShape] -> Try CoreNodeInfo
-_buildNode opName extra parents = case  Map.lookup opName _builders of
-  Just builder -> builder extra parents
+_buildNode opName extra parents' = case  Map.lookup opName _builders of
+  Just builder -> builder extra parents'
   Nothing -> fail $ "_buildNode: unknown operation name: " ++ show opName
 
 _nodesAsDict :: [UntypedNode] -> Map NodePath UntypedNode
 _nodesAsDict l = Map.fromList (f <$> l) where
   f n = (nodePath n, n)
-
--- Parse a
-_parseGraph :: [PNode.Node] -> Map NodePath UntypedNode -> Try [UntypedNode]
-_parseGraph [] _ = pure []
-_parseGraph l seen =
-  let get n =
-        let parents = sequence $ (`Map.lookup` seen) <$> (fromMaybe [] (PNode.parents n))
-            deps = sequence $ (`Map.lookup` seen) <$> (fromMaybe [] (PNode.logicalDependencies n))
-        in case NodeWithDeps n <$> parents <*> deps of
-          Just nwd -> Right nwd
-          Nothing -> Left n
-      attempts = get <$> l
-      readyNodes = rights attempts
-      notReadyNodes = lefts attempts
-  in case readyNodes of
-    [] -> fail "Nodes contain a cycle"
-    _ -> do
-      -- We found some nodes that are ready and all independent
-      -- Treat all of these, and move to the next ones
-      filteredNodes <- sequence (_parseNode <$> readyNodes)
-      let seen2 = Map.union seen (_nodesAsDict filteredNodes)
-      rest <- _parseGraph notReadyNodes seen2
-      return $ filteredNodes ++ rest

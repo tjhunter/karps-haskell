@@ -19,7 +19,8 @@ module Spark.Core.Internal.ContextInternal(
   getTargetNodes,
   getObservables,
   insertSourceInfo,
-  updateCache
+  updateCache,
+  convertToTiedGraph
 ) where
 
 import Control.Monad.State(get, put)
@@ -46,7 +47,7 @@ import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
 import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
-import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp)
+import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..))
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()
 import Spark.Core.Internal.DAGFunctions(buildVertexList, graphMapVertices)
@@ -142,11 +143,13 @@ performGraphTransforms session cg = do
                else g
   -- Autocache + caching pass pass
   -- TODO: separate in a function
-  let acg = fillAutoCache cachingType autocacheGen pruned
+  let tiedPruned = convertToTiedGraph (graphToComputeGraph pruned)
+  let acg = fillAutoCache cachingType autocacheGen tiedPruned
   g' <- tryEither acg
   failures <- tryEither $ checkCaching g' cachingType
   case failures of
-    [] -> return (graphToComputeGraph g')
+    [] -> return g'' where
+           g'' = _convertToUntiedGraph g'
     _ -> tryError $ sformat ("Found some caching errors: "%sh) failures
   -- TODO: we could add an extra pruning pass here
 
@@ -156,25 +159,35 @@ are up to date.
 _sanitizeGraph :: ComputeGraph -> ComputeGraph
 _sanitizeGraph = error "_sanitizeGraph" -- tieNodes cg
 
+convertToTiedGraph :: ComputeGraph -> TiedComputeGraph
+convertToTiedGraph = error "convertToTiedGraph"
+
+_convertToUntiedGraph :: TiedComputeGraph -> ComputeGraph
+_convertToUntiedGraph = error "_convertToUntiedGraph"
+
 _buildComputation :: SparkSession -> ComputeGraph -> Try Computation
 _buildComputation session cg =
   let sid = ssId session
       cid = (ComputationID . pack . show . ssCommandCounter) session
-      allNodes = vertexData <$> toList (cdVertices cg)
       terminalNodes = vertexData <$> toList (cdOutputs cg)
-      terminalNodePaths = nodePath <$> terminalNodes
-      terminalNodeIds = nodeId <$> terminalNodes
+      terminalNodePaths = onPath <$> terminalNodes
+      terminalNodeIds = onId <$> terminalNodes
+      tiedCg = convertToTiedGraph cg
+      allTiedNodes = vertexData <$> toList (gVertices tiedCg)
   -- TODO it is missing the first node here, hoping it is the first one.
   in case terminalNodePaths of
     [p] ->
-      return $ Computation sid cid allNodes [p] p terminalNodeIds
+      return $ Computation sid cid allTiedNodes [p] p terminalNodeIds
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
 _updateVertex :: M.Map HdfsPath DataInputStamp -> OperatorNode -> Try OperatorNode
 _updateVertex m un =
   let no = onOp un in case hdfsPath no of
     Just p -> case M.lookup p m of
-      Just dis -> updateSourceStamp no dis <&> updateOpNodeOp un
+      Just dis ->
+        -- TODO this is incorrect, the node ID should not contain dummy
+        -- information
+        updateSourceStamp no dis <&> updateOpNodeOp un (NodeContext [] [])
       -- TODO: this is for debugging, but it could be eventually relaxed.
       Nothing -> tryError $ "_updateVertex: Expected to find path " <> show' p
     Nothing -> pure un
@@ -236,30 +249,30 @@ getObservables comp =
 The updates are split into final results, and general update status (scheduled,
 running, etc.)
 -}
-updateCache :: ComputationID -> [(NodeId, NodePath, DataType, PossibleNodeStatus)] -> SparkStatePure ([(NodeId, Try Cell)], [(NodePath, NodeCacheStatus)])
+updateCache :: ComputationID -> [(NodeId, NodePath, NodeShape, PossibleNodeStatus)] -> SparkStatePure ([(NodeId, Try Cell)], [(NodePath, NodeCacheStatus)])
 updateCache c l = do
   l' <- sequence $ _updateCache1 c <$> l
   return (catMaybes (fst <$> l'), catMaybes (snd <$> l'))
 
-_updateCache1 :: ComputationID -> (NodeId, NodePath, DataType, PossibleNodeStatus) -> SparkStatePure (Maybe (NodeId, Try Cell), Maybe (NodePath, NodeCacheStatus))
-_updateCache1 cid (nid, p, dt, status) =
+_updateCache1 :: ComputationID -> (NodeId, NodePath, NodeShape, PossibleNodeStatus) -> SparkStatePure (Maybe (NodeId, Try Cell), Maybe (NodePath, NodeCacheStatus))
+_updateCache1 cid (nid, p, ns @ (NodeShape dt _), status) =
   case status of
     (NodeFinishedSuccess (Just s) _) -> do
-      updated <- _insertCacheUpdate cid nid p NodeCacheSuccess
+      updated <- _insertCacheUpdate cid nid p ns NodeCacheSuccess
       let res2 = _extract1 (pure s) dt
       return (Just (nid, res2), (p, ) <$> updated)
     (NodeFinishedFailure e) -> do
-      updated <- _insertCacheUpdate cid nid p NodeCacheError
+      updated <- _insertCacheUpdate cid nid p ns NodeCacheError
       let res2 = _extract1 (Left e) dt
       return (Just (nid, res2), (p, ) <$> updated)
     NodeRunning -> do
-      updated <- _insertCacheUpdate cid nid p NodeCacheRunning
+      updated <- _insertCacheUpdate cid nid p ns NodeCacheRunning
       return (Nothing, (p, ) <$> updated)
     _ -> return (Nothing, Nothing)
 
 -- Returns true if the cache is updated
-_insertCacheUpdate :: ComputationID -> NodeId -> NodePath -> NodeCacheStatus -> SparkStatePure (Maybe NodeCacheStatus)
-_insertCacheUpdate cid nid p s = do
+_insertCacheUpdate :: ComputationID -> NodeId -> NodePath -> NodeShape -> NodeCacheStatus -> SparkStatePure (Maybe NodeCacheStatus)
+_insertCacheUpdate cid nid p ns s = do
   session <- get
   let m = ssNodeCache session
   let currentStatus = nciStatus <$> HM.lookup nid m
@@ -269,7 +282,8 @@ _insertCacheUpdate cid nid p s = do
     let v = NodeCacheInfo {
               nciStatus = s,
               nciComputation = cid,
-              nciPath = p }
+              nciPath = p,
+              nciShape = ns }
     let m' = HM.insert nid v m
     let session' = session { ssNodeCache = m' }
     put session'

@@ -44,12 +44,11 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ContextInternal
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.DatasetFunctions(untypedLocalData, nodePath)
-import Spark.Core.Internal.DatasetStructures(UntypedLocalData)
-import Spark.Core.Internal.OpStructures(DataInputStamp(..))
+import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, nodeOpNode)
+import Spark.Core.Internal.OpStructures(DataInputStamp(..), NodeShape(..))
 import Spark.Core.Row
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
-import Spark.Core.Types
 import Spark.Core.Internal.Utilities
 
 returnPure :: forall a. SparkStatePure a -> SparkState a
@@ -117,7 +116,7 @@ waitForCompletion comp = do
   let obss = getObservables comp
   let trackedNodes = obss <&> \n ->
         (nodeId n, nodePath n,
-         unSQLType (nodeType n), nodePath n)
+         onShape (nodeOpNode n), nodePath n)
   nrs' <- _computationMultiStatus (cId comp) HS.empty trackedNodes
   -- Find the main result again in the list of everything.
   -- TODO: we actually do not need all the results, just target nodes.
@@ -330,7 +329,7 @@ _computationMultiStatus ::
   -- TODO: should we do all the nodes processed in this computation?
   HS.HashSet NodeId ->
   -- The list of nodes for which we have not had completion information so far.
-  [(NodeId, NodePath, DataType, NodePath)] ->
+  [(NodeId, NodePath, NodeShape, NodePath)] ->
   SparkState [(NodeId, Try Cell)]
 _computationMultiStatus _ _ [] = return []
 _computationMultiStatus cid done l = do
@@ -340,7 +339,7 @@ _computationMultiStatus cid done l = do
   let f (nid, _, _, _) = not $ HS.member nid done
   let needsProcessing = filter f l
   -- Poll a bunch of nodes to try to get a status update.
-  let statusl = _try (_computationStatus session cid) <$> needsProcessing :: [SparkState (NodeId, NodePath, DataType, PossibleNodeStatus)]
+  let statusl = _try (_computationStatus session cid) <$> needsProcessing :: [SparkState (NodeId, NodePath, NodeShape, PossibleNodeStatus)]
   status <- sequence statusl
   -- Update the state with the new data
   (updated, statusUpdate) <- returnPure $ updateCache cid status

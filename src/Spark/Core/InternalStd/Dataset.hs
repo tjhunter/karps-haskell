@@ -22,7 +22,6 @@ import Spark.Core.Internal.RowUtils
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.CachingUntyped
-import Spark.Core.Internal.FunctionsInternals(broadcastPair)
 import Spark.Proto.Std.Basic
 import qualified Spark.Proto.Row.Common as PRow
 

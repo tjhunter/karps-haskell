@@ -306,10 +306,10 @@ _prettyShowColOp (GenColStruct v) =
 
 -- A new column data structure.
 _emptyColData :: Dataset a -> SQLType b -> FieldPath -> ColumnData a b
-_emptyColData ds sqlt path = ColumnData {
+_emptyColData ds sqlt path' = ColumnData {
   _cOrigin = untypedDataset ds,
   _cType = unSQLType sqlt,
-  _cOp = GenColExtraction path,
+  _cOp = GenColExtraction path',
   _cReferingPath = Nothing
 }
 

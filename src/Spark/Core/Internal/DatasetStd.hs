@@ -95,7 +95,11 @@ placeholderBuilder = buildOpExtra "org.spark.Placeholder" f where
   f :: Placeholder -> Try CoreNodeInfo
   f (p @ (Placeholder loc dt)) = pure $ cniStandardOp loc "org.spark.Placeholder" dt p
 
--- Low-level broadcasting operator
+{-| Low-level operator that takes an observable and propagates it along the
+content of an existing dataset.
+
+Users are advised to use the Column-based `broadcast` function instead.
+-}
 broadcastPair :: Dataset a -> LocalData b -> Dataset (a, b)
 broadcastPair ds1 obs2 = forceRight $ fromBuilder2 ds1 obs2 broadcastPairBuilder (nodeLocality ds1) sqlt where
       sqlt = tupleType (nodeType ds1) (nodeType obs2)
