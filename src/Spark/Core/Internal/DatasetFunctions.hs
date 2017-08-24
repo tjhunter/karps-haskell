@@ -84,7 +84,7 @@ import Spark.Core.Internal.OpFunctions
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesGenerics
 import Spark.Core.Internal.TypesFunctions
-import Spark.Proto.Graph.All(OpExtra(..))
+import Spark.Proto.Graph(OpExtra(..))
 
 -- | (developer) The operation performed by this node.
 nodeOp :: ComputeNode loc a -> NodeOp

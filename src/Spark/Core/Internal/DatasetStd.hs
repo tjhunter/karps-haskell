@@ -23,8 +23,8 @@ import Spark.Core.Internal.TypesFunctions
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.RowUtils
-import Spark.Proto.Std.Basic
-import qualified Spark.Proto.Row.Common as PRow
+import qualified Spark.Proto.Std as PStd
+import qualified Spark.Proto.Row as PRow
 
 {-| Returns the union of two datasets.
 
@@ -86,14 +86,14 @@ literalBuilderD = buildOpExtra "org.spark.DistributedLiteral" f where
 
 
 placeholder :: forall loc a. (IsLocality loc) => SQLType a -> ComputeNode loc a
-placeholder sqlt = forceRight $ fromBuilder0Extra placeholderBuilder (Placeholder loc (unSQLType sqlt)) loct sqlt where
+placeholder sqlt = forceRight $ fromBuilder0Extra placeholderBuilder (PStd.Placeholder loc (unSQLType sqlt)) loct sqlt where
   loct = _getTypedLocality :: TypedLocality loc
   loc = unTypedLocality loct
 
 placeholderBuilder :: NodeBuilder
 placeholderBuilder = buildOpExtra "org.spark.Placeholder" f where
-  f :: Placeholder -> Try CoreNodeInfo
-  f (p @ (Placeholder loc dt)) = pure $ cniStandardOp loc "org.spark.Placeholder" dt p
+  f :: PStd.Placeholder -> Try CoreNodeInfo
+  f (p @ (PStd.Placeholder loc dt)) = pure $ cniStandardOp loc "org.spark.Placeholder" dt p
 
 {-| Low-level operator that takes an observable and propagates it along the
 content of an existing dataset.

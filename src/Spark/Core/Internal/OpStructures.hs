@@ -6,7 +6,30 @@
 A description of the operations that can be performed on
 nodes and columns.
 -}
-module Spark.Core.Internal.OpStructures where
+module Spark.Core.Internal.OpStructures(
+  SqlFunctionName,
+  UdafClassName,
+  OperatorName,
+  HdfsPath(..),
+  DataInputStamp(..),
+  Locality(..),
+  StandardOperator(..),
+  NodeShape(..),
+  CoreNodeInfo(..),
+  CoreNodeBuilder,
+  ColOp(..),
+  TransformField(..),
+  StructuredTransform(..),
+  UdafApplication(..),
+  AggOp(..),
+  AggField(..),
+  AggTransform(..),
+  SemiGroupOperator(..),
+  UniversalAggregatorOp(..),
+  Pointer(..),
+  NodeOp(..),
+  makeOperator
+) where
 
 import Data.Text as T
 import GHC.Generics (Generic)
@@ -17,7 +40,7 @@ import Data.Vector(Vector)
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
-import Spark.Proto.Graph.All(OpExtra(..))
+import Spark.Proto.Graph(OpExtra(..), Locality(..))
 import Spark.Core.Try
 
 {-| The name of a SQL function.
@@ -54,38 +77,29 @@ stamps.
 data DataInputStamp = DataInputStamp Text deriving (Eq, Show)
 
 
-{-| The invariant respected by a transform.
+-- {-| The invariant respected by a transform.
+--
+-- Depending on the value of the invariant, different optimizations
+-- may be available.
+-- -}
+-- data TransformInvariant =
+--     -- | This operator has no special property. It may depend on
+--     -- the partitioning layout, the number of partitions, the order
+--     -- of elements in the partitions, etc.
+--     -- This sort of operator is unwelcome in Karps...
+--     Opaque
+--     -- | This operator respects the canonical partition order, but may
+--     -- not have the same number of elements.
+--     -- For example, this could be a flatMap on an RDD (filter, etc.).
+--     -- This operator can be used locally with the signature a -> [a]
+--   | PartitioningInvariant
+--     -- | The strongest invariant. It respects the canonical partition order
+--     -- and it outputs the same number of elements.
+--     -- This is typically a map.
+--     -- This operator can be used locally with the signature a -> a
+--   | DirectPartitioningInvariant
 
-Depending on the value of the invariant, different optimizations
-may be available.
--}
-data TransformInvariant =
-    -- | This operator has no special property. It may depend on
-    -- the partitioning layout, the number of partitions, the order
-    -- of elements in the partitions, etc.
-    -- This sort of operator is unwelcome in Karps...
-    Opaque
-    -- | This operator respects the canonical partition order, but may
-    -- not have the same number of elements.
-    -- For example, this could be a flatMap on an RDD (filter, etc.).
-    -- This operator can be used locally with the signature a -> [a]
-  | PartitioningInvariant
-    -- | The strongest invariant. It respects the canonical partition order
-    -- and it outputs the same number of elements.
-    -- This is typically a map.
-    -- This operator can be used locally with the signature a -> a
-  | DirectPartitioningInvariant
 
-
--- | The dynamic value of locality.
--- There is still a tag on it, but it can be easily dropped.
-data Locality =
-    -- | The data associated to this node is local. It can be materialized
-    -- and accessed by the user.
-    Local
-    -- | The data associated to this node is distributed or not accessible
-    -- locally. It cannot be accessed by the user.
-  | Distributed deriving (Show, Eq)
 
 -- ********* PHYSICAL OPERATORS ***********
 -- These structures declare some operations that correspond to operations found
@@ -99,12 +113,12 @@ data StandardOperator = StandardOperator {
   soExtra :: !Value
 } deriving (Eq, Show)
 
--- | A scala method of a singleton object.
-data ScalaStaticFunctionApplication = ScalaStaticFunctionApplication {
-  sfaObjectName :: !T.Text,
-  sfaMethodName :: !T.Text
-  -- TODO add the input and output types?
-}
+-- -- | A scala method of a singleton object.
+-- data ScalaStaticFunctionApplication = ScalaStaticFunctionApplication {
+--   sfaObjectName :: !T.Text,
+--   sfaMethodName :: !T.Text
+--   -- TODO add the input and output types?
+-- }
 
 {-| The outside information of a node.
 
@@ -220,10 +234,10 @@ data SemiGroupOperator =
 -- These describe Dataset -> Dataset transforms.
 
 
-data DatasetTransformDesc =
-    DSScalaStaticFunction !ScalaStaticFunctionApplication
-  | DSStructuredTransform !ColOp
-  | DSOperator !StandardOperator
+-- data DatasetTransformDesc =
+--     DSScalaStaticFunction !ScalaStaticFunctionApplication
+--   | DSStructuredTransform !ColOp
+--   | DSOperator !StandardOperator
 
 
 -- ****** OBSERVABLE OPERATORS *******
@@ -332,12 +346,3 @@ instance FromJSON HdfsPath where
 instance FromJSON DataInputStamp where
   parseJSON (A.String p) = return (DataInputStamp p)
   parseJSON x = typeMismatch "DataInputStamp" x
-
-instance FromJSON Locality where
-  parseJSON (A.String x) | x == "LOCAL" = return Local
-  parseJSON (A.String x) | x == "DISTRIBUTED" = return Distributed
-  parseJSON x = typeMismatch "Locality" x
-
-instance ToJSON Locality where
-  toJSON Local = toJSON ("LOCAL" :: Text)
-  toJSON Distributed = toJSON ("DISTRIBUTED" :: Text)

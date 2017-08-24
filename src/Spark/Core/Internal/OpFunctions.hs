@@ -30,7 +30,7 @@ import Data.Char(isSymbol)
 import qualified Crypto.Hash.SHA256 as SHA
 
 import Spark.Core.Internal.OpStructures
-import Spark.Proto.Graph.All(OpExtra(..))
+import Spark.Proto.Graph(OpExtra(..))
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.TypesFunctions(arrayType')

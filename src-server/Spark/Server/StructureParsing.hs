@@ -13,12 +13,9 @@ import Debug.Trace
 import Control.Arrow((&&&))
 import qualified Data.Map.Strict as Map
 import qualified Data.Vector as V
-import Control.Monad(when, unless)
-import Data.Either(rights, lefts)
+import Control.Monad(when)
 import Data.Map.Strict(Map)
 import Data.Maybe(fromMaybe)
-import Spark.Proto.ApiInternal.PerformGraphTransform(PerformGraphTransform)
-import Spark.Proto.ApiInternal.GraphTransformResponse(GraphTransformResponse(..))
 import Spark.Server.Structures
 import Spark.Core.Internal.Utilities(myGroupBy, pretty)
 import Spark.Core.Internal.DatasetFunctions
@@ -29,11 +26,10 @@ import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.ContextInternal(parseNodeId)
-import qualified Spark.Proto.Graph.Node as PNode
-import qualified Spark.Proto.Graph.Graph as PGraph
-import Spark.Proto.ApiInternal.Common(NodeMapItem(..))
-import qualified Spark.Proto.ApiInternal.PerformGraphTransform as PGraphTransformRequest
-import Spark.Proto.Graph.All(OpExtra(..))
+import qualified Spark.Proto.Graph as PGraph
+import qualified Spark.Proto.ApiInternal as PApiInternal
+import Spark.Proto.ApiInternal(PerformGraphTransform(..), GraphTransformResponse(..))
+import Spark.Proto.Graph(OpExtra(..))
 import Spark.Core.Internal.AggregationFunctions(collectBuilder)
 import Spark.Core.Internal.DatasetStd(literalBuilderD)
 import Spark.Core.Types
@@ -44,18 +40,18 @@ TODO: add some notion of registry to handle unknown operations.
 -}
 parseInput :: PerformGraphTransform -> Try GraphTransform
 parseInput pgt = do
-  let requested = parseNodeId <$> PGraphTransformRequest.requestedPaths pgt
-  let nodes0 = PGraph.nodes . PGraphTransformRequest.functionalGraph $ pgt
+  let requested = parseNodeId <$> requestedPaths pgt
+  let nodes0 = PGraph.nodes . functionalGraph $ pgt
   -- As inputs, only keep the ids of the nodes that have no parents
   let inputs = _parseNodeId' <$> filter f nodes0 where
-         f n = case (PNode.parents n, PNode.logicalDependencies n) of
+         f n = case (PGraph.parents n, PGraph.logicalDependencies n) of
            (Just (_ : _), _) -> False
            (_, Just (_ : _)) -> False
            _ -> True
   let vertices = f <$> nodes0 where
         f n = Vertex (_parseNodeId' n) n
   let edges = concatMap f nodes0 where
-        f n = (g ParentEdge (PNode.parents n)) ++ (g LogicalEdge (PNode.logicalDependencies n)) where
+        f n = g ParentEdge (PGraph.parents n) ++ g LogicalEdge (PGraph.logicalDependencies n) where
              nid = _parseNodeId' n
              g' se np = Edge (parseNodeId np) nid se
              g _ Nothing = []
@@ -64,14 +60,15 @@ parseInput pgt = do
   cg' <- tryEither $ buildCGraphFromList vertices edges inputs requested
   -- Make a second graph that calls the builders
   cg2 <- computeGraphMapVertices cg' _buildNode'
-  let f1 (NodeMapItem nid p cid sid) = (nid, GlobalPath sid cid p)
-  let nodeMap' = myGroupBy (f1 <$> (fromMaybe [] (PGraphTransformRequest.availableNodes pgt)))
+  let f1 (PApiInternal.NodeMapItem nid p cid sid) = (nid, GlobalPath sid cid p)
+  let nodeMap' = myGroupBy (f1 <$> fromMaybe [] (availableNodes pgt))
   return GraphTransform {
-    gtSessionId = PGraphTransformRequest.session pgt,
-    gtComputationId = PGraphTransformRequest.computation pgt,
+    gtSessionId = PApiInternal.pgtSession pgt,
+    gtComputationId = PApiInternal.pgtComputation pgt,
     gtGraph = cg2,
     gtNodeMap = nodeMap'
   }
+
 
 {-| Writes the response. Nothing fancy here.
 -}
@@ -85,45 +82,45 @@ protoResponse (GTRFailure (GraphTransformFailure msg)) =
 -- Internal stuff
 
 data NodeWithDeps = NodeWithDeps {
-  nwdNode :: !PNode.Node,
+  nwdNode :: !PGraph.Node,
   nwdParents :: ![UntypedNode],
   nwdLogicalDeps :: ![UntypedNode]
 }
 
-_parseNodeId' :: PNode.Node -> VertexId
-_parseNodeId' = parseNodeId . PNode.path
+_parseNodeId' :: PGraph.Node -> VertexId
+_parseNodeId' = parseNodeId . PGraph.path
 
-_toNode :: UntypedNode -> PNode.Node
-_toNode un = PNode.Node {
-      PNode.locality = Just (unTypedLocality . nodeLocality $ un),
-      PNode.path = nodePath un,
-      PNode.opName = simpleShowOp (nodeOp un),
-      PNode.opExtra = Just (OpExtra (Just (pretty extra))),
-      PNode.parents = Just (nodePath <$> nodeParents un),
-      PNode.logicalDependencies = Just (nodePath <$> nodeLogicalDependencies un),
-      PNode.inferedType = unSQLType (nodeType un)
+_toNode :: UntypedNode -> PGraph.Node
+_toNode un = PGraph.Node {
+      PGraph.locality = Just (unTypedLocality . nodeLocality $ un),
+      PGraph.path = nodePath un,
+      PGraph.opName = simpleShowOp (nodeOp un),
+      PGraph.opExtra = Just (OpExtra (Just (pretty extra))),
+      PGraph.parents = Just (nodePath <$> nodeParents un),
+      PGraph.logicalDependencies = Just (nodePath <$> nodeLogicalDependencies un),
+      PGraph.inferedType = unSQLType (nodeType un)
     } where extra = extraNodeOpData (nodeOp un)
 
 _parseNode :: NodeWithDeps -> Try UntypedNode
 _parseNode nwd = do
   let n = nwdNode nwd
   let parentShapes = nodeShape <$> nwdParents nwd
-  --op <- _parseOp (PNode.opName n) (fromMaybe (OpExtra Nothing) (PNode.opExtra n))
-  cni <- _buildNode (PNode.opName n) (fromMaybe (OpExtra Nothing) (PNode.opExtra n)) parentShapes
+  --op <- _parseOp (PGraph.opName n) (fromMaybe (OpExtra Nothing) (PGraph.opExtra n))
+  cni <- _buildNode (PGraph.opName n) (fromMaybe (OpExtra Nothing) (PGraph.opExtra n)) parentShapes
   let tpe = nsType (cniShape cni)
-  --tpe <- _parseType (PNode.opName n) op (nwdParents nwd)
-  when (tpe /= PNode.inferedType n) $
-    fail $ "_parseNode: incompatible types: infered=" ++ show tpe ++ " suggested=" ++ show (PNode.inferedType n) ++ " path: " ++ show (PNode.path n)
+  --tpe <- _parseType (PGraph.opName n) op (nwdParents nwd)
+  when (tpe /= PGraph.inferedType n) $
+    fail $ "_parseNode: incompatible types: infered=" ++ show tpe ++ " suggested=" ++ show (PGraph.inferedType n) ++ " path: " ++ show (PGraph.path n)
   let un = ComputeNode {
     _cnNodeId = error "_parseNode: should not access missing id here",
     _cnOp = cniOp cni,
     _cnType = tpe,
     _cnParents = V.fromList (nwdParents nwd),
     _cnLogicalDeps = V.fromList (nwdLogicalDeps nwd),
-    _cnLocality = fromMaybe Local (PNode.locality n),
+    _cnLocality = fromMaybe Local (PGraph.locality n),
     _cnName = Nothing,
     _cnLogicalParents = Just (V.fromList (nwdParents nwd)),
-    _cnPath = PNode.path n
+    _cnPath = PGraph.path n
   }
   let un2 = trace ("_parseNode: before id assignment: un=" ++ show un) un
   let un' = updateNode un2 id
@@ -139,7 +136,7 @@ _builders = Map.fromList $ (nbName &&& nbBuilder) <$> [
     literalBuilderD
   ]
 
-_buildNode' ::  PNode.Node -> [(OperatorNode, StructureEdge)] -> Try OperatorNode
+_buildNode' ::  PGraph.Node -> [(OperatorNode, StructureEdge)] -> Try OperatorNode
 _buildNode' = error "_buildNode'"
 
 {-| The main builder function. -}

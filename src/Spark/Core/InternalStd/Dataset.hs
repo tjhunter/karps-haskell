@@ -8,22 +8,13 @@ This file contains all the operations that are then refered to by more
 module Spark.Core.InternalStd.Dataset where
 
 import qualified Data.Aeson as A
-import qualified Data.Vector as V
 
-import Spark.Core.Try
-import Spark.Core.Row
-import Spark.Core.Internal.TypesStructures
-import Spark.Core.Internal.TypesFunctions
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
-import Spark.Core.Internal.RowUtils
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.Caching
-import Spark.Core.Internal.CachingUntyped
-import Spark.Proto.Std.Basic
-import qualified Spark.Proto.Row.Common as PRow
 
 {-| Automatically caches the dataset on a need basis, and performs deallocation
 when the dataset is not required.

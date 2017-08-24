@@ -16,7 +16,6 @@ import Spark.Core.Internal.ContextInternal
 import Spark.Core.Context(defaultConf)
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.Utilities(show')
-import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DAGStructures
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()

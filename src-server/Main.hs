@@ -4,15 +4,11 @@ module Main where
 import Web.Scotty
 import Network.Wai.Middleware.RequestLogger
 import Control.Monad.IO.Class
-import qualified Data.Text as T
 import Data.Default
 
-
-import Spark.Proto.ApiInternal.PerformGraphTransform(PerformGraphTransform)
-import Spark.Proto.ApiInternal.GraphTransformResponse(GraphTransformResponse)
+import Spark.Proto.ApiInternal(GraphTransformResponse, PerformGraphTransform)
 import Spark.Server.StructureParsing(parseInput, protoResponse)
 import Spark.Server.Transform(transform)
-import Spark.Core.Try(Try)
 
 mainProcessing :: PerformGraphTransform -> GraphTransformResponse
 mainProcessing item =
@@ -26,7 +22,7 @@ mainProcessing item =
 
 main :: IO ()
 main = do
-  logger <- liftIO $ mkRequestLogger def { outputFormat = Apache FromHeader }
+  _ <- liftIO $ mkRequestLogger def { outputFormat = Apache FromHeader }
   scotty 1234 $ do
       get "/alive" $ do
           text "yep!"
