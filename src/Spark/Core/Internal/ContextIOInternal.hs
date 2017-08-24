@@ -116,14 +116,16 @@ waitForCompletion comp = do
   let obss = getObservables comp
   let trackedNodes = obss <&> \n ->
         (nodeId n, nodePath n,
-         onShape (nodeOpNode n), nodePath n)
+         onShape (nodeOpNode n))
   nrs' <- _computationMultiStatus (cId comp) HS.empty trackedNodes
+  logDebugN $ "waitForCompletion: nrs'=" <> show' nrs'
   -- Find the main result again in the list of everything.
   -- TODO: we actually do not need all the results, just target nodes.
   let targetNid = case cTerminalNodeIds comp of
         [nid] -> nid
         -- TODO: handle the case of multiple terminal targets
         l -> missing $ "waitForCompletion: missing multilist case with " <> show' l
+  logDebugN $ "waitForCompletion: targetNid=" <> show' targetNid
   case filter (\z -> fst z == targetNid) nrs' of
     [(_, tc)] -> return tc
     l -> return $ tryError $ "Expected single result, got " <> show' l
@@ -298,10 +300,11 @@ _sendComputation session comp = do
 
 _createComputationRequest :: Computation -> A.Value
 _createComputationRequest comp =
+  -- TODO replace by the proto
   object [
     "session" .= toJSON (cSessionId comp),
     "computation" .= toJSON (cId comp),
-    "requested_computation_old" .= toJSON (cId comp),
+    "requestedComputation" .= toJSON (cId comp),
     "graph" .= object [
       "nodes" .= toJSON (cNodes comp)
     ]]
@@ -329,15 +332,17 @@ _computationMultiStatus ::
   -- TODO: should we do all the nodes processed in this computation?
   HS.HashSet NodeId ->
   -- The list of nodes for which we have not had completion information so far.
-  [(NodeId, NodePath, NodeShape, NodePath)] ->
+  [(NodeId, NodePath, NodeShape)] ->
   SparkState [(NodeId, Try Cell)]
 _computationMultiStatus _ _ [] = return []
-_computationMultiStatus cid done l = do
+_computationMultiStatus cid done l0 = do
   session <- get
+  -- TODO: doing some hacks here to accomodate for some old code
+  let l' = f <$> l0 where f (nid, np, ns) = (nid, np, ns, np)
   -- Find the nodes that still need processing (i.e. that have not previously
   -- finished with a success)
   let f (nid, _, _, _) = not $ HS.member nid done
-  let needsProcessing = filter f l
+  let needsProcessing = filter f l'
   -- Poll a bunch of nodes to try to get a status update.
   let statusl = _try (_computationStatus session cid) <$> needsProcessing :: [SparkState (NodeId, NodePath, NodeShape, PossibleNodeStatus)]
   status <- sequence statusl
@@ -362,7 +367,8 @@ _computationMultiStatus cid done l = do
     _ <- liftIO $ threadDelay (delayMillis * 1000)
     -- TODO: this chaining is certainly not tail-recursive
     -- How much of a memory leak is it?
-    reminder <- _computationMultiStatus cid updatedNids stillNeedsProcessing
+    let stillNeedsProcessing' = f' <$> stillNeedsProcessing where f' (nid, np, ns, _) = (nid, np, ns)
+    reminder <- _computationMultiStatus cid updatedNids stillNeedsProcessing'
     return $ updated ++ reminder
 
 _try :: (Monad m) => (y -> m z) -> (x, x', x'', y) -> m (x, x', x'', z)

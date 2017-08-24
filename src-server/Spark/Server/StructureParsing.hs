@@ -11,14 +11,12 @@ import Spark.Core.Try
 import Data.Text(Text)
 import Debug.Trace
 import Control.Arrow((&&&))
-import qualified Data.Text as T
+import qualified Data.Map.Strict as Map
+import qualified Data.Vector as V
 import Control.Monad(when, unless)
 import Data.Either(rights, lefts)
 import Data.Map.Strict(Map)
 import Data.Maybe(fromMaybe)
-import qualified Data.Map.Strict as Map
-import qualified Data.ByteString.Char8 as C8
-import qualified Data.Vector as V
 import Spark.Proto.ApiInternal.PerformGraphTransform(PerformGraphTransform)
 import Spark.Proto.ApiInternal.GraphTransformResponse(GraphTransformResponse(..))
 import Spark.Server.Structures
@@ -30,6 +28,7 @@ import Spark.Core.Internal.OpFunctions
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.NodeBuilder
+import Spark.Core.Internal.ContextInternal(parseNodeId)
 import qualified Spark.Proto.Graph.Node as PNode
 import qualified Spark.Proto.Graph.Graph as PGraph
 import Spark.Proto.ApiInternal.Common(NodeMapItem(..))
@@ -45,7 +44,7 @@ TODO: add some notion of registry to handle unknown operations.
 -}
 parseInput :: PerformGraphTransform -> Try GraphTransform
 parseInput pgt = do
-  let requested = _parseNodeId <$> PGraphTransformRequest.requestedPaths pgt
+  let requested = parseNodeId <$> PGraphTransformRequest.requestedPaths pgt
   let nodes0 = PGraph.nodes . PGraphTransformRequest.functionalGraph $ pgt
   -- As inputs, only keep the ids of the nodes that have no parents
   let inputs = _parseNodeId' <$> filter f nodes0 where
@@ -58,7 +57,7 @@ parseInput pgt = do
   let edges = concatMap f nodes0 where
         f n = (g ParentEdge (PNode.parents n)) ++ (g LogicalEdge (PNode.logicalDependencies n)) where
              nid = _parseNodeId' n
-             g' se np = Edge (_parseNodeId np) nid se
+             g' se np = Edge (parseNodeId np) nid se
              g _ Nothing = []
              g se (Just l) = g' se <$> l
   -- Make a first graph that checks the topology
@@ -91,11 +90,8 @@ data NodeWithDeps = NodeWithDeps {
   nwdLogicalDeps :: ![UntypedNode]
 }
 
-_parseNodeId :: NodePath -> VertexId
-_parseNodeId = VertexId . C8.pack . T.unpack . prettyNodePath
-
 _parseNodeId' :: PNode.Node -> VertexId
-_parseNodeId' = _parseNodeId . PNode.path
+_parseNodeId' = parseNodeId . PNode.path
 
 _toNode :: UntypedNode -> PNode.Node
 _toNode un = PNode.Node {

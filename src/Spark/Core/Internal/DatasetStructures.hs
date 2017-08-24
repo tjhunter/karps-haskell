@@ -87,6 +87,7 @@ nodeOpNode cn = OperatorNode {
       }
     }
 
+
 nodeContext :: ComputeNode loc a -> NodeContext
 nodeContext cn = NodeContext {
     ncParents = nodeOpNode <$> V.toList (_cnParents cn),

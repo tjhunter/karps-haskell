@@ -25,20 +25,14 @@ import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 import qualified Data.Text as T
 import Data.Vector(Vector)
-import Data.List(sortBy)
-import Data.Maybe
-import Data.Foldable(toList)
-import Data.Text(Text)
 import Control.Arrow((&&&))
 import Control.Monad.Except
 import Formatting
-import Control.Monad.Identity
 
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.Utilities
 
 
-import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DAGFunctions
 
 {-| A DAG of computation nodes.
@@ -51,6 +45,7 @@ the inputs are the start points, and the outputs are the end points of the
 graph.
 
 -}
+-- TODO: hide the constructor
 data ComputeDag v e = ComputeDag {
   -- The edges that make up the DAG
   cdEdges :: !(AdjacencyMap v e),
@@ -132,6 +127,7 @@ buildCGraphFromList vxs eds inputs outputs = do
 graphDataLexico :: ComputeDag v e -> [v]
 graphDataLexico cd = vertexData <$> toList (cdVertices cd)
 
+
 computeGraphMapVertices :: forall m v e v2. (HasCallStack, Show v2, Monad m) =>
   ComputeDag v e -> -- The start graph
   (v -> [(v2,e)] -> m v2) -> -- The transform
@@ -153,10 +149,11 @@ computeGraphMapVertices cd fun = do
 -- one is missing.
 _getSubsetVertex :: forall v m. (Monad m) => Vector (Vertex v) -> Vector VertexId -> m (Vector (Vertex v))
 _getSubsetVertex vxs vids =
-  let vertexById = myGroupBy $ (vertexId &&& id) <$> (V.toList vxs)
+  let vertexById = myGroupBy $ (vertexId &&& id) <$> V.toList vxs
       f :: VertexId -> m (Vertex v)
       f vid = case M.lookup vid vertexById of
         Just [vx] -> pure vx
+        -- A failure here is a construction error of the graph.
         _ -> fail . T.unpack $ sformat ("buildCGraphFromList: a vertex id:"%sh%" is not part of the graph.") vid
   in sequence $ f <$> vids
 

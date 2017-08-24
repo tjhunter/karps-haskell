@@ -53,6 +53,11 @@ run s f = it s $ do
   closeSparkSessionDef
   return ()
 
+xrun :: String -> IO () -> SpecWith (Arg (IO ()))
+xrun s f = it s $ do
+  pendingWith s
+  return ()
+
 spec :: Spec
 spec = do
   describe "Integration test - sum on ints" $ do

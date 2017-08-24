@@ -42,7 +42,6 @@ import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.StructuresInternal(emptyFieldPath)
 import Spark.Core.Types
 import Spark.Core.Try
-import Spark.Proto.Graph.All(OpExtra)
 
 {-| The sum of all the elements in a column.
 

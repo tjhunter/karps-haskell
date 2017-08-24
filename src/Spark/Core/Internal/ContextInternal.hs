@@ -20,11 +20,16 @@ module Spark.Core.Internal.ContextInternal(
   getObservables,
   insertSourceInfo,
   updateCache,
-  convertToTiedGraph
+  convertToTiedGraph,
+  parseNodeId
 ) where
 
 import Control.Monad.State(get, put)
 import Control.Monad(when)
+import Data.Functor.Identity(runIdentity)
+import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as C8
+import qualified Data.Vector as V
 import Data.Text(pack)
 import Data.Maybe(mapMaybe, catMaybes)
 import Data.Either(isRight)
@@ -46,6 +51,7 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
+import Spark.Core.StructuresInternal(prettyNodePath)
 import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
 import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..))
 -- Required to import the instances.
@@ -118,8 +124,9 @@ buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
   dagWithPaths <- traceHint "buildComputationGraph: res=" $ assignPathsUntyped (traceHint "buildComputationGraph: cg=" cg)
-  let cg' = mapVertexData nodeOpNode dagWithPaths
-  return cg'
+  dagWithCorrectIds <- _usePathsForIds dagWithPaths
+  -- let cg' = mapVertexData nodeOpNode dagWithCorrectIds
+  return dagWithCorrectIds
 
 {-| Performs all the operations that are done on the compute graph:
 
@@ -132,11 +139,8 @@ This could all be done on the server side at this point.
 -}
 performGraphTransforms :: SparkSession -> ComputeGraph -> Try ComputeGraph
 performGraphTransforms session cg = do
-  -- Tie the nodes to ensure that the node IDs match the topology and
-  -- content of the graph.
-  -- TODO: make a special function for tying + pruning, it is easy to forget.
-  let tiedCg = _sanitizeGraph cg
-  let g = computeGraphToGraph tiedCg
+  -- The paths are used as vertex ids, so there is no need to tied the nodes.
+  let g = computeGraphToGraph cg
   let conf = ssConf session
   let pruned = if confUseNodePrunning conf
                then pruneGraphDefault (ssNodeCache session) g
@@ -153,17 +157,49 @@ performGraphTransforms session cg = do
     _ -> tryError $ sformat ("Found some caching errors: "%sh) failures
   -- TODO: we could add an extra pruning pass here
 
-{-| Takes a compute graph and reruns the ID computations to ensure that they
-are up to date.
--}
-_sanitizeGraph :: ComputeGraph -> ComputeGraph
-_sanitizeGraph = error "_sanitizeGraph" -- tieNodes cg
+{-| Wraps the path of a node as a vertex id. -}
+parseNodeId :: NodePath -> VertexId
+parseNodeId = VertexId . C8.pack . T.unpack . prettyNodePath
 
 convertToTiedGraph :: ComputeGraph -> TiedComputeGraph
-convertToTiedGraph = error "convertToTiedGraph"
+convertToTiedGraph cg =
+  computeGraphToGraph $ runIdentity (computeGraphMapVertices cg f) where
+    f on l = return n where
+          parents' = fst <$> filter (\(_, e) -> e == ParentEdge) l
+          logicalDeps = fst <$> filter (\(_, e) -> e == LogicalEdge) l
+          n = nodeFromContext on parents' logicalDeps
+
+{-| Switches the IDs of the graph from node ids to paths (which should be available and computed at that point) -}
+_usePathsForIds :: ComputeDag UntypedNode StructureEdge -> Try ComputeGraph
+_usePathsForIds d =
+  let g = computeGraphToGraph d
+      -- Collect the ids and the corresponding paths
+      vertexPairs = f <$> V.toList (gVertices g) where
+          f (Vertex vid n) = (vid, parseNodeId (nodePath n))
+      m = myGroupBy vertexPairs
+      replaceVid vid = case M.lookup vid m of
+          Just [vid'] -> return vid'
+          _ -> fail $ "_usePathsForIds: programming error: cannot find id " ++ show vid ++ " in map " ++ show m
+      replaceVertex (Vertex vid v) = Vertex <$> (replaceVid vid) <*> (pure v)
+      replaceEdge (Edge vid1 vid2 e) = Edge <$> (replaceVid vid1) <*> (replaceVid vid2) <*> (pure e)
+      replaceVE (VertexEdge v e) = VertexEdge <$> (replaceVertex v) <*> (replaceEdge e)
+      l :: Try ([(VertexId, V.Vector (VertexEdge StructureEdge UntypedNode))])
+      l = sequence (f' <$> (M.toList . gEdges $ g)) where
+          f' (vid, v) = (,) <$> replaceVid vid <*> sequence (replaceVE <$> v)
+  in do
+    l0 <- l
+    let m2 = M.fromList l0 :: AdjacencyMap UntypedNode StructureEdge
+    vertices <- sequence (replaceVertex <$> gVertices g)
+    let g2 = Graph { gEdges = m2, gVertices = vertices }
+    let cg2 = graphToComputeGraph g2
+    let cg' = mapVertexData nodeOpNode cg2
+    return cg'
 
 _convertToUntiedGraph :: TiedComputeGraph -> ComputeGraph
-_convertToUntiedGraph = error "_convertToUntiedGraph"
+_convertToUntiedGraph tcg =
+  graphToComputeGraph $ runIdentity (graphMapVertices tcg f) where
+    f n _ = pure (nodeOpNode n)
+
 
 _buildComputation :: SparkSession -> ComputeGraph -> Try Computation
 _buildComputation session cg =

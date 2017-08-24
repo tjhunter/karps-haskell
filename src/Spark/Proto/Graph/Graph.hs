@@ -9,6 +9,6 @@ import Spark.Proto.Graph.Node(Node)
 
 data Graph = Graph {
   nodes :: ![Node]
-} deriving (Show, Generic)
+} deriving (Show, Generic, Eq)
 instance FromJSON Graph
 instance ToJSON Graph

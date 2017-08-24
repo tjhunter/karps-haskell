@@ -34,6 +34,7 @@ module Spark.Core.Internal.DatasetFunctions(
   emptyDataset,
   emptyLocalData,
   emptyNodeStandard,
+  nodeFromContext,
   nodeId,
   nodeLogicalDependencies,
   nodeLogicalParents,
@@ -281,13 +282,28 @@ emptyDataset = _emptyNode
 emptyLocalData :: NodeOp -> SQLType a -> LocalData a
 emptyLocalData = _emptyNode
 
+nodeFromContext :: OperatorNode -> [UntypedNode] -> [UntypedNode] -> UntypedNode
+nodeFromContext on parents' dependencies = updateNode n id where
+  n = ComputeNode {
+    _cnNodeId = undefined,
+    _cnOp = cniOp (onNodeInfo on),
+    _cnType = nsType . cniShape . onNodeInfo $ on,
+    _cnParents = V.fromList parents',
+    _cnLogicalDeps = V.fromList dependencies,
+    _cnLocality = nsLocality . cniShape . onNodeInfo $ on,
+    _cnName = Nothing,
+    _cnLogicalParents = Nothing,
+    _cnPath = onPath on
+  }
+
 -- *********** function / object conversions *******
 
 fromBuilder0Extra :: A.ToJSON x => NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
 fromBuilder0Extra = _fromBuilder []
 
-fromBuilder0Extra' :: (A.ToJSON x, IsLocality loc) => NodeBuilder -> x -> Try (ComputeNode loc Cell)
-fromBuilder0Extra' = error "fromBuilder0Extra'"
+fromBuilder0Extra' :: forall x loc. (A.ToJSON x, IsLocality loc) => NodeBuilder -> x -> Try (ComputeNode loc Cell)
+fromBuilder0Extra' nb x = _fromBuilder' [] nb x loc where
+  loc = _getTypedLocality :: TypedLocality loc
 
 --fromBuilder0' :: NodeBuilder -> TypedLocality loc -> Try (ComputeNode loc Cell)
 
@@ -324,6 +340,24 @@ _fromBuilder l nb x tl sqlt = do
   let n2 = n `parents` l
   return n2
 
+-- TODO: code duplication with above
+_fromBuilder' :: A.ToJSON x => [UntypedNode] -> NodeBuilder -> x -> TypedLocality loc -> Try (ComputeNode loc Cell)
+_fromBuilder' l nb x tl = do
+  let json = A.toJSON x
+  let opExtra = if json == A.Null
+          then OpExtra Nothing
+          else OpExtra . Just . pretty $ json
+  let shapes = (cniShape . onNodeInfo . nodeOpNode) <$> l
+  cni <- nbBuilder nb opExtra shapes
+  let builtLocality = nsLocality (cniShape cni)
+  let expectedLocality = unTypedLocality tl
+  let builtType = nsType (cniShape cni)
+  -- Check that the final shape from the builder matches the shape provided.
+  when (builtLocality /= expectedLocality) $
+    fail $ "_fromBuilder: " ++ show (nbName nb) ++ ": built locality (" ++ show builtLocality ++ ") does not match expected locality (" ++ show expectedLocality ++ ")"
+  let n = _emptyNodeTyped tl (SQLType builtType) (cniOp cni)
+  let n2 = n `parents` l
+  return n2
 
 emptyNodeStandard :: forall loc a.
   TypedLocality loc -> SQLType a -> T.Text -> ComputeNode loc a

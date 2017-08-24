@@ -12,7 +12,7 @@ import Spark.Core.Column
 import Spark.Core.Row
 import Spark.Core.Functions
 import qualified Spark.Core.ColumnFunctions as C
-import Spark.Core.SimpleAddSpec(run)
+import Spark.Core.SimpleAddSpec(run, xrun)
 import Spark.Core.Internal.LocalDataFunctions(iPackTupleObs)
 import Spark.Core.Internal.DatasetFunctions(untypedLocalData)
 
@@ -28,7 +28,7 @@ myScaler col =
 spec :: Spec
 spec = do
   describe "local data operations" $ do
-    run "broadcastPair_struct" $ do
+    xrun "broadcastPair_struct" $ do
       let ds = dataset [1] :: Dataset Int
       let cnt = C.count (asCol ds)
       let c = collect (asCol ds .+ cnt)
@@ -44,7 +44,7 @@ spec = do
       let x2 = iPackTupleObs (x :| [x])
       res <- exec1Def x2
       res `shouldBe` rowCell [IntElement 1, IntElement 1]
-    run "BroadcastPair" $ do
+    xrun "BroadcastPair" $ do
       let x = 1 :: LocalData Int
       let ds = dataset [2, 3] :: Dataset Int
       let ds2 = broadcastPair ds x
@@ -52,7 +52,7 @@ spec = do
       res `shouldBe` [(2, 1), (3, 1)]
       -- TODO: this combines a lot of elements together.
   describe "columns - integration" $ do
-    run "mean" $ do
+    xrun "mean" $ do
       let ds = dataset [-1, 1] :: Dataset Double
       let c = myScaler (asCol ds)
       res <- exec1Def (collect c)

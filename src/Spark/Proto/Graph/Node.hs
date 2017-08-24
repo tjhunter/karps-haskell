@@ -19,12 +19,12 @@ data Node = Node {
   parents :: !(Maybe [NodePath]),
   logicalDependencies :: !(Maybe [NodePath]),
   inferedType :: !DataType
-} deriving (Show, Generic)
+} deriving (Show, Generic, Eq)
 instance FromJSON Node
 instance ToJSON Node
 
 data Graph = Graph {
   nodes :: ![Node]
-} deriving (Show, Generic)
+} deriving (Show, Generic, Eq)
 instance FromJSON Graph
 instance ToJSON Graph

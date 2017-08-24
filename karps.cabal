@@ -68,7 +68,6 @@ library
                        Spark.Core.Types,
                        Spark.IO.Inputs,
                        Spark.Proto.Std.Basic,
-                       Spark.Proto.Types,
                        Spark.Proto.Utils,
                        Spark.Proto.ApiInternal.Common,
                        Spark.Proto.ApiInternal.GraphTransformResponse,
@@ -198,7 +197,7 @@ test-suite karps-test-integration
                      , containers
                      , formatting
                      , karps
-                     , hspec == 2.*
+                     , hspec >= 2.0 && < 2.4
                      , text
                      , raw-strings-qq
                      , QuickCheck
