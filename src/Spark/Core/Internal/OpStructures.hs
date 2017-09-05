@@ -9,6 +9,7 @@ nodes and columns.
 module Spark.Core.Internal.OpStructures(
   SqlFunctionName,
   UdafClassName,
+  UdfClassName,
   OperatorName,
   HdfsPath(..),
   DataInputStamp(..),
@@ -28,7 +29,8 @@ module Spark.Core.Internal.OpStructures(
   UniversalAggregatorOp(..),
   Pointer(..),
   NodeOp(..),
-  makeOperator
+  makeOperator,
+  coreNodeInfo
 ) where
 
 import Data.Text as T
@@ -39,6 +41,7 @@ import qualified Data.Aeson as A
 import Data.Vector(Vector)
 
 import Spark.Core.StructuresInternal
+import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
 import Spark.Proto.Graph(OpExtra(..), Locality(..))
 import Spark.Core.Try
@@ -52,6 +55,10 @@ type SqlFunctionName = T.Text
 {-| The classpath of a UDAF.
 -}
 type UdafClassName = T.Text
+
+{-| The name of a UDF.
+-}
+type UdfClassName = T.Text
 
 {-| The name of an operator defined in Karps.
 -}
@@ -144,6 +151,16 @@ data CoreNodeInfo = CoreNodeInfo {
   cniOp :: !NodeOp
 } deriving (Eq, Show)
 
+coreNodeInfo :: DataType -> Locality -> NodeOp -> CoreNodeInfo
+coreNodeInfo dt loc op =
+    CoreNodeInfo {
+      cniShape = NodeShape {
+        nsType = dt,
+        nsLocality = loc
+      },
+      cniOp = op
+    }
+
 type CoreNodeBuilder = OpExtra -> [NodeShape] -> Try CoreNodeInfo
 
 -- | The different kinds of column operations that are understood by the
@@ -167,6 +184,7 @@ data ColOp =
     -- TODO(kps) use a cell instead, or a cell with type.
   | ColLit !DataType !Value
     -- | A structure.
+    -- TODO: have a function for constructor with NonEmpty
   | ColStruct !(Vector TransformField)
   deriving (Eq, Show)
 
@@ -192,7 +210,7 @@ data AggOp =
     -- The name of the UDAF and the field path to apply it onto.
     AggUdaf !UdafApplication !UdafClassName !FieldPath
     -- A column function that can be applied (sum, max, etc.)
-  | AggFunction !SqlFunctionName !(Vector FieldPath)
+  | AggFunction !SqlFunctionName !FieldPath
   | AggStruct !(Vector AggField)
   deriving (Eq, Show)
 
@@ -203,7 +221,7 @@ data AggField = AggField {
   afValue :: !AggOp
 } deriving (Eq, Show)
 
-{-|
+{-| The different sorts of aggregations supported in the engine.
 -}
 data AggTransform =
     OpaqueAggTransform !StandardOperator
@@ -259,9 +277,9 @@ data UniversalAggregatorOp = UniversalAggregatorOp {
 -- TODO: remove the locality, carried at the core.
 data NodeOp2 =
   -- empty -> local
-    NodeLocalLiteral !DataType !Value
+    NodeLocalLiteral !DataType !Cell
   -- empty -> distributed
-  | NodeDistributedLiteral !DataType !(Vector Value)
+  | NodeDistributedLiteral !DataType !(Vector Cell)
   -- distributed -> local
   | NodeStructuredAggregation !AggOp !(Maybe UniversalAggregatorOp)
   -- distributed -> distributed or local -> local
@@ -273,6 +291,7 @@ data NodeOp2 =
 {-| A pointer to a node that is assumed to be already computed.
 -}
 -- TODO this is encoded as proto
+-- TODO remove the node shape, it is not a proto.
 data Pointer = Pointer {
   computation :: !ComputationID,
   path :: !NodePath,
@@ -318,6 +337,7 @@ data NodeOp =
     -- | A structured transform, performed either on a local node or a
     -- distributed node.
   | NodeStructuredTransform !ColOp
+  | NodeLocalStructuredTransform !ColOp
     -- | A distributed dataset (with no partition information)
   | NodeDistributedLit !DataType !(Vector Value)
     -- | An opaque distributed operator.

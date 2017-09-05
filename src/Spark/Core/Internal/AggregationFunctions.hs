@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 -- A number of standard aggregation functions.
+-- TODO: completely redo the module based on the builders.
 
 module Spark.Core.Internal.AggregationFunctions(
   -- Standard library
@@ -24,7 +25,6 @@ module Spark.Core.Internal.AggregationFunctions(
 import Prelude hiding(sum)
 import Data.Aeson(Value(Null))
 import qualified Data.Text as T
-import qualified Data.Vector as V
 import Debug.Trace(trace)
 
 import Spark.Core.Internal.DatasetStructures
@@ -42,6 +42,7 @@ import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.StructuresInternal(emptyFieldPath)
 import Spark.Core.Types
 import Spark.Core.Try
+
 
 {-| The sum of all the elements in a column.
 
@@ -108,7 +109,7 @@ data UniversalAggregator a buff = UniversalAggregator {
 _sumAgg' :: DataType -> AggTry UniversalAggregatorOp
 _sumAgg' dt = pure UniversalAggregatorOp {
     uaoMergeType = dt,
-    uaoInitialOuter = InnerAggOp $ AggFunction "SUM" (V.singleton emptyFieldPath),
+    uaoInitialOuter = InnerAggOp $ AggFunction "SUM" emptyFieldPath,
     uaoMergeBuffer = ColumnSemiGroupLaw "SUM_SL"
   }
 
@@ -117,7 +118,7 @@ _countAgg' :: DataType -> AggTry UniversalAggregatorOp
 _countAgg' _ = pure UniversalAggregatorOp {
     -- TODO(kps) switch to BigInt
     uaoMergeType = StrictType IntType,
-    uaoInitialOuter = InnerAggOp $ AggFunction "COUNT" (V.singleton emptyFieldPath),
+    uaoInitialOuter = InnerAggOp $ AggFunction "COUNT" emptyFieldPath,
     uaoMergeBuffer = ColumnSemiGroupLaw "SUM"
   }
 

@@ -7,14 +7,23 @@ and verifying graphs.
 module Spark.Core.Internal.NodeBuilder(
   BuilderFunction,
   NodeBuilder(..),
+  -- Basic tools
+  cniStandardOp,
+  -- No parent
   buildOpExtra,
+  -- One parent
   buildOp1,
-  buildOp2,
+  buildOp1Extra,
   buildOpD,
+  buildOpDExtra,
   buildOpL,
+  buildOpLExtra,
+  -- Two parents
+  buildOp2,
   buildOpDD,
   buildOpDL,
-  cniStandardOp
+  -- Three parents
+  buildOp3,
 ) where
 
 import qualified Data.Aeson as A
@@ -58,6 +67,12 @@ buildOp1 opName f = NodeBuilder opName f' where
   f' _ [ns] = f ns
   f' _ l = fail $ "buildOp1: " ++ show opName ++ ": got extra parents: " ++ show l
 
+buildOp1Extra :: A.FromJSON a => Text -> (NodeShape -> a -> Try CoreNodeInfo) -> NodeBuilder
+buildOp1Extra opName f = untypedBuilder $ TypedNodeBuilder opName f' where
+  f' _ [] = fail $ "buildOp1Extra: " ++ show opName ++ ": missing parents "
+  f' a [ns] = f ns a
+  f' _ l = fail $ "buildOp1Extra: " ++ show opName ++ ": got extra parents: " ++ show l
+
 {-| Takes one argument, no extra.
 -}
 buildOp2 :: Text -> (NodeShape -> NodeShape -> Try CoreNodeInfo) -> NodeBuilder
@@ -66,12 +81,24 @@ buildOp2 opName f = NodeBuilder opName f' where
   f' _ [ns1, ns2] = f ns1 ns2
   f' _ l = fail $ "buildOp2: " ++ show opName ++ ": got extra parents: " ++ show l
 
+{-| Takes one argument, no extra.
+-}
+buildOp3 :: Text -> (NodeShape -> NodeShape -> NodeShape -> Try CoreNodeInfo) -> NodeBuilder
+buildOp3 opName f = NodeBuilder opName f' where
+  f' _ [ns1, ns2, ns3] = f ns1 ns2 ns3
+  f' _ l = fail $ "buildOp3: " ++ show opName ++ ": expected 3 parent nodes, but got: " ++ show l
+
 {-| Takes one dataframe, no extra.
 -}
 buildOpD :: Text -> (DataType -> Try CoreNodeInfo) -> NodeBuilder
 -- TODO check that there is no extra
 buildOpD opName f = buildOp1 opName f' where
   f' (NodeShape dt Local) = fail $ "buildOpD: " ++ show opName ++ ": expected distributed node, but got a local node of type " ++ show dt ++ " instead."
+  f' (NodeShape dt Distributed) = f dt
+
+buildOpDExtra :: A.FromJSON a => Text -> (DataType -> a -> Try CoreNodeInfo) -> NodeBuilder
+buildOpDExtra opName f = buildOp1Extra opName f' where
+  f' (NodeShape dt Local) = fail $ "buildOpDExtra: " ++ show opName ++ ": expected distributed node, but got a local node of type " ++ show dt ++ " instead."
   f' (NodeShape dt Distributed) = f dt
 
 {-| Takes two dataframes, no extra.
@@ -97,6 +124,13 @@ buildOpL :: Text -> (DataType -> Try CoreNodeInfo) -> NodeBuilder
 buildOpL opName f = buildOp1 opName f' where
   f' (NodeShape dt Local) = f dt
   f' (NodeShape dt Distributed) = fail $ "buildOpD: " ++ show opName ++ ": expected local node, but got a distributed node of type " ++ show dt ++ " instead."
+
+buildOpLExtra :: A.FromJSON a => Text -> (DataType -> a -> Try CoreNodeInfo) -> NodeBuilder
+buildOpLExtra opName f =buildOp1Extra opName f' where
+  f' (NodeShape dt Distributed) = fail $ "buildOpLExtra: " ++ show opName ++ ": expected local node, but got a distributed node of type " ++ show dt ++ " instead."
+  f' (NodeShape dt Local) = f dt
+
+
 
 {-| Converts a typed builder to an untyped builder.
 -}

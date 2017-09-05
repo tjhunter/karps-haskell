@@ -111,6 +111,7 @@ These nodes are meant to be used after path resolution.
 data OperatorNode = OperatorNode {
   {-| The ID of the node.
   Lazy because it may be expensive to compute.
+  -- TODO: it should not be here?
   -}
   onId :: NodeId,
   {-| The fully resolved path of the node.

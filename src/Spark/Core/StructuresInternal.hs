@@ -18,7 +18,10 @@ module Spark.Core.StructuresInternal(
   nullFieldPath,
   headFieldPath,
   fieldPath,
+  fieldPath',
   prettyNodePath,
+  fieldPathToProto,
+  fieldPathFromProto,
 ) where
 
 import qualified Data.Text as T
@@ -34,6 +37,7 @@ import qualified Data.Vector as V
 import Data.Text.Encoding as E
 
 import Spark.Core.Internal.Utilities
+import Spark.Proto.StructuredTransform(ColumnExtraction(..))
 
 -- | The name of a node (without path information)
 newtype NodeName = NodeName { unNodeName :: T.Text } deriving (Eq, Ord)
@@ -62,10 +66,16 @@ data ComputationID = ComputationID {
 } deriving (Eq, Show, Generic)
 
 
+fieldPathToProto :: FieldPath -> ColumnExtraction
+fieldPathToProto (FieldPath v) = ColumnExtraction (unFieldName <$> V.toList v)
+
+fieldPathFromProto :: ColumnExtraction -> FieldPath
+fieldPathFromProto (ColumnExtraction l) = FieldPath (FieldName <$> V.fromList l)
 
 -- | A safe constructor for field names that fixes all the issues relevant to
 -- SQL escaping
 -- TODO: proper implementation
+-- TODO: have fieldNameTo/FromProto
 fieldName :: T.Text -> Either String FieldName
 fieldName = Right . FieldName
 
@@ -87,6 +97,9 @@ nullFieldPath = V.null . unFieldPath
 headFieldPath :: FieldPath -> Maybe FieldName
 headFieldPath (FieldPath v) | V.null v = Nothing
 headFieldPath (FieldPath v) = Just $ V.head v
+
+fieldPath' :: [FieldName] -> FieldPath
+fieldPath' = FieldPath . V.fromList
 
 -- | The concatenated path. This is the inverse function of fieldPath.
 -- | TODO: this one should be hidden?

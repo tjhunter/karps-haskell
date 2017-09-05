@@ -12,6 +12,7 @@
 
 module Spark.Core.Internal.ContextInternal(
   FinalResult,
+  TransformDetails(..),
   inputSourcesRead,
   prepareComputation,
   buildComputationGraph,
@@ -43,7 +44,7 @@ import Spark.Core.Dataset
 import Spark.Core.Try
 import Spark.Core.Row
 import Spark.Core.Types
-import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..))
+import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..), prettyNodePath)
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.CachingUntyped
 import Spark.Core.Internal.ContextStructures
@@ -51,7 +52,6 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
-import Spark.Core.StructuresInternal(prettyNodePath)
 import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
 import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..))
 -- Required to import the instances.
@@ -60,10 +60,37 @@ import Spark.Core.Internal.DAGFunctions(buildVertexList, graphMapVertices)
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
+import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry, structuredRegistry)
 import Spark.Core.Internal.Utilities
 
 -- The result from querying the status of a computation
 type FinalResult = Either NodeComputationFailure NodeComputationSuccess
+
+{-| The details from all the transform phases in Karps.
+
+The fields are in order of the compilation phases.
+-}
+-- TODO use in the transform below.
+data TransformDetails = TransformDetails {
+  -- | The initial graph
+  tdInitial :: !ComputeGraph,
+  {-| The first-order nodes (functional group by) have been reduced to
+  simple DAG operations.
+  -}
+  tdZeroOrder :: !(Try ComputeGraph),
+  {-| After source data insertion.
+  -}
+  tdWithSource :: !(Try ComputeGraph),
+  {-| Initial pruning to swap nodes that have been computed already -}
+  tdPruned :: !(Try ComputeGraph),
+  {-| The autocache requests have been fullfilled -}
+  tdAutocache :: !(Try ComputeGraph),
+  {-| Caching has been checked. -}
+  tdCacheCheck :: !(Try ComputeGraph),
+  {-| The final graph that contains the operations targeted to specific
+  devices. -}
+  tdFinal :: !(Try ComputeGraph)
+}
 
 {-| Given a context for the computation and a graph of computation, builds a
 computation object.
@@ -324,3 +351,9 @@ _insertCacheUpdate cid nid p ns s = do
     let session' = session { ssNodeCache = m' }
     put session'
     return $ Just s
+
+_buildRegistry :: StructuredBuilderRegistry
+_buildRegistry = structuredRegistry cols udfs aggs where
+  cols = []
+  udfs = []
+  aggs = []

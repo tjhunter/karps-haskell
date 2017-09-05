@@ -80,6 +80,7 @@ library
                        Spark.Core.Internal.RowGenerics,
                        Spark.Core.Internal.RowStructures,
                        Spark.Core.Internal.RowUtils,
+                       Spark.Core.Internal.StructuredBuilder,
                        Spark.IO.Internal.InputGeneric,
                        Spark.IO.Internal.Json,
                        Spark.IO.Internal.OutputCommon

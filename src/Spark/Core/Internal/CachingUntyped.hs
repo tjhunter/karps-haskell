@@ -50,6 +50,7 @@ cachingType n = case nodeOp n of
   NodeOpaqueAggregator _ -> pure Stop
   NodeLocalLit _ _ -> pure Stop
   NodeStructuredTransform _ -> pure Through
+  NodeLocalStructuredTransform _ -> pure Stop
   NodeDistributedLit _ _ -> pure Through
   NodeDistributedOp so | soName so == opnameCache ->
     pure $ CacheOp (vertexToId n)

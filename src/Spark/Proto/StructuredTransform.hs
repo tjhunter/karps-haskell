@@ -29,3 +29,18 @@ data ColumnFunction = ColumnFunction {
 data ColumnExtraction = ColumnExtraction {
   path :: ![Text]
 } deriving (Eq, Show, Generic, FromJSON, ToJSON)
+
+data Aggregation = Aggregation {
+  op :: !(Maybe AggregationFunction),
+  struct :: !(Maybe AggregationStructure),
+  fieldName :: !(Maybe Text)
+} deriving (Eq, Show, Generic, FromJSON, ToJSON)
+
+data AggregationFunction = AggregationFunction {
+  functionName :: !Text,
+  inputs :: ![ColumnExtraction]
+} deriving (Eq, Show, Generic, FromJSON, ToJSON)
+
+data AggregationStructure = AggregationStructure {
+  fields :: ![Aggregation]
+} deriving (Eq, Show, Generic, FromJSON, ToJSON)

@@ -28,15 +28,17 @@ import Spark.Core.Internal.ColumnFunctions(untypedCol, colType, colOp, iUntypedC
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.LocalDataFunctions()
 import Spark.Core.Internal.FunctionsInternals
-import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields)
+import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields, extractFields)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Projections
 import Spark.Core.Internal.TypesStructures
+import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Try
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.CanRename
+import Spark.Proto.Std(Shuffle(..))
 
 {-| A dataset that has been partitioned according to some given field.
 -}
@@ -175,6 +177,7 @@ instance Show (GroupData key val) where
     s = sformat ("GroupData[key="%sh%", val="%sh%"]") (_gdKey gd) (_gdValue gd)
 
 -- ******** PRIVATE METHODS ********
+
 
 _keyCol :: GroupData key val -> UntypedColumnData
 _keyCol gd = ColumnData {

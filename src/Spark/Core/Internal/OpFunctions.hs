@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 
 module Spark.Core.Internal.OpFunctions(
@@ -13,6 +14,11 @@ module Spark.Core.Internal.OpFunctions(
   updateSourceStamp,
   prettyShowColFun,
   buildOp0Extra,
+  -- Serialization
+  aggOpToProto,
+  aggOpFromProto,
+  colOpToProto,
+  colOpFromProto,
   -- Basic builders:
   pointerBuilder,
 ) where
@@ -28,27 +34,33 @@ import Data.Text(Text)
 import Data.Aeson((.=), toJSON)
 import Data.Char(isSymbol)
 import qualified Crypto.Hash.SHA256 as SHA
+import Control.Monad(join)
+import Formatting
 
 import Spark.Core.Internal.OpStructures
+import qualified Spark.Core.Internal.OpStructures as OS
 import Spark.Proto.Graph(OpExtra(..))
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.TypesFunctions(arrayType')
 import Spark.Core.Try
-import Spark.Core.StructuresInternal(FieldName)
+import Spark.Core.StructuresInternal(FieldName(..), FieldPath(..), fieldPathToProto, unFieldName, fieldPathFromProto)
+import Spark.Proto.StructuredTransform(Aggregation(..), AggregationFunction(..), AggregationStructure(..), Column(..), ColumnStructure(..), ColumnFunction(..), ColumnExtraction(..))
+
 
 -- (internal)
 -- The serialized type of a node operation, as written in
 -- the JSON description.
 simpleShowOp :: NodeOp -> T.Text
-simpleShowOp (NodeLocalOp op) = soName op
-simpleShowOp (NodeDistributedOp op) = soName op
+simpleShowOp (NodeLocalOp op') = soName op'
+simpleShowOp (NodeDistributedOp op') = soName op'
 simpleShowOp (NodeLocalLit _ _) = "org.spark.LocalLiteral"
-simpleShowOp (NodeOpaqueAggregator op) = soName op
+simpleShowOp (NodeOpaqueAggregator op') = soName op'
 simpleShowOp (NodeAggregatorReduction ua) =
   _jsonShowAggTrans . uaoInitialOuter $ ua
 simpleShowOp (NodeAggregatorLocalReduction ua) = _jsonShowSGO . uaoMergeBuffer $ ua
 simpleShowOp (NodeStructuredTransform _) = "org.spark.Select"
+simpleShowOp (NodeLocalStructuredTransform _) = "org.spark.LocalStructuredTransform"
 simpleShowOp (NodeDistributedLit _ _) = "org.spark.DistributedLiteral"
 simpleShowOp (NodeGroupedReduction _) = "org.spark.GroupedReduction"
 simpleShowOp (NodeReduction _) = "org.spark.Reduction"
@@ -121,7 +133,7 @@ pointerBuilder = buildOpExtra "org.spark.PlaceholderCache" $ \(p @ (Pointer _ _ 
 
 
 _jsonShowAggTrans :: AggTransform -> Text
-_jsonShowAggTrans (OpaqueAggTransform op) = soName op
+_jsonShowAggTrans (OpaqueAggTransform op') = soName op'
 _jsonShowAggTrans (InnerAggOp _) = "org.spark.StructuredReduction"
 
 
@@ -134,12 +146,12 @@ _jsonShowSGO (ColumnSemiGroupLaw sfn) = sfn
 _prettyShowAggOp :: AggOp -> T.Text
 _prettyShowAggOp (AggUdaf _ ucn fp) = ucn <> "(" <> show' fp <> ")"
 _prettyShowAggOp (AggFunction sfn v) = prettyShowColFun sfn r where
-  r = V.toList (show' <$> v)
+  r = [show' v]
 _prettyShowAggOp (AggStruct v) =
   "struct(" <> T.intercalate "," (_prettyShowAggOp . afValue <$> V.toList v) <> ")"
 
 _prettyShowAggTrans :: AggTransform -> Text
-_prettyShowAggTrans (OpaqueAggTransform op) = soName op
+_prettyShowAggTrans (OpaqueAggTransform op') = soName op'
 _prettyShowAggTrans (InnerAggOp ao) = _prettyShowAggOp ao
 
 _prettyShowSGO :: SemiGroupOperator -> Text
@@ -158,6 +170,7 @@ extraNodeOpData (NodeLocalLit dt cell) =
   A.object [ "cellType" .= toJSON dt,
              "cell" .= toJSON cell]
 extraNodeOpData (NodeStructuredTransform st) = toJSON st
+extraNodeOpData (NodeLocalStructuredTransform st) = toJSON st
 extraNodeOpData (NodeDistributedLit dt lst) =
   -- The backend deals with all the details translating the augmented type
   -- as a SQL datatype.
@@ -179,7 +192,7 @@ extraNodeOpData (NodeAggregatorLocalReduction _) = A.Null -- TODO: should it sen
 extraNodeOpData (NodePointer p) =
     A.object [
       "computation" .= toJSON (computation p),
-      "localPath" .= toJSON (path p)
+      "localPath" .= toJSON (OS.path p)
     ]
 
 -- Adds the content of a node op to a hash.
@@ -189,9 +202,9 @@ extraNodeOpData (NodePointer p) =
 -- TODO: this depends on some implementation details such as the hashing
 -- function used by Aeson.
 hashUpdateNodeOp :: SHA.Ctx -> NodeOp -> SHA.Ctx
-hashUpdateNodeOp ctx op = _hashUpdateJson ctx $ A.object [
-  "op" .= simpleShowOp op,
-  "extra" .= extraNodeOpData op]
+hashUpdateNodeOp ctx op' = _hashUpdateJson ctx $ A.object [
+  "op" .= simpleShowOp op',
+  "extra" .= extraNodeOpData op']
 
 
 prettyShowColFun :: T.Text -> [Text] -> T.Text
@@ -212,6 +225,7 @@ _isSym txt = all isSymbol (T.unpack txt)
 instance A.ToJSON ColOp where
   toJSON = _colJson Nothing
 
+-- TODO: remove
 _colJson :: Maybe FieldName -> ColOp -> A.Value
 _colJson m co =
   let
@@ -236,10 +250,51 @@ _colJson m co =
           ]]
   in A.object (fs ++ x)
 
--- instance A.ToJSON AggTransform where
---   toJSON (OpaqueAggTransform so) = A.object [
---       "aggOpaqueTrans" .= toJSON so
---     ]
+colOpToProto :: ColOp -> Column
+colOpToProto = _colOpToProto Nothing
+
+_colOpToProto :: Maybe FieldName -> ColOp -> Column
+_colOpToProto fn (ColExtraction (FieldPath l)) =
+  (_colProto fn) {extraction=Just ColumnExtraction{path=p}} where
+    p = V.toList (unFieldName <$> l)
+_colOpToProto fn (ColFunction txt cols) =
+  (_colProto fn) {function=Just ColumnFunction{functionName=txt, inputs=l}} where
+    l = V.toList (_colOpToProto Nothing <$> cols)
+_colOpToProto _ (ColLit _ _) = error "_colOpToProto: literal"
+_colOpToProto fn (ColStruct v) =
+  (_colProto fn) {struct=Just ColumnStructure{fields=l}} where
+    f (TransformField fn' co) = _colOpToProto (Just fn') co
+    l = V.toList (f <$> v)
+
+_colProto :: Maybe FieldName -> Column
+_colProto fn = Column {struct=Nothing, function=Nothing, extraction=Nothing, fieldName=unFieldName <$> fn}
+
+colOpFromProto :: Column -> Try ColOp
+colOpFromProto c = snd <$> _fromProto' c where
+  _structFromProto :: ColumnStructure -> Try ColOp
+  _structFromProto ColumnStructure{fields=l} =
+    ColStruct . V.fromList <$> l2 where
+      l' = sequence (_fromProto' <$> l)
+      f (Nothing, _) = tryError $ sformat ("colOpFromProto: found a field with no name "%sh) l
+      f (Just fn, co) = pure $ TransformField fn co
+      l'' = (f <$>) <$> l'
+      l2 = join (sequence <$> l'')
+  _funFromProto :: ColumnFunction -> Try ColOp
+  _funFromProto (ColumnFunction fname l) =
+      ColFunction fname <$> sequence (_fromProto <$> V.fromList l)
+  _fromProto :: Column -> Try ColOp
+  _fromProto Column{struct=Just cs} = _structFromProto cs
+  _fromProto Column{function=Just f} = _funFromProto f
+  _fromProto Column{extraction=Just ce} =
+    pure . ColExtraction . fieldPathFromProto $ ce
+  _fromProto c' = tryError $ sformat ("colOpFromProto: cannot understand column struture "%sh) c'
+  _fromProto' :: Column -> Try (Maybe FieldName, ColOp)
+  _fromProto' (c' @ Column{fieldName=l}) = do
+    x <- _fromProto c'
+    return (FieldName <$> l, x)
+
+
+
 
 instance A.ToJSON UdafApplication where
   toJSON Algebraic = toJSON (T.pack "algebraic")
@@ -249,22 +304,59 @@ instance A.ToJSON AggField where
   toJSON (AggField fn aggOp) =
     A.object ["name" .= show' fn, "op" .= toJSON aggOp]
 
+-- instance A.ToJSON AggOp where
+--   toJSON (AggUdaf ua ucn fp) = A.object [
+--     "udaf" .= A.object [
+--       "udafApplication" .= toJSON ua,
+--       "className" .= ucn,
+--       "field" .= toJSON fp
+--     ]]
+--   toJSON (AggFunction sfn v) = A.object [
+--     "op" .= A.object [
+--       "functionName" .= toJSON sfn,
+--       "inputs" .= toJSON (_field <$> V.toList v)
+--     ]]
+--   toJSON (AggStruct v) = A.object [
+--     "struct" .= A.object [
+--       "fields" .= toJSON (_field <$> V.toList v)
+--     ]]
+
 instance A.ToJSON AggOp where
-  toJSON (AggUdaf ua ucn fp) = A.object [
-    "udaf" .= A.object [
-      "udafApplication" .= toJSON ua,
-      "className" .= ucn,
-      "field" .= toJSON fp
-    ]]
-  toJSON (AggFunction sfn v) = A.object [
-    "op" .= A.object [
-      "functionName" .= toJSON sfn,
-      "inputs" .= toJSON (_field <$> V.toList v)
-    ]]
-  toJSON (AggStruct v) = A.object [
-    "struct" .= A.object [
-      "fields" .= toJSON (_field <$> V.toList v)
-    ]]
+  toJSON = toJSON . aggOpToProto
+
+aggOpToProto :: AggOp -> Aggregation
+aggOpToProto AggUdaf{} = error "_aggOpToProto: not implemented: AggUdaf"
+aggOpToProto (AggFunction sfn v) = Aggregation {op=Just x, struct=Nothing, fieldName=Nothing} where
+  x = AggregationFunction {functionName=sfn, inputs=[fieldPathToProto v]}
+aggOpToProto (AggStruct v) = Aggregation { op = Nothing, struct=Just x, fieldName=Nothing} where
+  f :: AggField -> Aggregation
+  f (AggField n v') = (aggOpToProto v') {fieldName = Just (unFieldName n)}
+  x = AggregationStructure (f <$> V.toList v)
+
+aggOpFromProto :: Aggregation -> Try AggOp
+aggOpFromProto Aggregation{
+        op=Just af,
+        struct=Nothing,
+        fieldName=Nothing} =
+   _aggFunFromProto af
+aggOpFromProto Aggregation {
+      op=Nothing,
+      struct=Just s,
+      fieldName=Nothing} = _aggStructFromProto s
+aggOpFromProto x = tryError $ sformat ("_aggOpFromProto: deserialization failed on "%sh) x
+
+_aggFunFromProto :: AggregationFunction -> Try AggOp
+_aggFunFromProto AggregationFunction{functionName=sfn, inputs=[fpp]} =
+  pure $ AggFunction sfn (fieldPathFromProto fpp)
+_aggFunFromProto x = tryError $ sformat ("_aggFunFromProto: deserialization failed on "%sh) x
+
+_aggStructFromProto :: AggregationStructure -> Try AggOp
+_aggStructFromProto (AggregationStructure l) =   AggStruct . V.fromList <$> v where
+    f Aggregation{op=Just af, fieldName=Just fn} = AggField <$> pure (FieldName fn) <*> _aggFunFromProto af
+    f Aggregation{struct=Just s, fieldName=Just fn} = AggField <$> pure (FieldName fn) <*> _aggStructFromProto s
+    f x = tryError $ sformat ("_aggStructFromProto: deserialization failed on "%sh) x
+    v = sequence (f <$> l)
+
 
 _field :: A.ToJSON a => a -> A.Value
 _field fp = A.object ["path" .= fp]

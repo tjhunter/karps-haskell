@@ -34,18 +34,6 @@ module Spark.Core.Internal.ColumnFunctions(
   unColumn',
   column',
   tryCol',
-  -- -- Developer API (projection builders)
-  -- dynamicProjection,
-  -- stringToDynColProj,
-  -- pathToDynColProj,
-  -- colStaticProjToDynProj,
-  -- -- Developer API (projection transformers)
-  -- projectDSDyn,
-  -- projectDFDyn,
-  -- projectDsCol,
-  -- projectColCol,
-  -- projectColDynCol,
-  -- projectDColDCol,
   -- Public functions
   applyCol1,
   untypedCol,
@@ -284,6 +272,7 @@ homoColOp2 opName c1 c2 =
       _cType = _cType c1,
       _cOp = co,
       _cReferingPath = Nothing }
+
 
 makeColOp1 :: T.Text -> SQLType y -> Column ref x -> Column ref y
 makeColOp1 opName sqlt c =

@@ -27,7 +27,8 @@ module Spark.Core.Internal.DAGFunctions(
   reverseGraph,
   verticesAndEdges,
   graphFilterVertices,
-  pruneLexicographic
+  pruneLexicographic,
+  completeVertices
 ) where
 
 import qualified Data.Set as S
@@ -357,6 +358,17 @@ pruneLexicographic hvid l =
       allVertices = myGroupBy (f <$> l)
       allVertices' = M.map head allVertices
   in reverse $ _pruneLexicographic allVertices' S.empty [hvid]
+
+{-| Makes the vertex information (including node id) available as part of the
+vertex data.
+-}
+completeVertices :: forall e v. Graph v e -> Graph (Vertex v) e
+completeVertices g = Graph edges vertices where
+  f1 vx = vx {vertexData=vx}
+  vertices = f1 <$> gVertices g
+  edges = M.map (f <$>) (gEdges g) where
+    f :: VertexEdge e v -> VertexEdge e (Vertex v)
+    f (VertexEdge vx e) = VertexEdge (f1 vx) e
 
 -- Recursive traversal of the graph, dropping everything that looks suspiscious.
 _pruneLexicographic ::
