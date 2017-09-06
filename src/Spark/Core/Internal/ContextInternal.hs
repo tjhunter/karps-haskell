@@ -74,15 +74,15 @@ The fields are in order of the compilation phases.
 data TransformDetails = TransformDetails {
   -- | The initial graph
   tdInitial :: !ComputeGraph,
-  {-| The first-order nodes (functional group by) have been reduced to
-  simple DAG operations.
-  -}
-  tdZeroOrder :: !(Try ComputeGraph),
   {-| After source data insertion.
   -}
   tdWithSource :: !(Try ComputeGraph),
   {-| Initial pruning to swap nodes that have been computed already -}
   tdPruned :: !(Try ComputeGraph),
+  {-| The first-order nodes (functional group by) have been reduced to
+  simple DAG operations.
+  -}
+  tdZeroOrder :: !(Try ComputeGraph),
   {-| The autocache requests have been fullfilled -}
   tdAutocache :: !(Try ComputeGraph),
   {-| Caching has been checked. -}
@@ -195,6 +195,17 @@ convertToTiedGraph cg =
           parents' = fst <$> filter (\(_, e) -> e == ParentEdge) l
           logicalDeps = fst <$> filter (\(_, e) -> e == LogicalEdge) l
           n = nodeFromContext on parents' logicalDeps
+
+_defaultDetails :: ComputeGraph -> TransformDetails
+_defaultDetails cg = TransformDetails {
+    tdInitial = cg,
+    tdWithSource = mis,
+    tdPruned = mis,
+    tdZeroOrder = mis,
+    tdAutocache = mis,
+    tdCacheCheck = mis,
+    tdFinal = mis
+  } where mis = fail "Phase not computed yet"
 
 {-| Switches the IDs of the graph from node ids to paths (which should be available and computed at that point) -}
 _usePathsForIds :: ComputeDag UntypedNode StructureEdge -> Try ComputeGraph

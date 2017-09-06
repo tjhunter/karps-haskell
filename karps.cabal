@@ -83,6 +83,7 @@ library
                        Spark.Core.Internal.StructuredBuilder,
                        Spark.IO.Internal.InputGeneric,
                        Spark.IO.Internal.Json,
+                       Proto.Karps.Proto.Types,
                        Spark.IO.Internal.OutputCommon
   build-depends:       aeson,
                        aeson-pretty,
@@ -100,6 +101,8 @@ library
                        hashable,
                        lens,
                        monad-logger,
+                       proto-lens >= 0.2.2,
+                       proto-lens-protoc >= 0.2.2,
                        protobuf,
                        QuickCheck,
                        random,

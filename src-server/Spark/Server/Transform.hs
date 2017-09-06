@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {-| The data structures for the server part -}
-module Spark.Server.Transform where
+module Spark.Server.Transform(
+  transform
+) where
 
 
 import Data.HashMap.Strict as HM

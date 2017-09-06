@@ -171,3 +171,10 @@ The API and design goals are slightly more general than Spark's. A more thorough
 explanation can be found in the `INTRO.md` file.
 
 ## Developer tools
+
+Modifying the .proto files. These files are maintained in a separate project. Here are some steps to update the interface (from the base directory of karps-haskell)
+
+```bash
+rm -r src/Proto
+protoc --plugin=protoc-gen-haskell=`which proto-lens-protoc`     --haskell_out=src/ -I $KARPS/src/main/protobuf $KARPS/src/main/protobuf/karps/proto/*.proto $KARPS/src/main/protobuf/tensorflow/core/framework/*.proto
+```
