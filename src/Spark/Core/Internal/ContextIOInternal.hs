@@ -15,33 +15,30 @@ module Spark.Core.Internal.ContextIOInternal(
   computationStats
 ) where
 
-import Control.Concurrent(threadDelay)
-import Control.Lens((^.))
-import Control.Monad.State(mapStateT, get)
-import Control.Monad(forM, forM_)
-import Data.Aeson(toJSON, FromJSON, object, (.=))
-import Data.Functor.Identity(runIdentity)
-import Data.Text(Text, pack)
 import qualified Data.Text as T
 import qualified Network.Wreq as W
-import qualified Data.Aeson as A
-import Network.Wreq(responseBody)
-import Control.Monad.Trans(lift)
-import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
-import Control.Monad.Except(MonadError)
-import System.Random(randomIO)
-import Data.Word(Word8)
-import Data.Maybe(mapMaybe)
-import Control.Monad.IO.Class
-import GHC.Generics
--- import Formatting
-import Network.Wreq.Types(Postable)
-import Data.ByteString.Lazy(ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import Control.Concurrent(threadDelay)
+import Lens.Family2((^.))
+import Control.Monad(forM, forM_)
+import Control.Monad.State(mapStateT, get)
+import Control.Monad.Trans(lift)
+import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
+import Control.Monad.Except(MonadError)
+import Control.Monad.IO.Class
 import Data.ProtoLens.Message(Message)
+import Data.ByteString.Lazy(ByteString)
+import Data.Functor.Identity(runIdentity)
+import Data.Word(Word8)
+import Data.Maybe(mapMaybe)
+import Data.Text(Text, pack)
+import GHC.Generics
+import Network.Wreq(responseBody)
+import Network.Wreq.Types(Postable)
+import System.Random(randomIO)
 
 import Spark.Core.Dataset
 import Spark.Core.Internal.Client
@@ -180,7 +177,6 @@ data StampReturn = StampReturn {
   stampReturn :: !(Maybe Text)
 } deriving (Eq, Show, Generic)
 
-instance FromJSON StampReturn
 
 {-| Given a list of paths, checks each of these paths on the file system of the
 given Spark cluster to infer the status of these resources.
@@ -293,10 +289,10 @@ _compEndPointStatus sess compId =
 
 -- Ensures that the server has instantiated a session with the given ID.
 _ensureSession :: (MonadLoggerIO m) => SparkSession -> m ()
-_ensureSession session = do
-  let url = _sessionEndPoint session <> "/create"
-  _ <- _post url (toJSON 'a')
-  return ()
+_ensureSession session = undefined -- do
+  -- let url = _sessionEndPoint session <> "/create"
+  -- _ <- _post url (toJSON 'a')
+  -- return ()
 
 
 _sendComputation :: (MonadLoggerIO m) => SparkSession -> Computation -> m ()

@@ -11,8 +11,6 @@
 
 -- The generic implementation for the protocol that converts to
 -- and from SQL cells.
--- Going through JSON is not recommended because of precision loss
--- for the numbers, and other issues related to numbers.
 module Spark.Core.Internal.RowGenerics(
   ToSQL,
   valueToCell,

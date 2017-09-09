@@ -28,12 +28,11 @@ module Spark.Core.Internal.FunctionsInternals(
   colOpNoBroadcast
 ) where
 
-import Control.Arrow
-import Data.Aeson(toJSON)
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
 import qualified Data.Text as T
+import Control.Arrow
 import Formatting
 
 import Spark.Core.Internal.ColumnStructures

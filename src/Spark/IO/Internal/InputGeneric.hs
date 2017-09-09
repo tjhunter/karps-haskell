@@ -13,13 +13,10 @@ module Spark.IO.Internal.InputGeneric(
   genericWithSchema
 ) where
 
+import qualified Data.Map.Strict as M
+import qualified Data.Text as T
 import Data.Text(Text)
 import Data.String(IsString(..))
-import qualified Data.Map.Strict as M
-import qualified Data.Aeson as A
-import qualified Data.Text as T
-import Data.Aeson(toJSON, (.=))
--- import Debug.Trace
 
 import Spark.Core.Types
 import Spark.Core.Context
@@ -50,12 +47,6 @@ data InputOptionValue =
   | InputStringOption Text
   | InputBooleanOption Bool
   deriving (Eq, Show)
-
--- instance A.ToJSON InputOptionValue where
---   toJSON (InputIntOption i) = toJSON i
---   toJSON (InputDoubleOption d) = toJSON d
---   toJSON (InputStringOption s) = toJSON s
---   toJSON (InputBooleanOption b) = toJSON b
 
 newtype InputOptionKey = InputOptionKey { unInputOptionKey :: Text } deriving (Eq, Show, Ord)
 
@@ -157,38 +148,3 @@ _sourceDescriptionFromProto = undefined
 
 _sourceDescriptionToProto :: SourceDescription -> PIO.SourceDescription
 _sourceDescriptionToProto = undefined
-
--- instance A.ToJSON SparkPath where
---   toJSON (SparkPath p) = toJSON p
---
--- instance A.ToJSON DataSchema where
---   toJSON InferSchema = A.Null
---   toJSON (UseSchema dt) = toJSON dt
---
--- instance A.ToJSON DataFormat where
---   toJSON JsonFormat = "json"
---   toJSON TextFormat = "text"
---   toJSON CsvFormat = "csv"
---   toJSON (CustomSourceFormat s) = toJSON s
---
--- instance A.ToJSON SourceDescription where
---   toJSON sd = A.object ([
---                 "path" .= toJSON (inputPath sd),
---                 "source" .= toJSON (inputSource sd),
---                 "options" .= toJSON (f <$> M.toList (sdOptions sd))
---               ] ++ s ++ st) where
---                 s = case inputSchema sd of
---                   InferSchema -> []
---                   UseSchema sch -> ["schema" .= toJSON sch]
---                 st = case inputStamp sd of
---                   Nothing -> []
---                   Just txt -> ["stamp" .= toJSON txt]
---                 f (k, v) =
---                   let x = case v of
---                         InputIntOption _ -> "intValue"
---                         InputDoubleOption _ -> "doubleValue"
---                         InputStringOption _ -> "stringValue"
---                         InputBooleanOption _ -> "boolValue"
---                   in A.object [
---                        "key" .= unInputOptionKey k,
---                        x .= toJSON v ]

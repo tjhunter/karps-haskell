@@ -5,16 +5,11 @@
 {-| The data structures for the server part -}
 module Spark.Server.StructureParsing where
 
-import Spark.Core.StructuresInternal
-import Spark.Core.Dataset(UntypedNode)
-import Spark.Core.Internal.TypesFunctions()
-import Spark.Core.Try
-
+import qualified Data.Map.Strict as Map
+import qualified Data.Vector as V
 import Data.Text(Text)
 import Debug.Trace
 import Control.Arrow((&&&))
-import qualified Data.Map.Strict as Map
-import qualified Data.Vector as V
 import Control.Monad(when)
 import Data.Map.Strict(Map)
 import Data.Maybe(fromMaybe)
@@ -22,8 +17,12 @@ import Data.ProtoLens.Message(Message)
 import Lens.Family2 ((&), (.~), (^.), FoldLike)
 import Formatting
 
+import Spark.Core.StructuresInternal
+import Spark.Core.Dataset(UntypedNode)
+import Spark.Core.Internal.TypesFunctions()
+import Spark.Core.Try
 import Spark.Server.Structures
-import Spark.Core.Internal.Utilities(myGroupBy, pretty, sh)
+import Spark.Core.Internal.Utilities(myGroupBy, sh)
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures(ComputeNode(..), unTypedLocality, StructureEdge(..), OperatorNode(..))
 import Spark.Core.Internal.OpStructures

@@ -11,7 +11,6 @@ module Spark.Core.Internal.LocalDataFunctions(
   iPackTupleObs
 ) where
 
-import Data.Aeson(toJSON, Value(Null))
 import qualified Data.Text as T
 import qualified Data.List.NonEmpty as N
 import Control.Exception.Base(assert)

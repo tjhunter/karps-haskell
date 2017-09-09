@@ -4,7 +4,6 @@
 
 module Spark.Core.Internal.RowUtilsSpec where
 
-import Data.Aeson
 import Data.Maybe(fromJust)
 import Test.Hspec
 import Data.ByteString.Lazy(ByteString)

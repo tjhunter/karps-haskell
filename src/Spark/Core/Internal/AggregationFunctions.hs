@@ -23,7 +23,6 @@ module Spark.Core.Internal.AggregationFunctions(
 ) where
 
 import Prelude hiding(sum)
-import Data.Aeson(Value(Null))
 import qualified Data.Text as T
 import Debug.Trace(trace)
 

@@ -36,22 +36,15 @@ module Spark.Core.Internal.OpStructures(
   emptyExtra
 ) where
 
-import Data.Text as T
-import GHC.Generics (Generic)
-import Data.Aeson(Value, Value(Null), FromJSON, ToJSON, toJSON)
-import Data.Aeson.Types(typeMismatch)
 import Data.ByteString(ByteString)
--- import qualified Data.Aeson as A
+import Data.Text as T
 import Data.Vector(Vector)
 
--- import Proto.Karps.Proto.Graph(OpExtra(..))
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
-import Spark.Core.Try
 import qualified Proto.Karps.Proto.Graph as PG
-import qualified Proto.Karps.Proto.ApiInternal as PAI
 
 {-| The name of a SQL function.
 

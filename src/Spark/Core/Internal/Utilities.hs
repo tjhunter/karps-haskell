@@ -9,7 +9,6 @@
 module Spark.Core.Internal.Utilities(
   LB.HasCallStack,
   UnknownType,
-  pretty,
   myGroupBy,
   myGroupBy',
   missing,
@@ -17,7 +16,6 @@ module Spark.Core.Internal.Utilities(
   failure',
   forceRight,
   show',
-  encodeDeterministicPretty,
   withContext,
   strictList,
   traceHint,
@@ -26,10 +24,6 @@ module Spark.Core.Internal.Utilities(
   (<>)
   ) where
 
-import Data.Aeson
-import Data.Aeson.Encode.Pretty
-import qualified Data.ByteString.Lazy.Char8 as Char8
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as T
 import qualified Formatting.ShortFormatters as SF
 import Control.Arrow ((&&&))
@@ -49,21 +43,6 @@ import qualified Spark.Core.Internal.LocatedBase as LB
 -- | A type that is is not known and that is not meant to be exposed to the
 -- user.
 data UnknownType
-
-{-| Pretty printing for Aeson values (and deterministic output)
--}
-pretty :: Value -> Text
-pretty = T.pack . Char8.unpack . encodeDeterministicPretty
-
--- | Produces a bytestring output of a JSON value that is deterministic
--- and that is invariant to the insertion order of the keys.
--- (i.e the keys are stored in alphabetic order)
--- This is to ensure that all id computations are stable and reproducible
--- on the server part.
--- TODO(kps) use everywhere JSON is converted
-encodeDeterministicPretty :: Value -> LBS.ByteString
-encodeDeterministicPretty =
-  encodePretty' (defConfig { confIndent = Spaces 0, confCompare = compare })
 
 -- | group by
 -- TODO: have a non-empty list instead

@@ -60,11 +60,9 @@ module Spark.Core.Internal.DatasetFunctions(
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
-import qualified Data.Aeson as A
 import qualified Data.Text as T
 import qualified Data.Text.Format as TF
 import qualified Data.Vector as V
-import Data.Aeson((.=), toJSON)
 import Data.Text.Encoding(decodeUtf8)
 import Data.ByteString.Base16(encode)
 import Data.Maybe(fromMaybe, listToMaybe)
@@ -384,20 +382,6 @@ instance forall loc a. Show (ComputeNode loc a) where
     no = prettyShowOp . nodeOp $ ld
     fields = T.pack . show . nodeType $ ld in
       T.unpack $ toStrict $ TF.format txt (np, no, loc, fields)
-
--- instance forall loc a. Message (ComputeNode loc a) where
---   toJSON node = A.object [
---     "locality" .= nodeLocality node,
---     "path" .= nodePath node,
---     "opName" .= (simpleShowOp . nodeOp $ node),
---     "opExtra" .= A.object ["content" .= (pretty . extraNodeOpData . nodeOp $ node)],
---     "parents" .= (nodePath <$> nodeParents node),
---     "logicalDependencies" .= (nodePath <$> nodeLogicalDependencies node),
---     "inferedType" .= (unSQLType . nodeType) node]
---
--- instance forall loc. Message (TypedLocality loc) where
---   toJSON (TypedLocality Local) = A.String "LOCAL"
---   toJSON (TypedLocality Distributed) = A.String "DISTRIBUTED"
 
 unsafeCastDataset :: ComputeNode LocDistributed a -> ComputeNode LocDistributed b
 unsafeCastDataset ds = ds { _cnType = _cnType ds }

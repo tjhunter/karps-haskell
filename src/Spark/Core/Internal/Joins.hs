@@ -11,7 +11,6 @@ module Spark.Core.Internal.Joins(
   joinObs'
 ) where
 
-import qualified Data.Aeson as A
 import qualified Data.Vector as V
 import Control.Arrow
 

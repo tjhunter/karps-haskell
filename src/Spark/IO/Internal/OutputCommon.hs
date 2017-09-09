@@ -17,17 +17,8 @@ module Spark.IO.Internal.OutputCommon(
   saveCol
 ) where
 
--- import Data.Text(Text)
--- import qualified Data.Map.Strict as M
--- import qualified Data.Aeson as A
--- import Data.Aeson(toJSON, (.=))
-
--- import Spark.Core.Types
--- import Spark.Core.Context
 import Spark.Core.Try
 import Spark.Core.Column
--- import Spark.Core.ColumnFunctions
--- import Spark.Core.Row
 import Spark.Core.Dataset
 
 import Spark.Core.Internal.ColumnStructures(UnknownReference, UntypedColumnData)
@@ -119,11 +110,6 @@ data SaveOutput a = SaveOutput {
 
 save :: DataFormat -> SparkPath -> Dataset a -> SaveOutput a
 save = undefined
--- test :: Int
--- test =
---   let c = undefined :: Column Int Int
---       ld = saveCol (saveDefaults undefined JsonFormat c) { partitions = [partition c, partition c] }
---   in 3
 --
 -- repeatDS :: Column ref Int -> Column ref a -> Dataset a
 --

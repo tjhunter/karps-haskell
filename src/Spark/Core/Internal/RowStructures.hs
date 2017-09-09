@@ -49,27 +49,3 @@ instance ToProto P.Cell Cell where
       v' = cellToProto <$> V.toList v
     cellToProto (RowElement (Row v)) = P.Cell . Just . P.Cell'StructValue . P.Row $ v' where
       v' = cellToProto <$> V.toList v
-
--- AESON INSTANCES
-
--- TODO(kps) add some workaround to account for the restriction of
--- JSON types:
--- int32 -> int32
--- double -> double
--- weird double -> string?
--- long/bigint -> string?
-
--- -- | Cell
--- instance ToJSON Cell where
---   toJSON Empty = object []
---   toJSON (DoubleElement d) = object ["doubleValue" .= toJSON d]
---   toJSON (IntElement i) = object ["intValue" .= toJSON i]
---   toJSON (BoolElement b) = object ["boolValue" .= toJSON b]
---   toJSON (StringElement s) = object ["stringValue" .= toJSON s]
---   toJSON (RowArray arr) = object ["arrayValue" .=
---     object ["values" .= toJSON arr]]
---   toJSON (RowElement row) = object ["structValue" .= toJSON row]
---
--- -- | Row
--- instance ToJSON Row where
---   toJSON (Row x) = object ["values" .= toJSON x]

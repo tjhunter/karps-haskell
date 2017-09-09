@@ -17,7 +17,6 @@ import Spark.Core.Column
 import Spark.Core.TestUtils
 import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.Utilities(pretty)
 import Spark.Core.Internal.OpFunctions(extraNodeOpData)
 
 ds1 :: Dataset Int

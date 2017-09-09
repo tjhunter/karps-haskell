@@ -6,7 +6,6 @@
 module Spark.Core.Internal.Client where
 
 import Data.Text(Text, pack)
-import Data.Aeson.Types(Parser)
 import GHC.Generics
 
 import Spark.Core.StructuresInternal
@@ -75,11 +74,11 @@ data NodeComputationSuccess = NodeComputationSuccess {
   ncsData :: Cell,
   -- The data type is also available, but it is not going to be parsed for now.
   ncsDataType :: DataType
-} deriving (Show, Generic)
+} deriving (Show)
 
 data NodeComputationFailure = NodeComputationFailure {
   ncfMessage :: !Text
-} deriving (Show, Generic)
+} deriving (Show)
 
 
 instance FromProto PC.SessionId LocalSessionId where
@@ -87,68 +86,3 @@ instance FromProto PC.SessionId LocalSessionId where
 
 instance ToProto PC.SessionId LocalSessionId where
   toProto = PC.SessionId . unLocalSession
-
--- **** AESON INSTANCES ***
-
--- instance ToJSON LocalSessionId where
---   toJSON lsi = object ["id" .= unLocalSession lsi]
---
--- instance FromJSON LocalSessionId where
---   parseJSON = withObject "LocalSessionId" $ \o -> do
---     _id <- o .: "id"
---     return $ LocalSessionId _id
---
--- instance FromJSON RDDId where
---   parseJSON x = RDDId <$> parseJSON x
---
--- instance FromJSON RDDInfo where
---   parseJSON = withObject "RDDInfo" $ \o -> do
---     _id <- o .: "id"
---     className <- o .: "className"
---     repr <- o .: "repr"
---     parents <- o .: "parents"
---     return $ RDDInfo _id className repr parents
---
--- instance FromJSON SparkComputationItemStats where
---   parseJSON = withObject "SparkComputationItemStats" $ \o -> do
---     rddinfo <- o .: "rddInfo"
---     return $ SparkComputationItemStats rddinfo
---
--- instance FromJSON BatchComputationKV where
---   parseJSON = withObject "BatchComputationKV" $ \o -> do
---     np <- o .: "localPath"
---     deps <- o .: "pathDependencies"
---     res <- o .: "result"
---     return $ BatchComputationKV np deps res
---
--- instance FromJSON BatchComputationResult where
---   parseJSON = withObject "BatchComputationResult" $ \o -> do
---     kvs <- o .: "results"
---     tlp <- o .: "targetLocalPath"
---     let f (BatchComputationKV k d v) = (k, d, v)
---     return $ BatchComputationResult tlp (f <$> kvs)
---
--- instance FromJSON NodeComputationSuccess where
---   parseJSON = withObject "NodeComputationSuccess" $ \o -> NodeComputationSuccess
---     <$> o .: "cell"
---     <*> o .: "cellType"
---
--- -- Because we get a row back, we need to supply a SQLType for deserialization.
--- instance FromJSON PossibleNodeStatus where
---   parseJSON =
---     let parseSuccess :: Object -> Parser PossibleNodeStatus
---         parseSuccess o = NodeFinishedSuccess
---           <$> o .:? "finalResult"
---           <*> o .:? "stats"
---         parseFailure :: Object -> Parser PossibleNodeStatus
---         parseFailure o =
---           (NodeFinishedFailure . NodeComputationFailure) <$> o .: pack "finalError"
---     in
---       withObject "PossibleNodeStatus" $ \o -> do
---         status <- o .: pack "status"
---         case pack status of
---           "SCHEDULED" -> return NodeQueued
---           "RUNNING" -> return NodeRunning
---           "FINISHED_SUCCESS" -> parseSuccess o
---           "FINISHED_FAILURE" -> parseFailure o
---           _ -> failure $ pack ("FromJSON PossibleNodeStatus " ++ show status)

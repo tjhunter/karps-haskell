@@ -22,30 +22,27 @@ module Spark.Core.Internal.OpFunctions(
   -- pointerBuilder,
 ) where
 
+import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.Text as T
--- import qualified Data.Aeson as A
 import qualified Data.Vector as V
-import Data.Text.Encoding(encodeUtf8)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.HashMap.Strict as HM
-import Data.Text(Text)
-import Data.Aeson((.=), toJSON)
-import Data.Char(isSymbol)
-import qualified Crypto.Hash.SHA256 as SHA
 import Control.Monad(join)
+import Data.Text.Encoding(encodeUtf8)
+import Data.Text(Text)
+import Data.Char(isSymbol)
+import Data.ProtoLens.Message(def)
 import Formatting
 import Lens.Family2 ((&), (.~), (^.))
-import Data.ProtoLens.Message(def)
 
-import Spark.Core.Internal.OpStructures
 import qualified Spark.Core.Internal.OpStructures as OS
--- import Spark.Proto.Graph(OpExtra(..))
+import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.TypesFunctions(arrayType')
-import Spark.Core.Try
 import Spark.Core.StructuresInternal(FieldName(..), FieldPath(..), fieldPathToProto, unFieldName, fieldPathFromProto)
+import Spark.Core.Try
 import Proto.Karps.Proto.StructuredTransform
 import qualified Proto.Karps.Proto.StructuredTransform as P
 
@@ -223,34 +220,6 @@ prettyShowColFun txt cols =
 
 _isSym :: T.Text -> Bool
 _isSym txt = all isSymbol (T.unpack txt)
-
--- instance A.ToJSON ColOp where
---   toJSON = _colJson Nothing
-
--- -- TODO: remove
--- _colJson :: Maybe FieldName -> ColOp -> A.Value
--- _colJson m co =
---   let
---     x = case m of
---       Nothing -> []
---       Just fn -> ["fieldName" .= T.pack (show fn)]
---     fs = case co of
---       (ColExtraction fp) -> [ "extraction" .= A.object [
---           "path" .= toJSON fp
---         ]]
---       (ColFunction txt cols) -> ["function" .= A.object [
---           "functionName" .= txt,
---           "inputs" .= toJSON (_colJson Nothing <$> cols)
---         ]]
---       (ColLit _ cell) -> ["literal" .= A.object [
---           "value" .= cell
---         ]]
---       (ColStruct v) ->
---         let fun (TransformField fn colOp) = _colJson (Just fn) colOp
---         in ["struct" .= A.object [
---             "fields" .= toJSON (fun <$> v)
---           ]]
---   in A.object (fs ++ x)
 
 colOpToProto :: ColOp -> Column
 colOpToProto = _colOpToProto Nothing
