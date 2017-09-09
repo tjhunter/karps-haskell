@@ -381,11 +381,12 @@ instance Data.ProtoLens.Message Node where
                     ("logical_dependencies", logicalDependencies__field_descriptor),
                     ("infered_type", inferedType__field_descriptor)])
 
-data OpExtra = OpExtra{_OpExtra'content :: !Data.Text.Text}
+data OpExtra = OpExtra{_OpExtra'content ::
+                       !Data.ByteString.ByteString}
              deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
-instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
-          Prelude.Functor f) =>
+instance (a ~ Data.ByteString.ByteString,
+          b ~ Data.ByteString.ByteString, Prelude.Functor f) =>
          Lens.Labels.HasLens "content" f OpExtra OpExtra a b where
         lensOf _
           = (Prelude..)
@@ -400,8 +401,8 @@ instance Data.ProtoLens.Message OpExtra where
         descriptor
           = let content__field_descriptor
                   = Data.ProtoLens.FieldDescriptor "content"
-                      (Data.ProtoLens.StringField ::
-                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.BytesField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.ByteString.ByteString)
                       (Data.ProtoLens.PlainField Data.ProtoLens.Optional content)
                       :: Data.ProtoLens.FieldDescriptor OpExtra
               in

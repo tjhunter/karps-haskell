@@ -13,16 +13,16 @@ import Spark.Core.Internal.TypesStructures
 import Spark.Core.Internal.OpStructures
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.Client(LocalSessionId)
-import Spark.Proto.Graph.Graph(Graph)
+-- import Spark.Proto.Graph.Graph(Graph)
 
-data Placeholder = Placeholder {
-  locality :: !Locality,
-  dataType :: !DataType
-} deriving (Eq, Show, Generic, FromJSON, ToJSON)
-
-data CreateComputationRequest = CreateComputationRequest {
-  session :: !LocalSessionId,
-  graph :: !Graph,
-  requestedComputation :: !ComputationID,
-  requestedPaths :: ![NodePath]
-} deriving (Eq, Show, Generic, FromJSON, ToJSON)
+-- data Placeholder = Placeholder {
+--   locality :: !Locality,
+--   dataType :: !DataType
+-- } deriving (Eq, Show, Generic, FromJSON, ToJSON)
+--
+-- data CreateComputationRequest = CreateComputationRequest {
+--   session :: !LocalSessionId,
+--   graph :: !Graph,
+--   requestedComputation :: !ComputationID,
+--   requestedPaths :: ![NodePath]
+-- } deriving (Eq, Show, Generic, FromJSON, ToJSON)

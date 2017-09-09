@@ -26,6 +26,7 @@ import qualified Data.ProtoLens.Reexport.Data.ByteString
 import qualified Data.ProtoLens.Reexport.Lens.Labels as Lens.Labels
 import qualified Proto.Karps.Proto.Computation
 import qualified Proto.Karps.Proto.Graph
+import qualified Proto.Tensorflow.Core.Framework.Graph
 
 data AnalysisMessage = AnalysisMessage{_AnalysisMessage'computation
                                        ::
@@ -211,13 +212,226 @@ instance Data.ProtoLens.Message AnalysisMessage where
                     ("content", content__field_descriptor),
                     ("level", level__field_descriptor)])
 
+data CompilerStep = CompilerStep{_CompilerStep'phase ::
+                                 !CompilingPhase,
+                                 _CompilerStep'graph ::
+                                 !(Prelude.Maybe Proto.Karps.Proto.Graph.Graph),
+                                 _CompilerStep'graphDef ::
+                                 !(Prelude.Maybe Proto.Tensorflow.Core.Framework.Graph.GraphDef)}
+                  deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ CompilingPhase, b ~ CompilingPhase,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "phase" f CompilerStep CompilerStep a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilerStep'phase
+                 (\ x__ y__ -> x__{_CompilerStep'phase = y__}))
+              Prelude.id
+
+instance (a ~ Proto.Karps.Proto.Graph.Graph,
+          b ~ Proto.Karps.Proto.Graph.Graph, Prelude.Functor f) =>
+         Lens.Labels.HasLens "graph" f CompilerStep CompilerStep a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilerStep'graph
+                 (\ x__ y__ -> x__{_CompilerStep'graph = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'graph" f CompilerStep CompilerStep a b
+         where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilerStep'graph
+                 (\ x__ y__ -> x__{_CompilerStep'graph = y__}))
+              Prelude.id
+
+instance (a ~ Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          b ~ Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "graphDef" f CompilerStep CompilerStep a b
+         where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilerStep'graphDef
+                 (\ x__ y__ -> x__{_CompilerStep'graphDef = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~
+            Prelude.Maybe Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          b ~ Prelude.Maybe Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'graphDef" f CompilerStep CompilerStep a
+         b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilerStep'graphDef
+                 (\ x__ y__ -> x__{_CompilerStep'graphDef = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default CompilerStep where
+        def
+          = CompilerStep{_CompilerStep'phase = Data.Default.Class.def,
+                         _CompilerStep'graph = Prelude.Nothing,
+                         _CompilerStep'graphDef = Prelude.Nothing}
+
+instance Data.ProtoLens.Message CompilerStep where
+        descriptor
+          = let phase__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "phase"
+                      (Data.ProtoLens.EnumField ::
+                         Data.ProtoLens.FieldTypeDescriptor CompilingPhase)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional phase)
+                      :: Data.ProtoLens.FieldDescriptor CompilerStep
+                graph__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "graph"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor Proto.Karps.Proto.Graph.Graph)
+                      (Data.ProtoLens.OptionalField maybe'graph)
+                      :: Data.ProtoLens.FieldDescriptor CompilerStep
+                graphDef__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "graph_def"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Tensorflow.Core.Framework.Graph.GraphDef)
+                      (Data.ProtoLens.OptionalField maybe'graphDef)
+                      :: Data.ProtoLens.FieldDescriptor CompilerStep
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.CompilerStep")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, phase__field_descriptor),
+                    (Data.ProtoLens.Tag 2, graph__field_descriptor),
+                    (Data.ProtoLens.Tag 3, graphDef__field_descriptor)])
+                (Data.Map.fromList
+                   [("phase", phase__field_descriptor),
+                    ("graph", graph__field_descriptor),
+                    ("graph_def", graphDef__field_descriptor)])
+
+data CompilingPhase = INITIAL
+                    | REMOVE_UNREACHABLE
+                    | DATA_SOURCE_INSERTION
+                    | POINTER_SWAP_1
+                    | FUNCTIONAL_FLATTENING
+                    | AUTOCACHE_FULLFILL
+                    | CACHE_CHECK
+                    | MERGE_AGGREGATIONS
+                    | MERGE_TRANSFORMS
+                    | MERGE_AGGREGATIONS_2
+                    | FINAL
+                    deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance Data.Default.Class.Default CompilingPhase where
+        def = INITIAL
+
+instance Data.ProtoLens.FieldDefault CompilingPhase where
+        fieldDefault = INITIAL
+
+instance Data.ProtoLens.MessageEnum CompilingPhase where
+        maybeToEnum 0 = Prelude.Just INITIAL
+        maybeToEnum 1 = Prelude.Just REMOVE_UNREACHABLE
+        maybeToEnum 2 = Prelude.Just DATA_SOURCE_INSERTION
+        maybeToEnum 3 = Prelude.Just POINTER_SWAP_1
+        maybeToEnum 4 = Prelude.Just FUNCTIONAL_FLATTENING
+        maybeToEnum 5 = Prelude.Just AUTOCACHE_FULLFILL
+        maybeToEnum 6 = Prelude.Just CACHE_CHECK
+        maybeToEnum 7 = Prelude.Just MERGE_AGGREGATIONS
+        maybeToEnum 8 = Prelude.Just MERGE_TRANSFORMS
+        maybeToEnum 9 = Prelude.Just MERGE_AGGREGATIONS_2
+        maybeToEnum 1000 = Prelude.Just FINAL
+        maybeToEnum _ = Prelude.Nothing
+        showEnum INITIAL = "INITIAL"
+        showEnum REMOVE_UNREACHABLE = "REMOVE_UNREACHABLE"
+        showEnum DATA_SOURCE_INSERTION = "DATA_SOURCE_INSERTION"
+        showEnum POINTER_SWAP_1 = "POINTER_SWAP_1"
+        showEnum FUNCTIONAL_FLATTENING = "FUNCTIONAL_FLATTENING"
+        showEnum AUTOCACHE_FULLFILL = "AUTOCACHE_FULLFILL"
+        showEnum CACHE_CHECK = "CACHE_CHECK"
+        showEnum MERGE_AGGREGATIONS = "MERGE_AGGREGATIONS"
+        showEnum MERGE_TRANSFORMS = "MERGE_TRANSFORMS"
+        showEnum MERGE_AGGREGATIONS_2 = "MERGE_AGGREGATIONS_2"
+        showEnum FINAL = "FINAL"
+        readEnum "INITIAL" = Prelude.Just INITIAL
+        readEnum "REMOVE_UNREACHABLE" = Prelude.Just REMOVE_UNREACHABLE
+        readEnum "DATA_SOURCE_INSERTION"
+          = Prelude.Just DATA_SOURCE_INSERTION
+        readEnum "POINTER_SWAP_1" = Prelude.Just POINTER_SWAP_1
+        readEnum "FUNCTIONAL_FLATTENING"
+          = Prelude.Just FUNCTIONAL_FLATTENING
+        readEnum "AUTOCACHE_FULLFILL" = Prelude.Just AUTOCACHE_FULLFILL
+        readEnum "CACHE_CHECK" = Prelude.Just CACHE_CHECK
+        readEnum "MERGE_AGGREGATIONS" = Prelude.Just MERGE_AGGREGATIONS
+        readEnum "MERGE_TRANSFORMS" = Prelude.Just MERGE_TRANSFORMS
+        readEnum "MERGE_AGGREGATIONS_2" = Prelude.Just MERGE_AGGREGATIONS_2
+        readEnum "FINAL" = Prelude.Just FINAL
+        readEnum _ = Prelude.Nothing
+
+instance Prelude.Enum CompilingPhase where
+        toEnum k__
+          = Prelude.maybe
+              (Prelude.error
+                 ((Prelude.++) "toEnum: unknown value for enum CompilingPhase: "
+                    (Prelude.show k__)))
+              Prelude.id
+              (Data.ProtoLens.maybeToEnum k__)
+        fromEnum INITIAL = 0
+        fromEnum REMOVE_UNREACHABLE = 1
+        fromEnum DATA_SOURCE_INSERTION = 2
+        fromEnum POINTER_SWAP_1 = 3
+        fromEnum FUNCTIONAL_FLATTENING = 4
+        fromEnum AUTOCACHE_FULLFILL = 5
+        fromEnum CACHE_CHECK = 6
+        fromEnum MERGE_AGGREGATIONS = 7
+        fromEnum MERGE_TRANSFORMS = 8
+        fromEnum MERGE_AGGREGATIONS_2 = 9
+        fromEnum FINAL = 1000
+        succ FINAL
+          = Prelude.error
+              "CompilingPhase.succ: bad argument FINAL. This value would be out of bounds."
+        succ INITIAL = REMOVE_UNREACHABLE
+        succ REMOVE_UNREACHABLE = DATA_SOURCE_INSERTION
+        succ DATA_SOURCE_INSERTION = POINTER_SWAP_1
+        succ POINTER_SWAP_1 = FUNCTIONAL_FLATTENING
+        succ FUNCTIONAL_FLATTENING = AUTOCACHE_FULLFILL
+        succ AUTOCACHE_FULLFILL = CACHE_CHECK
+        succ CACHE_CHECK = MERGE_AGGREGATIONS
+        succ MERGE_AGGREGATIONS = MERGE_TRANSFORMS
+        succ MERGE_TRANSFORMS = MERGE_AGGREGATIONS_2
+        succ MERGE_AGGREGATIONS_2 = FINAL
+        pred INITIAL
+          = Prelude.error
+              "CompilingPhase.pred: bad argument INITIAL. This value would be out of bounds."
+        pred REMOVE_UNREACHABLE = INITIAL
+        pred DATA_SOURCE_INSERTION = REMOVE_UNREACHABLE
+        pred POINTER_SWAP_1 = DATA_SOURCE_INSERTION
+        pred FUNCTIONAL_FLATTENING = POINTER_SWAP_1
+        pred AUTOCACHE_FULLFILL = FUNCTIONAL_FLATTENING
+        pred CACHE_CHECK = AUTOCACHE_FULLFILL
+        pred MERGE_AGGREGATIONS = CACHE_CHECK
+        pred MERGE_TRANSFORMS = MERGE_AGGREGATIONS
+        pred MERGE_AGGREGATIONS_2 = MERGE_TRANSFORMS
+        pred FINAL = MERGE_AGGREGATIONS_2
+        enumFrom = Data.ProtoLens.Message.Enum.messageEnumFrom
+        enumFromTo = Data.ProtoLens.Message.Enum.messageEnumFromTo
+        enumFromThen = Data.ProtoLens.Message.Enum.messageEnumFromThen
+        enumFromThenTo = Data.ProtoLens.Message.Enum.messageEnumFromThenTo
+
+instance Prelude.Bounded CompilingPhase where
+        minBound = INITIAL
+        maxBound = FINAL
+
 data GraphTransformResponse = GraphTransformResponse{_GraphTransformResponse'pinnedGraph
                                                      ::
                                                      !(Prelude.Maybe Proto.Karps.Proto.Graph.Graph),
                                                      _GraphTransformResponse'nodeMap ::
                                                      ![NodeMapItem],
                                                      _GraphTransformResponse'messages ::
-                                                     ![AnalysisMessage]}
+                                                     ![AnalysisMessage],
+                                                     _GraphTransformResponse'steps ::
+                                                     ![CompilerStep]}
                             deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Proto.Karps.Proto.Graph.Graph,
@@ -261,12 +475,23 @@ instance (a ~ [AnalysisMessage], b ~ [AnalysisMessage],
                  (\ x__ y__ -> x__{_GraphTransformResponse'messages = y__}))
               Prelude.id
 
+instance (a ~ [CompilerStep], b ~ [CompilerStep],
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "steps" f GraphTransformResponse
+         GraphTransformResponse a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _GraphTransformResponse'steps
+                 (\ x__ y__ -> x__{_GraphTransformResponse'steps = y__}))
+              Prelude.id
+
 instance Data.Default.Class.Default GraphTransformResponse where
         def
           = GraphTransformResponse{_GraphTransformResponse'pinnedGraph =
                                      Prelude.Nothing,
                                    _GraphTransformResponse'nodeMap = [],
-                                   _GraphTransformResponse'messages = []}
+                                   _GraphTransformResponse'messages = [],
+                                   _GraphTransformResponse'steps = []}
 
 instance Data.ProtoLens.Message GraphTransformResponse where
         descriptor
@@ -288,17 +513,25 @@ instance Data.ProtoLens.Message GraphTransformResponse where
                          Data.ProtoLens.FieldTypeDescriptor AnalysisMessage)
                       (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked messages)
                       :: Data.ProtoLens.FieldDescriptor GraphTransformResponse
+                steps__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "steps"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor CompilerStep)
+                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked steps)
+                      :: Data.ProtoLens.FieldDescriptor GraphTransformResponse
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.GraphTransformResponse")
                 (Data.Map.fromList
                    [(Data.ProtoLens.Tag 1, pinnedGraph__field_descriptor),
                     (Data.ProtoLens.Tag 2, nodeMap__field_descriptor),
-                    (Data.ProtoLens.Tag 3, messages__field_descriptor)])
+                    (Data.ProtoLens.Tag 3, messages__field_descriptor),
+                    (Data.ProtoLens.Tag 4, steps__field_descriptor)])
                 (Data.Map.fromList
                    [("pinned_graph", pinnedGraph__field_descriptor),
                     ("node_map", nodeMap__field_descriptor),
-                    ("messages", messages__field_descriptor)])
+                    ("messages", messages__field_descriptor),
+                    ("steps", steps__field_descriptor)])
 
 data MessageSeverity = INFO
                      | WARNING
@@ -716,6 +949,20 @@ functionalGraph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "functionalGraph")
 
+graph ::
+      forall f s t a b . Lens.Labels.HasLens "graph" f s t a b =>
+        Lens.Family2.LensLike f s t a b
+graph
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "graph")
+
+graphDef ::
+         forall f s t a b . Lens.Labels.HasLens "graphDef" f s t a b =>
+           Lens.Family2.LensLike f s t a b
+graphDef
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "graphDef")
+
 level ::
       forall f s t a b . Lens.Labels.HasLens "level" f s t a b =>
         Lens.Family2.LensLike f s t a b
@@ -739,6 +986,21 @@ maybe'functionalGraph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) ::
          (Lens.Labels.Proxy#) "maybe'functionalGraph")
+
+maybe'graph ::
+            forall f s t a b . Lens.Labels.HasLens "maybe'graph" f s t a b =>
+              Lens.Family2.LensLike f s t a b
+maybe'graph
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'graph")
+
+maybe'graphDef ::
+               forall f s t a b .
+                 Lens.Labels.HasLens "maybe'graphDef" f s t a b =>
+                 Lens.Family2.LensLike f s t a b
+maybe'graphDef
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'graphDef")
 
 maybe'node ::
            forall f s t a b . Lens.Labels.HasLens "maybe'node" f s t a b =>
@@ -805,6 +1067,13 @@ path
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "path")
 
+phase ::
+      forall f s t a b . Lens.Labels.HasLens "phase" f s t a b =>
+        Lens.Family2.LensLike f s t a b
+phase
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "phase")
+
 pinnedGraph ::
             forall f s t a b . Lens.Labels.HasLens "pinnedGraph" f s t a b =>
               Lens.Family2.LensLike f s t a b
@@ -833,6 +1102,13 @@ session ::
 session
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "session")
+
+steps ::
+      forall f s t a b . Lens.Labels.HasLens "steps" f s t a b =>
+        Lens.Family2.LensLike f s t a b
+steps
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "steps")
 
 value ::
       forall f s t a b . Lens.Labels.HasLens "value" f s t a b =>

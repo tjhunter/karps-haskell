@@ -288,7 +288,7 @@ _gatherNodes = tryEither . buildVertexList . untyped
 -- Given a result, tries to build the corresponding object out of it
 _extract1 :: FinalResult -> DataType -> Try Cell
 _extract1 (Left nf) _ = tryError $ sformat ("got an error "%shown) nf
-_extract1 (Right ncs) dt = tryEither $ jsonToCell dt (ncsData ncs)
+_extract1 (Right ncs) _ = pure $ ncsData ncs
 
 -- Gets the relevant nodes for this computation from this spark session.
 -- The computation is assumed to be correct and to contain all the nodes

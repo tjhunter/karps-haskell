@@ -30,7 +30,7 @@ constant cst =
   let
     sqlt = buildType
     dt = unSQLType sqlt
-  in emptyLocalData (NodeLocalLit dt (toJSON (valueToCell cst))) sqlt
+  in emptyLocalData (NodeLocalLit dt (valueToCell cst)) sqlt
 
 {-| (developer API)
 
@@ -43,7 +43,7 @@ iPackTupleObs ulds =
       so = StandardOperator {
                 soName = "org.spark.LocalPack",
                 soOutputType = dt,
-                soExtra = Null }
+                soExtra = emptyExtra }
       op = NodeLocalOp so
   in emptyLocalData op (SQLType dt)
         `parents` (untyped <$> N.toList ulds)
@@ -90,7 +90,7 @@ _unaryOp optxt ld =
   let so = StandardOperator {
             soName = optxt,
             soOutputType = unSQLType $ nodeType ld,
-            soExtra = Null }
+            soExtra = emptyExtra }
       op = NodeLocalOp so in
   emptyLocalData op (nodeType ld)
     `parents` [untyped ld]
@@ -100,7 +100,7 @@ _binOp optxt ld1 ld2 = assert (nodeType ld1 == nodeType ld2) $
   let so = StandardOperator {
           soName = optxt,
           soOutputType = unSQLType $ nodeType ld1,
-          soExtra = Null }
+          soExtra = emptyExtra }
       op = NodeLocalOp so in
   emptyLocalData op (nodeType ld1)
     `parents` [untyped ld1, untyped ld2]
@@ -116,5 +116,5 @@ _intOperator :: T.Text -> StandardOperator
 _intOperator optxt = StandardOperator {
   soName = optxt,
   soOutputType = intType,
-  soExtra = Null
+  soExtra = emptyExtra
 }

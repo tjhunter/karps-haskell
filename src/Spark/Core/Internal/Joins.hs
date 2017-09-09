@@ -26,6 +26,8 @@ import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions(structTypeFromFields)
 import Spark.Core.Try
 import Spark.Core.StructuresInternal(unsafeFieldName)
+import Spark.Core.Internal.NodeBuilder(NodeBuilder, convertToExtra, buildOpDDExtra, cniStandardOp)
+import qualified Proto.Karps.Proto.Std as PStd
 
 {-| Standard (inner) join on two sets of data.
 -}
@@ -50,10 +52,21 @@ joinInner' key1 val1 key2 val2 = do
   df1 <- pack' (struct' [key1, val1])
   df2 <- pack' (struct' [key2, val2])
   dt <- _joinTypeInner key1 val1 val2
-  let so = StandardOperator { soName = "org.spark.Join", soOutputType = dt, soExtra = A.String "inner" }
-  let ds = emptyDataset (NodeDistributedOp so) (SQLType dt)
-  let f ds' = ds' { _cnParents = V.fromList [untyped df1, untyped df2] }
-  return $ updateNode ds f
+  let extra = PStd.Join PStd.Join'INNER
+  fromBuilder2Extra df1 df2 joinBuilder extra undefined undefined
+  --
+  -- let so = StandardOperator { soName = "org.spark.Join", soOutputType = dt, soExtra = p } where
+  --       p = PStd.Join PStd.Join'INNER
+  -- let ds = emptyDataset (NodeDistributedOp so) (SQLType dt)
+  -- let f ds' = ds' { _cnParents = V.fromList [untyped df1, untyped df2] }
+  -- return $ updateNode ds f
+
+joinBuilder :: NodeBuilder
+joinBuilder = buildOpDDExtra "org.spark.Join" f where
+  f :: DataType -> DataType -> PStd.Join -> Try CoreNodeInfo
+  f dt1 dt2 j = do
+    let dt = error "joinBuilder: data type: "
+    return $ cniStandardOp Distributed "org.spark.Join" dt j
 
 {-| Broadcasts an observable alongside a dataset to make it available as an
 extra column.

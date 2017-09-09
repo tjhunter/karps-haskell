@@ -28,6 +28,7 @@ import qualified Data.Aeson as A
 import Network.Wreq(responseBody)
 import Control.Monad.Trans(lift)
 import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
+import Control.Monad.Except(MonadError)
 import System.Random(randomIO)
 import Data.Word(Word8)
 import Data.Maybe(mapMaybe)
@@ -36,8 +37,11 @@ import GHC.Generics
 -- import Formatting
 import Network.Wreq.Types(Postable)
 import Data.ByteString.Lazy(ByteString)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
+import Data.ProtoLens.Message(Message)
 
 import Spark.Core.Dataset
 import Spark.Core.Internal.Client
@@ -46,10 +50,13 @@ import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.DatasetFunctions(untypedLocalData, nodePath)
 import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, nodeOpNode)
 import Spark.Core.Internal.OpStructures(DataInputStamp(..), NodeShape(..))
+import Spark.Core.Internal.RowGenericsFrom(cellToValue)
 import Spark.Core.Row
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
 import Spark.Core.Internal.Utilities
+import qualified Proto.Karps.Proto.Interface as PAPI
+import qualified Proto.Karps.Proto.Computation as PC
 
 returnPure :: forall a. SparkStatePure a -> SparkState a
 returnPure p = lift $ mapStateT (return . runIdentity) p
@@ -182,12 +189,14 @@ The primary role of this function is to check how recent these resources are
 compared to some previous usage.
 -}
 checkDataStamps :: [HdfsPath] -> SparkState [(HdfsPath, Try DataInputStamp)]
-checkDataStamps l = do
-  session <- get
-  let url = _sessionResourceCheck session
-  status <- liftIO (W.asJSON =<< W.post (T.unpack url) (toJSON l) :: IO (W.Response [StampReturn]))
-  let s = status ^. responseBody
-  return $ mapMaybe _parseStamp s
+checkDataStamps l = error "checkDataStamps"
+-- TODO: use the proto interface instead.
+-- do
+--   session <- get
+--   let url = _sessionResourceCheck session
+--   status <- liftIO (W.asJSON =<< W.post (T.unpack url) (toJSON l) :: IO (W.Response [StampReturn]))
+--   let s = status ^. responseBody
+--   return $ mapMaybe _parseStamp s
 
 
 _parseStamp :: StampReturn -> Maybe (HdfsPath, Try DataInputStamp)
@@ -298,18 +307,24 @@ _sendComputation session comp = do
   _ <- _post url (_createComputationRequest comp)
   return ()
 
-_createComputationRequest :: Computation -> A.Value
-_createComputationRequest comp =
-  -- TODO replace by the proto
-  object [
-    "session" .= toJSON (cSessionId comp),
-    "computation" .= toJSON (cId comp),
-    "requestedComputation" .= toJSON (cId comp),
-    "graph" .= object [
-      "nodes" .= toJSON (cNodes comp)
-    ]]
+_createComputationRequest :: Computation -> ByteString
+_createComputationRequest = _encode . _computationToProto
 
-_computationStatus :: (MonadLoggerIO m) =>
+_computationToProto :: Computation -> PAPI.CreateComputationRequest
+_computationToProto = undefined
+
+-- _createComputationRequest' :: Computation -> A.Value
+-- _createComputationRequest' comp =
+--   -- TODO replace by the proto
+--   object [
+--     "session" .= toJSON (cSessionId comp),
+--     "computation" .= toJSON (cId comp),
+--     "requestedComputation" .= toJSON (cId comp),
+--     "graph" .= object [
+--       "nodes" .= toJSON (cNodes comp)
+--     ]]
+
+_computationStatus :: (MonadLoggerIO m, MonadError e m) =>
   SparkSession -> ComputationID -> NodePath -> m PossibleNodeStatus
 _computationStatus session compId npath = do
   let base' = _compEndPointStatus session compId
@@ -318,9 +333,16 @@ _computationStatus session compId npath = do
   status1 <- _get url
   let z = status1 ^. responseBody
   logDebugN $ "_computationStatus:status1: " <> T.pack (show z)
-  status <- liftIO (W.asJSON =<< W.get (T.unpack url) :: IO (W.Response PossibleNodeStatus))
-  let s = status ^. responseBody
+  r <- liftIO $ W.get (T.unpack url)
+  p <- _decode (r ^. responseBody)
+  s <- _possibleNodeStatusFromProto p
+  --  :: IO (W.Response PossibleNodeStatus)
+  -- status <- liftIO (_decode =<< )
+  -- let s = status ^. responseBody
   return s
+
+_possibleNodeStatusFromProto :: (MonadError e m) => PAPI.ComputationStreamResponse -> m PossibleNodeStatus
+_possibleNodeStatusFromProto = undefined
 
 -- TODO: not sure how this works when trying to make a fix point: is it going to
 -- blow up the 'stack'?
@@ -374,17 +396,20 @@ _computationMultiStatus cid done l0 = do
 _try :: (Monad m) => (y -> m z) -> (x, x', x'', y) -> m (x, x', x'', z)
 _try f (x, x', x'', y) = f y <&> \z -> (x, x', x'', z)
 
-_computationStats :: (MonadLoggerIO m) =>
+_computationStats :: (MonadLoggerIO m, MonadError e m) =>
   SparkSession -> ComputationID -> m BatchComputationResult
 _computationStats session compId = do
   let url = _compEndPointStatus session compId <> "/" -- The final / is mandatory
   logDebugN $ "Sending computations stats request at url: " <> url
-  stats <- liftIO (W.asJSON =<< W.get (T.unpack url) :: IO (W.Response BatchComputationResult))
-  let s = stats ^. responseBody
+  stats <- liftIO $ W.get (T.unpack url)
+  p <- _decode $ stats ^. responseBody
+  s <- _batchComputationResultFromProto p
   return s
 
+_batchComputationResultFromProto :: (MonadError e m) => PC.BatchComputationResult -> m BatchComputationResult
+_batchComputationResultFromProto = undefined
 
-_waitSingleComputation :: (MonadLoggerIO m) =>
+_waitSingleComputation :: (MonadLoggerIO m, MonadError e m) =>
   SparkSession -> Computation -> NodePath -> m FinalResult
 _waitSingleComputation session comp npath =
   let
@@ -396,3 +421,9 @@ _waitSingleComputation session comp npath =
     i = confPollingIntervalMillis $ ssConf session
   in
     _pollMonad getStatus i extract
+
+_encode :: (Message a) => a -> ByteString
+_encode = undefined
+
+_decode :: (Message a, MonadError e m) => ByteString -> m a
+_decode = undefined

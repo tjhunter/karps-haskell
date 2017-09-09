@@ -30,6 +30,7 @@ import Spark.Core.Internal.Utilities(forceRight)
 import Spark.Core.Internal.DatasetFunctions(asDF, emptyDataset, emptyLocalData)
 import Spark.Core.Internal.TypesStructures(SQLType(..))
 import Spark.Core.Internal.OpStructures
+import qualified Proto.Karps.Proto.Io as PIO
 
 {-| A path to some data that can be read by Spark.
 -}
@@ -50,11 +51,11 @@ data InputOptionValue =
   | InputBooleanOption Bool
   deriving (Eq, Show)
 
-instance A.ToJSON InputOptionValue where
-  toJSON (InputIntOption i) = toJSON i
-  toJSON (InputDoubleOption d) = toJSON d
-  toJSON (InputStringOption s) = toJSON s
-  toJSON (InputBooleanOption b) = toJSON b
+-- instance A.ToJSON InputOptionValue where
+--   toJSON (InputIntOption i) = toJSON i
+--   toJSON (InputDoubleOption d) = toJSON d
+--   toJSON (InputStringOption s) = toJSON s
+--   toJSON (InputBooleanOption b) = toJSON b
 
 newtype InputOptionKey = InputOptionKey { unInputOptionKey :: Text } deriving (Eq, Show, Ord)
 
@@ -113,12 +114,13 @@ understand if the data does not follow the given schema.
 genericWithSchema' :: DataType -> SourceDescription -> DataFrame
 genericWithSchema' dt sd = asDF $ emptyDataset no (SQLType dt) where
   sd' = sd { inputSchema = UseSchema dt }
-  so = StandardOperator {
-      soName = "org.spark.GenericDatasource",
-      soOutputType = dt,
-      soExtra = A.toJSON sd'
-    }
-  no = NodeDistributedOp so
+  no = undefined
+  -- so = StandardOperator {
+  --     soName = "org.spark.GenericDatasource",
+  --     soOutputType = dt,
+  --     soExtra = A.toJSON sd'
+  --   }
+  -- no = NodeDistributedOp so
 
 {-| Generates a dataframe from a source description, and assumes a certain
 schema on the source.
@@ -140,45 +142,53 @@ _inferSchema = executeCommand1 . _inferSchemaCmd
 _inferSchemaCmd :: SourceDescription -> LocalData DataType
 _inferSchemaCmd sd = emptyLocalData no sqlt where
   sqlt = buildType :: SQLType DataType
-  dt = unSQLType sqlt
-  so = StandardOperator {
-      soName = "org.spark.InferSchema",
-      soOutputType = dt,
-      soExtra = A.toJSON sd
-    }
-  no = NodeOpaqueAggregator so
+  no = undefined
+  -- cniStandardOp
+  -- dt = unSQLType sqlt
+  -- so = StandardOperator {
+  --     soName = "org.spark.InferSchema",
+  --     soOutputType = dt,
+  --     soExtra = _sou
+  --   }
+  -- no = NodeOpaqueAggregator so
 
-instance A.ToJSON SparkPath where
-  toJSON (SparkPath p) = toJSON p
+_sourceDescriptionFromProto :: PIO.SourceDescription -> Try SourceDescription
+_sourceDescriptionFromProto = undefined
 
-instance A.ToJSON DataSchema where
-  toJSON InferSchema = A.Null
-  toJSON (UseSchema dt) = toJSON dt
+_sourceDescriptionToProto :: SourceDescription -> PIO.SourceDescription
+_sourceDescriptionToProto = undefined
 
-instance A.ToJSON DataFormat where
-  toJSON JsonFormat = "json"
-  toJSON TextFormat = "text"
-  toJSON CsvFormat = "csv"
-  toJSON (CustomSourceFormat s) = toJSON s
-
-instance A.ToJSON SourceDescription where
-  toJSON sd = A.object ([
-                "path" .= toJSON (inputPath sd),
-                "source" .= toJSON (inputSource sd),
-                "options" .= toJSON (f <$> M.toList (sdOptions sd))
-              ] ++ s ++ st) where
-                s = case inputSchema sd of
-                  InferSchema -> []
-                  UseSchema sch -> ["schema" .= toJSON sch]
-                st = case inputStamp sd of
-                  Nothing -> []
-                  Just txt -> ["stamp" .= toJSON txt]
-                f (k, v) =
-                  let x = case v of
-                        InputIntOption _ -> "intValue"
-                        InputDoubleOption _ -> "doubleValue"
-                        InputStringOption _ -> "stringValue"
-                        InputBooleanOption _ -> "boolValue"
-                  in A.object [
-                       "key" .= unInputOptionKey k,
-                       x .= toJSON v ]
+-- instance A.ToJSON SparkPath where
+--   toJSON (SparkPath p) = toJSON p
+--
+-- instance A.ToJSON DataSchema where
+--   toJSON InferSchema = A.Null
+--   toJSON (UseSchema dt) = toJSON dt
+--
+-- instance A.ToJSON DataFormat where
+--   toJSON JsonFormat = "json"
+--   toJSON TextFormat = "text"
+--   toJSON CsvFormat = "csv"
+--   toJSON (CustomSourceFormat s) = toJSON s
+--
+-- instance A.ToJSON SourceDescription where
+--   toJSON sd = A.object ([
+--                 "path" .= toJSON (inputPath sd),
+--                 "source" .= toJSON (inputSource sd),
+--                 "options" .= toJSON (f <$> M.toList (sdOptions sd))
+--               ] ++ s ++ st) where
+--                 s = case inputSchema sd of
+--                   InferSchema -> []
+--                   UseSchema sch -> ["schema" .= toJSON sch]
+--                 st = case inputStamp sd of
+--                   Nothing -> []
+--                   Just txt -> ["stamp" .= toJSON txt]
+--                 f (k, v) =
+--                   let x = case v of
+--                         InputIntOption _ -> "intValue"
+--                         InputDoubleOption _ -> "doubleValue"
+--                         InputStringOption _ -> "stringValue"
+--                         InputBooleanOption _ -> "boolValue"
+--                   in A.object [
+--                        "key" .= unInputOptionKey k,
+--                        x .= toJSON v ]

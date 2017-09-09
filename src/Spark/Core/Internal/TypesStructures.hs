@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-| The structures of data types in Karps.
 
@@ -16,17 +17,22 @@ DataType (either strict or nullable)
 -}
 module Spark.Core.Internal.TypesStructures where
 
-import Data.Aeson
+-- import Data.Aeson
 import Data.Vector(Vector)
 import qualified Data.Vector as V
-import qualified Data.Aeson as A
+-- import qualified Data.Aeson as A
 import qualified Data.Text as T
 import GHC.Generics(Generic)
 import Test.QuickCheck
-import Control.Applicative
+import Lens.Family2 ((^.))
+import Formatting
 
 import Spark.Core.StructuresInternal(FieldName(..))
 import Spark.Core.Internal.Utilities
+import Spark.Core.Internal.ProtoUtils
+import Spark.Core.Try
+import qualified Proto.Karps.Proto.Types as P
+
 
 -- The core type algebra
 
@@ -100,6 +106,40 @@ instance Show (SQLType a) where
   show (SQLType dt) = show dt
 
 
+instance FromProto P.SQLType DataType where
+  fromProto sqlt = f <$> sdt where
+    f = if sqlt ^. P.nullable then NullableType else StrictType
+    sdt = case sqlt ^. P.maybe'strictType of
+      Nothing -> tryError $ sformat ("dataTypeFromProto: missing strictType "%sh) sqlt
+      Just (P.SQLType'BasicType P.SQLType'UNUSED) -> tryError $ sformat ("dataTypeFromProto: basic type is UNUSED "%sh) sqlt
+      Just (P.SQLType'BasicType P.SQLType'INT) -> pure IntType
+      Just (P.SQLType'BasicType P.SQLType'DOUBLE) -> pure DoubleType
+      Just (P.SQLType'BasicType P.SQLType'STRING) -> pure StringType
+      Just (P.SQLType'BasicType P.SQLType'BOOL) -> pure BoolType
+      Just (P.SQLType'ArrayType sqlt') -> ArrayType <$> fromProto sqlt'
+      Just (P.SQLType'StructType (P.StructType l)) -> Struct . StructType <$> v where
+        f' (P.StructField fn (Just sqlt')) = StructField (FieldName fn) <$> fromProto sqlt'
+        f' (P.StructField fn Nothing) = tryError $ sformat ("dataTypeFromProto: missing field type for "%sh) fn
+        v = V.fromList <$> sequence (f' <$> l)
+
+instance ToProto P.SQLType DataType where
+  toProto dt = P.SQLType nl (Just x) where
+    nl = case dt of
+      StrictType _ -> False
+      NullableType _ -> True
+    _struct (StructType v) = P.StructType l where
+      f (StructField n dt') = P.StructField (unFieldName n) (Just (toProto dt'))
+      l = f <$> V.toList v
+    _st IntType = P.SQLType'BasicType P.SQLType'INT
+    _st DoubleType = P.SQLType'BasicType P.SQLType'DOUBLE
+    _st StringType = P.SQLType'BasicType P.SQLType'STRING
+    _st BoolType = P.SQLType'BasicType P.SQLType'BOOL
+    _st (Struct st') = P.SQLType'StructType (_struct st')
+    _st (ArrayType dt') = P.SQLType'ArrayType (toProto dt')
+    x = case dt of
+      (StrictType x') -> _st x'
+      (NullableType x') -> _st x'
+
 -- QUICKCHECK INSTANCES
 -- TODO: move these outside to testing
 
@@ -134,60 +174,60 @@ instance Arbitrary DataType where
 -- AESON INSTANCES
 
 
-_toJSDT :: StrictDataType -> Nullable -> Value
-_toJSDT sdt nl =
-  let nullable = (if nl == CanNull then A.Bool True else A.Bool False) :: A.Value
-      _primitive :: T.Text -> A.Value
-      _primitive s = object ["basicType" .= A.String s, "nullable" .= nullable ]
-  in case sdt of
-    IntType -> _primitive "INT"
-    DoubleType -> _primitive "DOUBLE"
-    StringType -> _primitive "STRING"
-    BoolType -> _primitive "BOOL"
-    (Struct struct) ->
-      object ["structType" .= toJSON struct, "nullable" .= nullable]
-    (ArrayType at) ->
-      object ["arrayType" .= toJSON at, "nullable" .= nullable]
-
-instance ToJSON StructType where
-  toJSON (StructType fields) =
-    let
-      _fieldToJson (StructField (FieldName n) dt) =
-        object ["fieldName" .= A.String n,"fieldType" .= toJSON dt]
-      fs = _fieldToJson <$> V.toList fields
-    in object ["fields" .= fs]
-
--- Spark drops the info at the highest level.
-instance ToJSON DataType where
-  toJSON (StrictType dt) = _toJSDT dt NoNull
-  toJSON (NullableType dt) = _toJSDT dt CanNull
-
--- Parsing
-
-instance FromJSON DataType where
-  parseJSON = withObject "DataType" $ \o -> do
-    -- The standard JSON encoding may not encode the default values
-    nullable <- o .:? "nullable" .!= False
-    let _parsePrimitive x = case x of
-            A.String "INT" -> return IntType
-            A.String "DOUBLE" -> return DoubleType
-            A.String "STRING" -> return StringType
-            A.String "BOOL" -> return BoolType
-            _ -> fail ("DataType: cannot parse primitive " ++ show x)
-    let p = (o .: "basicType") >>= _parsePrimitive
-    let aj = o .: "arrayType"
-    let st = o .: "structType"
-    dt <- (Struct <$> st) <|> (ArrayType <$> aj) <|> p
-    let c = if nullable then NullableType else StrictType
-    return (c dt)
-
-instance FromJSON StructField where
-  parseJSON = withObject "StructField" $ \o -> do
-    n <- o .: "fieldName"
-    dt <- o .: "fieldType"
-    return $ StructField (FieldName n) dt
-
-instance FromJSON StructType where
-  parseJSON = withObject "StructType" $ \o -> do
-    fs <- o .: "fields"
-    return (StructType fs)
+-- _toJSDT :: StrictDataType -> Nullable -> Value
+-- _toJSDT sdt nl =
+--   let nullable = (if nl == CanNull then A.Bool True else A.Bool False) :: A.Value
+--       _primitive :: T.Text -> A.Value
+--       _primitive s = object ["basicType" .= A.String s, "nullable" .= nullable ]
+--   in case sdt of
+--     IntType -> _primitive "INT"
+--     DoubleType -> _primitive "DOUBLE"
+--     StringType -> _primitive "STRING"
+--     BoolType -> _primitive "BOOL"
+--     (Struct struct) ->
+--       object ["structType" .= toJSON struct, "nullable" .= nullable]
+--     (ArrayType at) ->
+--       object ["arrayType" .= toJSON at, "nullable" .= nullable]
+--
+-- instance ToJSON StructType where
+--   toJSON (StructType fields) =
+--     let
+--       _fieldToJson (StructField (FieldName n) dt) =
+--         object ["fieldName" .= A.String n,"fieldType" .= toJSON dt]
+--       fs = _fieldToJson <$> V.toList fields
+--     in object ["fields" .= fs]
+--
+-- -- Spark drops the info at the highest level.
+-- instance ToJSON DataType where
+--   toJSON (StrictType dt) = _toJSDT dt NoNull
+--   toJSON (NullableType dt) = _toJSDT dt CanNull
+--
+-- -- Parsing
+--
+-- instance FromJSON DataType where
+--   parseJSON = withObject "DataType" $ \o -> do
+--     -- The standard JSON encoding may not encode the default values
+--     nullable <- o .:? "nullable" .!= False
+--     let _parsePrimitive x = case x of
+--             A.String "INT" -> return IntType
+--             A.String "DOUBLE" -> return DoubleType
+--             A.String "STRING" -> return StringType
+--             A.String "BOOL" -> return BoolType
+--             _ -> fail ("DataType: cannot parse primitive " ++ show x)
+--     let p = (o .: "basicType") >>= _parsePrimitive
+--     let aj = o .: "arrayType"
+--     let st = o .: "structType"
+--     dt <- (Struct <$> st) <|> (ArrayType <$> aj) <|> p
+--     let c = if nullable then NullableType else StrictType
+--     return (c dt)
+--
+-- instance FromJSON StructField where
+--   parseJSON = withObject "StructField" $ \o -> do
+--     n <- o .: "fieldName"
+--     dt <- o .: "fieldType"
+--     return $ StructField (FieldName n) dt
+--
+-- instance FromJSON StructType where
+--   parseJSON = withObject "StructType" $ \o -> do
+--     fs <- o .: "fields"
+--     return (StructType fs)

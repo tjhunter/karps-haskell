@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Spark.Core.Internal.ContextStructures(
   SparkSessionConf(..),
@@ -22,8 +24,10 @@ import Spark.Core.Internal.Client(LocalSessionId)
 import Spark.Core.Internal.ComputeDag(ComputeDag)
 import Spark.Core.Internal.DAGStructures(Graph)
 import Spark.Core.Internal.OpStructures(HdfsPath(..))
+import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.Pruning
 import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge, OperatorNode)
+import qualified Proto.Karps.Proto.Graph as PG
 
 -- | The configuration of a remote spark session in Karps.
 data SparkSessionConf = SparkSessionConf {
@@ -88,3 +92,4 @@ A graph of computation, in which the nodes have a direct relation to each other
 in a way that is not tracked with the edges. This should be
 used sparingly. Used only in older algorithms. -}
 type TiedComputeGraph = Graph UntypedNode StructureEdge
+    

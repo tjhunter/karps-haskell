@@ -3,8 +3,8 @@ module Spark.Core.Row(
   ToSQL,
   FromSQL,
   valueToCell,
-  cellToValue,
-  jsonToCell,
+  -- cellToValue,
+  -- jsonToCell,
   rowArray,
   rowCell
   ) where

@@ -38,7 +38,7 @@ import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Try
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.CanRename
-import Spark.Proto.Std(Shuffle(..))
+-- import Spark.Proto.Std(Shuffle(..))
 
 {-| A dataset that has been partitioned according to some given field.
 -}

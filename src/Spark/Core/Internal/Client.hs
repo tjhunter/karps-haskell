@@ -1,22 +1,22 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 -- The communication protocol with the server
 
 module Spark.Core.Internal.Client where
+
+import Data.Text(Text, pack)
+import Data.Aeson.Types(Parser)
+import GHC.Generics
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Dataset(UntypedNode)
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Internal.TypesFunctions()
-
-import Data.Text(Text, pack)
-import Data.Aeson
-import Data.Aeson.Types(Parser)
-import GHC.Generics
-
-
--- Imports for the client
+import Spark.Core.Internal.RowStructures(Cell)
+import Spark.Core.Internal.ProtoUtils
+import qualified Proto.Karps.Proto.Computation as PC
 
 {-| The ID of an RDD in Spark.
 -}
@@ -72,7 +72,7 @@ data PossibleNodeStatus =
 
 data NodeComputationSuccess = NodeComputationSuccess {
   -- Because Row requires additional information to be deserialized.
-  ncsData :: Value,
+  ncsData :: Cell,
   -- The data type is also available, but it is not going to be parsed for now.
   ncsDataType :: DataType
 } deriving (Show, Generic)
@@ -82,67 +82,73 @@ data NodeComputationFailure = NodeComputationFailure {
 } deriving (Show, Generic)
 
 
+instance FromProto PC.SessionId LocalSessionId where
+  fromProto (PC.SessionId x) = pure $ LocalSessionId x
+
+instance ToProto PC.SessionId LocalSessionId where
+  toProto = PC.SessionId . unLocalSession
+
 -- **** AESON INSTANCES ***
 
-instance ToJSON LocalSessionId where
-  toJSON lsi = object ["id" .= unLocalSession lsi]
-
-instance FromJSON LocalSessionId where
-  parseJSON = withObject "LocalSessionId" $ \o -> do
-    _id <- o .: "id"
-    return $ LocalSessionId _id
-
-instance FromJSON RDDId where
-  parseJSON x = RDDId <$> parseJSON x
-
-instance FromJSON RDDInfo where
-  parseJSON = withObject "RDDInfo" $ \o -> do
-    _id <- o .: "id"
-    className <- o .: "className"
-    repr <- o .: "repr"
-    parents <- o .: "parents"
-    return $ RDDInfo _id className repr parents
-
-instance FromJSON SparkComputationItemStats where
-  parseJSON = withObject "SparkComputationItemStats" $ \o -> do
-    rddinfo <- o .: "rddInfo"
-    return $ SparkComputationItemStats rddinfo
-
-instance FromJSON BatchComputationKV where
-  parseJSON = withObject "BatchComputationKV" $ \o -> do
-    np <- o .: "localPath"
-    deps <- o .: "pathDependencies"
-    res <- o .: "result"
-    return $ BatchComputationKV np deps res
-
-instance FromJSON BatchComputationResult where
-  parseJSON = withObject "BatchComputationResult" $ \o -> do
-    kvs <- o .: "results"
-    tlp <- o .: "targetLocalPath"
-    let f (BatchComputationKV k d v) = (k, d, v)
-    return $ BatchComputationResult tlp (f <$> kvs)
-
-instance FromJSON NodeComputationSuccess where
-  parseJSON = withObject "NodeComputationSuccess" $ \o -> NodeComputationSuccess
-    <$> o .: "cell"
-    <*> o .: "cellType"
-
--- Because we get a row back, we need to supply a SQLType for deserialization.
-instance FromJSON PossibleNodeStatus where
-  parseJSON =
-    let parseSuccess :: Object -> Parser PossibleNodeStatus
-        parseSuccess o = NodeFinishedSuccess
-          <$> o .:? "finalResult"
-          <*> o .:? "stats"
-        parseFailure :: Object -> Parser PossibleNodeStatus
-        parseFailure o =
-          (NodeFinishedFailure . NodeComputationFailure) <$> o .: pack "finalError"
-    in
-      withObject "PossibleNodeStatus" $ \o -> do
-        status <- o .: pack "status"
-        case pack status of
-          "SCHEDULED" -> return NodeQueued
-          "RUNNING" -> return NodeRunning
-          "FINISHED_SUCCESS" -> parseSuccess o
-          "FINISHED_FAILURE" -> parseFailure o
-          _ -> failure $ pack ("FromJSON PossibleNodeStatus " ++ show status)
+-- instance ToJSON LocalSessionId where
+--   toJSON lsi = object ["id" .= unLocalSession lsi]
+--
+-- instance FromJSON LocalSessionId where
+--   parseJSON = withObject "LocalSessionId" $ \o -> do
+--     _id <- o .: "id"
+--     return $ LocalSessionId _id
+--
+-- instance FromJSON RDDId where
+--   parseJSON x = RDDId <$> parseJSON x
+--
+-- instance FromJSON RDDInfo where
+--   parseJSON = withObject "RDDInfo" $ \o -> do
+--     _id <- o .: "id"
+--     className <- o .: "className"
+--     repr <- o .: "repr"
+--     parents <- o .: "parents"
+--     return $ RDDInfo _id className repr parents
+--
+-- instance FromJSON SparkComputationItemStats where
+--   parseJSON = withObject "SparkComputationItemStats" $ \o -> do
+--     rddinfo <- o .: "rddInfo"
+--     return $ SparkComputationItemStats rddinfo
+--
+-- instance FromJSON BatchComputationKV where
+--   parseJSON = withObject "BatchComputationKV" $ \o -> do
+--     np <- o .: "localPath"
+--     deps <- o .: "pathDependencies"
+--     res <- o .: "result"
+--     return $ BatchComputationKV np deps res
+--
+-- instance FromJSON BatchComputationResult where
+--   parseJSON = withObject "BatchComputationResult" $ \o -> do
+--     kvs <- o .: "results"
+--     tlp <- o .: "targetLocalPath"
+--     let f (BatchComputationKV k d v) = (k, d, v)
+--     return $ BatchComputationResult tlp (f <$> kvs)
+--
+-- instance FromJSON NodeComputationSuccess where
+--   parseJSON = withObject "NodeComputationSuccess" $ \o -> NodeComputationSuccess
+--     <$> o .: "cell"
+--     <*> o .: "cellType"
+--
+-- -- Because we get a row back, we need to supply a SQLType for deserialization.
+-- instance FromJSON PossibleNodeStatus where
+--   parseJSON =
+--     let parseSuccess :: Object -> Parser PossibleNodeStatus
+--         parseSuccess o = NodeFinishedSuccess
+--           <$> o .:? "finalResult"
+--           <*> o .:? "stats"
+--         parseFailure :: Object -> Parser PossibleNodeStatus
+--         parseFailure o =
+--           (NodeFinishedFailure . NodeComputationFailure) <$> o .: pack "finalError"
+--     in
+--       withObject "PossibleNodeStatus" $ \o -> do
+--         status <- o .: pack "status"
+--         case pack status of
+--           "SCHEDULED" -> return NodeQueued
+--           "RUNNING" -> return NodeRunning
+--           "FINISHED_SUCCESS" -> parseSuccess o
+--           "FINISHED_FAILURE" -> parseFailure o
+--           _ -> failure $ pack ("FromJSON PossibleNodeStatus " ++ show status)

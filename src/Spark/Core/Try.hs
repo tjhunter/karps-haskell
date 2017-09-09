@@ -10,17 +10,15 @@ module Spark.Core.Try(
   NodeError(..),
   Try,
   tryError,
-  tryEither
+  tryEither,
+  tryMaybe
   ) where
 
 import qualified Data.Text as T
-import qualified Data.Vector as V
-
-import Spark.Core.StructuresInternal
 
 -- | An error associated to a particular node (an observable or a dataset).
 data NodeError = Error {
-  ePath :: NodePath,
+  ePath :: [T.Text],
   eMessage :: T.Text
 } deriving (Eq, Show)
 
@@ -31,9 +29,13 @@ type Try = Either NodeError
 -- TODO: rename to tryError
 _error :: T.Text -> Try a
 _error txt = Left Error {
-    ePath = NodePath V.empty,
+    ePath = [],
     eMessage = txt
   }
+
+tryMaybe :: Maybe a -> T.Text -> Try a
+tryMaybe (Just a) _ = pure a
+tryMaybe Nothing msg = tryError msg
 
 -- | Returns an error object given a text clue.
 tryError :: T.Text -> Try a

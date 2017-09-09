@@ -72,6 +72,7 @@ import Data.Text.Lazy(toStrict)
 import Data.String(IsString(fromString))
 import Control.Monad(when)
 import Formatting
+import Data.ProtoLens.Message(Message)
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
@@ -84,7 +85,6 @@ import Spark.Core.Internal.OpFunctions
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesGenerics
 import Spark.Core.Internal.TypesFunctions
-import Spark.Proto.Graph(OpExtra(..))
 
 -- | (developer) The operation performed by this node.
 nodeOp :: ComputeNode loc a -> NodeOp
@@ -298,33 +298,30 @@ nodeFromContext on parents' dependencies = updateNode n id where
 
 -- *********** function / object conversions *******
 
-fromBuilder0Extra :: A.ToJSON x => NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
-fromBuilder0Extra = _fromBuilder []
+fromBuilder0Extra :: Message x => NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder0Extra = _fromBuilderExtra []
 
-fromBuilder0Extra' :: forall x loc. (A.ToJSON x, IsLocality loc) => NodeBuilder -> x -> Try (ComputeNode loc Cell)
+fromBuilder0Extra' :: forall x loc. (Message x, IsLocality loc) => NodeBuilder -> x -> Try (ComputeNode loc Cell)
 fromBuilder0Extra' nb x = _fromBuilder' [] nb x loc where
   loc = _getTypedLocality :: TypedLocality loc
 
---fromBuilder0' :: NodeBuilder -> TypedLocality loc -> Try (ComputeNode loc Cell)
-
-fromBuilder1Extra :: A.ToJSON x => ComputeNode loc1 a1 -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
-fromBuilder1Extra cn = _fromBuilder [untyped cn]
+fromBuilder1Extra :: Message x => ComputeNode loc1 a1 -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder1Extra cn = _fromBuilderExtra [untyped cn]
 
 fromBuilder1 :: ComputeNode loc1 a1 -> NodeBuilder -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
-fromBuilder1 cn nb = fromBuilder1Extra cn nb A.Null
+fromBuilder1 cn = _fromBuilder [untyped cn]
 
-fromBuilder2Extra :: A.ToJSON x => ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
-fromBuilder2Extra cn1 cn2 = _fromBuilder [untyped cn1, untyped cn2]
+fromBuilder2Extra :: Message x => ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+fromBuilder2Extra cn1 cn2 = _fromBuilderExtra [untyped cn1, untyped cn2]
 
 fromBuilder2 :: ComputeNode loc1 a1 -> ComputeNode loc2 a2 -> NodeBuilder -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
-fromBuilder2 cn1 cn2 nb = fromBuilder2Extra cn1 cn2 nb A.Null
+fromBuilder2 cn1 cn2 = _fromBuilder [untyped cn1, untyped cn2]
 
-_fromBuilder :: A.ToJSON x => [UntypedNode] -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
-_fromBuilder l nb x tl sqlt = do
-  let json = A.toJSON x
-  let opExtra = if json == A.Null
-          then OpExtra Nothing
-          else OpExtra . Just . pretty $ json
+_fromBuilder :: [UntypedNode] -> NodeBuilder -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+_fromBuilder l nb = _fromBuilder'' l nb emptyExtra
+
+_fromBuilder'' :: [UntypedNode] -> NodeBuilder -> OpExtra -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+_fromBuilder'' l nb opExtra tl sqlt = do
   let shapes = (cniShape . onNodeInfo . nodeOpNode) <$> l
   cni <- nbBuilder nb opExtra shapes
   let builtLocality = nsLocality (cniShape cni)
@@ -340,13 +337,13 @@ _fromBuilder l nb x tl sqlt = do
   let n2 = n `parents` l
   return n2
 
+_fromBuilderExtra :: Message x => [UntypedNode] -> NodeBuilder -> x -> TypedLocality loc -> SQLType a -> Try (ComputeNode loc a)
+_fromBuilderExtra l nb x = _fromBuilder'' l nb (convertToExtra x)
+
 -- TODO: code duplication with above
-_fromBuilder' :: A.ToJSON x => [UntypedNode] -> NodeBuilder -> x -> TypedLocality loc -> Try (ComputeNode loc Cell)
+_fromBuilder' :: Message x => [UntypedNode] -> NodeBuilder -> x -> TypedLocality loc -> Try (ComputeNode loc Cell)
 _fromBuilder' l nb x tl = do
-  let json = A.toJSON x
-  let opExtra = if json == A.Null
-          then OpExtra Nothing
-          else OpExtra . Just . pretty $ json
+  let opExtra = convertToExtra x
   let shapes = (cniShape . onNodeInfo . nodeOpNode) <$> l
   cni <- nbBuilder nb opExtra shapes
   let builtLocality = nsLocality (cniShape cni)
@@ -365,7 +362,7 @@ emptyNodeStandard tloc sqlt name = _emptyNodeTyped tloc sqlt op where
   so = StandardOperator {
          soName = name,
          soOutputType = unSQLType sqlt,
-         soExtra = A.Null
+         soExtra = emptyExtra
        }
   op = if unTypedLocality tloc == Local
           then NodeLocalOp so
@@ -388,19 +385,19 @@ instance forall loc a. Show (ComputeNode loc a) where
     fields = T.pack . show . nodeType $ ld in
       T.unpack $ toStrict $ TF.format txt (np, no, loc, fields)
 
-instance forall loc a. A.ToJSON (ComputeNode loc a) where
-  toJSON node = A.object [
-    "locality" .= nodeLocality node,
-    "path" .= nodePath node,
-    "opName" .= (simpleShowOp . nodeOp $ node),
-    "opExtra" .= A.object ["content" .= (pretty . extraNodeOpData . nodeOp $ node)],
-    "parents" .= (nodePath <$> nodeParents node),
-    "logicalDependencies" .= (nodePath <$> nodeLogicalDependencies node),
-    "inferedType" .= (unSQLType . nodeType) node]
-
-instance forall loc. A.ToJSON (TypedLocality loc) where
-  toJSON (TypedLocality Local) = A.String "LOCAL"
-  toJSON (TypedLocality Distributed) = A.String "DISTRIBUTED"
+-- instance forall loc a. Message (ComputeNode loc a) where
+--   toJSON node = A.object [
+--     "locality" .= nodeLocality node,
+--     "path" .= nodePath node,
+--     "opName" .= (simpleShowOp . nodeOp $ node),
+--     "opExtra" .= A.object ["content" .= (pretty . extraNodeOpData . nodeOp $ node)],
+--     "parents" .= (nodePath <$> nodeParents node),
+--     "logicalDependencies" .= (nodePath <$> nodeLogicalDependencies node),
+--     "inferedType" .= (unSQLType . nodeType) node]
+--
+-- instance forall loc. Message (TypedLocality loc) where
+--   toJSON (TypedLocality Local) = A.String "LOCAL"
+--   toJSON (TypedLocality Distributed) = A.String "DISTRIBUTED"
 
 unsafeCastDataset :: ComputeNode LocDistributed a -> ComputeNode LocDistributed b
 unsafeCastDataset ds = ds { _cnType = _cnType ds }

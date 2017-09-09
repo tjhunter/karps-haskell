@@ -7,10 +7,8 @@ This file contains all the operations that are then refered to by more
 -}
 module Spark.Core.InternalStd.Dataset where
 
-import qualified Data.Aeson as A
-
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.NodeBuilder
+import Spark.Core.Internal.NodeBuilder(cniStandardOp', NodeBuilder, buildOpD)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.DatasetFunctions
@@ -32,7 +30,7 @@ autocache n = forceRight $ fromBuilder1 n autocacheBuilder (nodeLocality n) (nod
 
 autocacheBuilder :: NodeBuilder
 autocacheBuilder = buildOpD opnameAutocache $ \dt ->
-  pure $ cniStandardOp Distributed opnameAutocache dt A.Null
+  pure $ cniStandardOp' Distributed opnameAutocache dt
 
 
 {-| Caches the dataset.
@@ -49,4 +47,4 @@ cache n = forceRight $ fromBuilder1 n cacheBuilder (nodeLocality n) (nodeType n)
 
 cacheBuilder :: NodeBuilder
 cacheBuilder = buildOpD opnameCache $ \dt ->
-  pure $ cniStandardOp Distributed opnameCache dt A.Null
+  pure $ cniStandardOp' Distributed opnameCache dt

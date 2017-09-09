@@ -21,7 +21,6 @@ module Spark.Core.Internal.ContextInteractive(
   currentSessionDef
 ) where
 
-import qualified Data.Vector as V
 import Control.Exception
 import Control.Monad.Catch(throwM)
 import Data.IORef
@@ -154,6 +153,6 @@ _forceEither = _getOrThrow . tryEither
 _throw :: Text -> IO a
 _throw txt = throwM $
   SparkInteractiveException Error {
-    ePath = NodePath V.empty,
+    ePath = [],
     eMessage = txt
   }

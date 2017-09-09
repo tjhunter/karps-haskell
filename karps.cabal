@@ -52,6 +52,7 @@ library
                        Spark.Core.Internal.Paths,
                        Spark.Core.Internal.PathsUntyped,
                        Spark.Core.Internal.Projections,
+                       Spark.Core.Internal.ProtoUtils,
                        Spark.Core.Internal.Pruning,
                        Spark.Core.Internal.RowGenericsFrom,
                        Spark.Core.Internal.Utilities,
@@ -72,9 +73,23 @@ library
                        Spark.Proto.ApiInternal,
                        Spark.Proto.Graph,
                        Spark.Proto.Row,
-                       Spark.Proto.StructuredTransform
-  other-modules:       Spark.Core.Internal.CachingUntyped,
+                       Spark.Proto.StructuredTransform,
+                       Proto.Karps.Proto.ApiInternal,
+                       Proto.Karps.Proto.Computation,
+                       Proto.Karps.Proto.Graph,
+                       Proto.Karps.Proto.Interface,
+                       Proto.Karps.Proto.Io,
+                       Proto.Karps.Proto.Row,
+                       Proto.Karps.Proto.Std,
+                       Proto.Karps.Proto.StructuredTransform,
+                       Proto.Karps.Proto.Types
+
+  other-modules:       Proto.Tensorflow.Core.Framework.AttrValue,
+                       Proto.Tensorflow.Core.Framework.Graph,
+                       Proto.Tensorflow.Core.Framework.NodeDef,
                        Spark.Core.Internal.AlgebraStructures,
+                       Spark.Core.Internal.CachingUntyped,
+                       Spark.Core.Internal.Display,
                        Spark.Core.Internal.FunctionsInternals,
                        Spark.Core.Internal.LocatedBase,
                        Spark.Core.Internal.RowGenerics,
@@ -83,7 +98,6 @@ library
                        Spark.Core.Internal.StructuredBuilder,
                        Spark.IO.Internal.InputGeneric,
                        Spark.IO.Internal.Json,
-                       Proto.Karps.Proto.Types,
                        Spark.IO.Internal.OutputCommon
   build-depends:       aeson,
                        aeson-pretty,
@@ -100,6 +114,7 @@ library
                        formatting,
                        hashable,
                        lens,
+                       lens-family,
                        monad-logger,
                        proto-lens >= 0.2.2,
                        proto-lens-protoc >= 0.2.2,
@@ -131,7 +146,11 @@ executable karps-server
   build-depends:       aeson
                      , base
                      , bytestring
+                     , formatting
                      , karps
+                     , lens-family
+                     , proto-lens >= 0.2.2
+                     , proto-lens-protoc >= 0.2.2
                      , text
                      , scotty
                      , protobuf
@@ -158,6 +177,7 @@ test-suite karps-test
                        Spark.Core.PathSpec,
                        Spark.Core.ProjectionsSpec,
                        Spark.Core.RowToSQLSpec,
+                       Spark.Core.TestUtils,
                        Spark.Core.TypesSpec,
                        Spark.Core.ColumnSpec,
                        Spark.Core.SimpleExamplesSpec

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
 A description of the operations that can be performed on
@@ -17,7 +18,7 @@ module Spark.Core.Internal.OpStructures(
   StandardOperator(..),
   NodeShape(..),
   CoreNodeInfo(..),
-  CoreNodeBuilder,
+  -- CoreNodeBuilder,
   ColOp(..),
   TransformField(..),
   StructuredTransform(..),
@@ -29,22 +30,28 @@ module Spark.Core.Internal.OpStructures(
   UniversalAggregatorOp(..),
   Pointer(..),
   NodeOp(..),
+  OpExtra(..),
   makeOperator,
-  coreNodeInfo
+  coreNodeInfo,
+  emptyExtra
 ) where
 
 import Data.Text as T
 import GHC.Generics (Generic)
 import Data.Aeson(Value, Value(Null), FromJSON, ToJSON, toJSON)
 import Data.Aeson.Types(typeMismatch)
-import qualified Data.Aeson as A
+import Data.ByteString(ByteString)
+-- import qualified Data.Aeson as A
 import Data.Vector(Vector)
 
+-- import Proto.Karps.Proto.Graph(OpExtra(..))
 import Spark.Core.StructuresInternal
+import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
-import Spark.Proto.Graph(OpExtra(..), Locality(..))
 import Spark.Core.Try
+import qualified Proto.Karps.Proto.Graph as PG
+import qualified Proto.Karps.Proto.ApiInternal as PAI
 
 {-| The name of a SQL function.
 
@@ -69,6 +76,11 @@ type OperatorName = T.Text
 These paths are usually not created by the user directly.
 -}
 data HdfsPath = HdfsPath Text deriving (Eq, Show, Ord)
+
+data OpExtra = OpExtra ByteString deriving (Eq, Show)
+
+emptyExtra :: OpExtra
+emptyExtra = OpExtra ""
 
 {-| A stamp that defines some notion of uniqueness of the data source.
 
@@ -106,7 +118,7 @@ data DataInputStamp = DataInputStamp Text deriving (Eq, Show)
 --     -- This operator can be used locally with the signature a -> a
 --   | DirectPartitioningInvariant
 
-
+data Locality = Local | Distributed deriving (Eq, Show)
 
 -- ********* PHYSICAL OPERATORS ***********
 -- These structures declare some operations that correspond to operations found
@@ -117,7 +129,7 @@ data DataInputStamp = DataInputStamp Text deriving (Eq, Show)
 data StandardOperator = StandardOperator {
   soName :: !OperatorName,
   soOutputType :: !DataType,
-  soExtra :: !Value
+  soExtra :: !OpExtra
 } deriving (Eq, Show)
 
 -- -- | A scala method of a singleton object.
@@ -136,9 +148,7 @@ only one that should matter when assembling a graph.
 data NodeShape = NodeShape {
   nsType :: !DataType, -- TODO rename nodeType
   nsLocality :: !Locality -- TODO rename locality
-} deriving (Eq, Show, Generic)
-instance FromJSON NodeShape
-instance ToJSON NodeShape
+} deriving (Eq, Show)
 
 {-| The core information that characterizes a node
 (except for the the topological information).
@@ -161,7 +171,8 @@ coreNodeInfo dt loc op =
       cniOp = op
     }
 
-type CoreNodeBuilder = OpExtra -> [NodeShape] -> Try CoreNodeInfo
+-- TODO: remove
+-- type CoreNodeBuilder = OpExtra -> [NodeShape] -> Try CoreNodeInfo
 
 -- | The different kinds of column operations that are understood by the
 -- backend.
@@ -181,8 +192,7 @@ data ColOp =
     -- | A constant defined for each element.
     -- The type should be the same as for the column
     -- A literal is always direct
-    -- TODO(kps) use a cell instead, or a cell with type.
-  | ColLit !DataType !Value
+  | ColLit !DataType !Cell
     -- | A structure.
     -- TODO: have a function for constructor with NonEmpty
   | ColStruct !(Vector TransformField)
@@ -290,15 +300,11 @@ data NodeOp2 =
 
 {-| A pointer to a node that is assumed to be already computed.
 -}
--- TODO this is encoded as proto
--- TODO remove the node shape, it is not a proto.
 data Pointer = Pointer {
   computation :: !ComputationID,
   path :: !NodePath,
   shape :: !NodeShape
-} deriving (Eq, Show, Generic)
-instance FromJSON Pointer
-instance ToJSON Pointer
+} deriving (Eq, Show)
 
 {-
 A node operation.
@@ -320,7 +326,7 @@ data NodeOp =
     -- | An operation between local nodes: [Observable] -> Observable
     NodeLocalOp StandardOperator
     -- | An observable literal
-  | NodeLocalLit !DataType !Value
+  | NodeLocalLit !DataType !Cell
     -- | A special join that broadcasts a value along a dataset.
   | NodeBroadcastJoin
     -- | Some aggregator that does not respect any particular invariant.
@@ -339,7 +345,7 @@ data NodeOp =
   | NodeStructuredTransform !ColOp
   | NodeLocalStructuredTransform !ColOp
     -- | A distributed dataset (with no partition information)
-  | NodeDistributedLit !DataType !(Vector Value)
+  | NodeDistributedLit !DataType !(Vector Cell)
     -- | An opaque distributed operator.
   | NodeDistributedOp StandardOperator
   | NodePointer Pointer
@@ -351,18 +357,14 @@ makeOperator txt sqlt =
   StandardOperator {
     soName = txt,
     soOutputType = unSQLType sqlt,
-    soExtra = Null }
+    soExtra = emptyExtra  }
 
-instance ToJSON HdfsPath where
-  toJSON (HdfsPath p) = toJSON p
+instance ToProto PG.Locality Locality where
+  toProto Distributed = PG.DISTRIBUTED
+  toProto Local = PG.LOCAL
 
-instance ToJSON DataInputStamp where
-  toJSON (DataInputStamp p) = toJSON p
+instance FromProto PG.OpExtra OpExtra where
+  fromProto (PG.OpExtra x) = pure (OpExtra x)
 
-instance FromJSON HdfsPath where
-  parseJSON (A.String p) = return (HdfsPath p)
-  parseJSON x = typeMismatch "HdfsPath" x
-
-instance FromJSON DataInputStamp where
-  parseJSON (A.String p) = return (DataInputStamp p)
-  parseJSON x = typeMismatch "DataInputStamp" x
+instance ToProto PG.OpExtra OpExtra where
+  toProto (OpExtra x) = PG.OpExtra x

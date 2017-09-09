@@ -375,7 +375,7 @@ _replaceObservables _ (GenColExtraction (FieldPath v)) =
   -- It is a normal extraction, prepend the suffix of the data structure.
   pure (ColExtraction (FieldPath v')) where
     v' = V.cons (unsafeFieldName "_1") v
-_replaceObservables _ (GenColLit dt c) = pure (ColLit dt (toJSON c))
+_replaceObservables _ (GenColLit dt c) = pure (ColLit dt c)
 _replaceObservables m (GenColFunction n v) =
   ColFunction n <$> sequence (_replaceObservables m <$> v)
 _replaceObservables m (GenColStruct v) = ColStruct <$> sequence (_replaceField m <$> v)

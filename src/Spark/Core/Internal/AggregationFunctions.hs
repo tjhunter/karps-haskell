@@ -129,12 +129,12 @@ _collectAgg' dt =
       soMerge = StandardOperator {
                  soName = "org.spark.Collect",
                  soOutputType = ldt,
-                 soExtra = Null
+                 soExtra = emptyExtra
            }
       soMono = StandardOperator {
                   soName = "org.spark.CatSorted",
                   soOutputType = ldt,
-                  soExtra = Null
+                  soExtra = emptyExtra
             }
   in pure UniversalAggregatorOp {
     -- TODO(kps) switch to BigInt

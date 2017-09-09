@@ -7,10 +7,16 @@ ubiquitous.
 -}
 module Spark.Core.Internal.DatasetStd where
 
-
-
-import qualified Data.Aeson as A
+import Control.Monad.Except
 import qualified Data.Vector as V
+import Formatting
+import Data.Text(Text)
+import Data.Maybe(catMaybes, listToMaybe)
+import Formatting
+import qualified Data.Vector as V
+import Control.Monad.Except
+import Lens.Family2((^.))
+
 
 import Spark.Core.Try
 import Spark.Core.Row
@@ -20,11 +26,13 @@ import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.PathsUntyped()
 import Spark.Core.Internal.TypesStructures
 import Spark.Core.Internal.TypesFunctions
+import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.RowUtils
-import qualified Spark.Proto.Std as PStd
-import qualified Spark.Proto.Row as PRow
+import qualified Proto.Karps.Proto.Std as PStd
+import qualified Proto.Karps.Proto.Row as PRow
+import qualified Proto.Karps.Proto.Graph as PGraph
 
 {-| Returns the union of two datasets.
 
@@ -38,7 +46,7 @@ union n1 n2 = forceRight $ fromBuilder2 n1 n2 unionBuilder (nodeLocality n1) (no
 unionBuilder :: NodeBuilder
 unionBuilder = buildOpDD "org.spark.Union" $ \dt1 dt2 ->
   if dt1 == dt2
-    then pure $ cniStandardOp Distributed "org.spark.Union" dt1 A.Null
+    then pure $ cniStandardOp' Distributed "org.spark.Union" dt1
     else fail $ "unionBuilder: expected same type, but got " ++ show dt1 ++ " and " ++ show dt2
 
 
@@ -58,42 +66,50 @@ identity n = forceRight $ if unTypedLocality (nodeLocality n) == Local
 
 identityBuilderD :: NodeBuilder
 identityBuilderD = buildOpD "org.spark.Identity" $ \dt ->
-    pure $ cniStandardOp Distributed "org.spark.Identity" dt A.Null
+    pure $ cniStandardOp' Distributed "org.spark.Identity" dt
 
 identityBuilderL :: NodeBuilder
 identityBuilderL = buildOpL "org.spark.LocalIdentity" $ \dt ->
-    pure $ cniStandardOp Local "org.spark.LocalIdentity" dt A.Null
+    pure $ cniStandardOp' Local "org.spark.LocalIdentity" dt
 
 dataframe :: DataType -> [Cell] -> DataFrame
-dataframe dt l = fromBuilder0Extra' literalBuilderD cwt where
-  cwt = PRow.CellWithType (RowArray (V.fromList l)) (arrayType' dt)
+dataframe dt l = fromBuilder0Extra' literalBuilderD =<< cwt where
+  cwt = tryEither $ cellWithTypeToProto (arrayType' dt) (RowArray (V.fromList l))
 
 
 literalBuilderD :: NodeBuilder
 literalBuilderD = buildOpExtra "org.spark.DistributedLiteral" f where
   f :: PRow.CellWithType -> Try CoreNodeInfo
   f cwt = do
-      cells' <- case PRow.cell cwt of
-        RowArray v -> pure v
-        x -> fail $ "builderDistributedLiteral: Expected an array of cells, got " ++ show x
-      dt <- case PRow.cellType cwt of
-        StrictType (ArrayType at) -> pure at
-        dt' -> fail $ "builderDistributedLiteral: Expected an array type, got " ++ show dt'
-      validCells <- tryEither $ sequence (checkCell dt <$> cells')
-      let jData = A.toJSON <$> validCells
-      let op = NodeDistributedLit dt jData
-      return $ CoreNodeInfo (NodeShape dt Distributed) op
+    (cells', dt') <- tryEither (cellWithTypeFromProto cwt)
+    case (cells', dt') of
+      (RowArray v, StrictType (ArrayType dt)) ->
+        pure $ CoreNodeInfo (NodeShape dt Distributed) op where
+          op = NodeDistributedLit dt v
+      _ -> tryError $ sformat ("builderDistributedLiteral: Expected an array of cells and an array type, got "%sh) (cells', dt')
 
+localityFromProto :: PGraph.Locality -> Locality
+localityFromProto PGraph.LOCAL = Local
+localityFromProto PGraph.DISTRIBUTED = Distributed
+
+localityToProto :: Locality -> PGraph.Locality
+localityToProto Local = PGraph.LOCAL
+localityToProto Distributed = PGraph.DISTRIBUTED
 
 placeholder :: forall loc a. (IsLocality loc) => SQLType a -> ComputeNode loc a
-placeholder sqlt = forceRight $ fromBuilder0Extra placeholderBuilder (PStd.Placeholder loc (unSQLType sqlt)) loct sqlt where
+placeholder sqlt = forceRight $ fromBuilder0Extra placeholderBuilder p loct sqlt where
   loct = _getTypedLocality :: TypedLocality loc
   loc = unTypedLocality loct
+  p = PStd.Placeholder (localityToProto loc) (Just (toProto (unSQLType sqlt)))
 
 placeholderBuilder :: NodeBuilder
 placeholderBuilder = buildOpExtra "org.spark.Placeholder" f where
   f :: PStd.Placeholder -> Try CoreNodeInfo
-  f (p @ (PStd.Placeholder loc dt)) = pure $ cniStandardOp loc "org.spark.Placeholder" dt p
+  f p = do
+    pdt <- extractMaybe p PStd.maybe'dataType "datatype"
+    dt <- fromProto pdt
+    let loc = p ^. PStd.locality
+    return $ cniStandardOp (localityFromProto loc) "org.spark.Placeholder" dt p
 
 {-| Low-level operator that takes an observable and propagates it along the
 content of an existing dataset.
@@ -113,5 +129,8 @@ broadcastPairBuilder = buildOpDL "org.spark.BroadcastPair" $ \dt1 dt2 -> do
 -- This operators is mostly used internally -> no need to expose currently.
 pointerBuilder :: NodeBuilder
 pointerBuilder = buildOpExtra "org.spark.PlaceholderCache" f where
-  f :: Pointer -> Try CoreNodeInfo
-  f (p @ (Pointer _ _ shp)) = pure $ cniStandardOp (nsLocality shp) "org.spark.PlaceholderCache" (nsType shp) p
+  f :: PStd.LocalPointer -> Try CoreNodeInfo
+  f p = do
+    pdt <- extractMaybe p PStd.maybe'dataType "datatype"
+    dt <- fromProto pdt
+    return $ cniStandardOp Local "org.spark.PlaceholderCache" dt p

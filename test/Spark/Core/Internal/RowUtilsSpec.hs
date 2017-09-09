@@ -18,12 +18,12 @@ import Spark.Core.Internal.RowGenericsFrom
 import Spark.Core.Internal.TypesStructuresRepr(DataTypeElementRepr)
 
 fun :: ByteString -> DataType -> Cell -> IO ()
-fun js dt cell2 =
-  let
-    mval = decode js :: Maybe Value
-    val = fromJust mval
-    cellt = jsonToCell dt val
-  in cellt `shouldBe` (Right cell2)
+fun js dt cell2 = error "RowUtilsSpec: TODO"
+  -- let
+  --   mval = decode js :: Maybe Value
+  --   val = fromJust mval
+  --   cellt = jsonToCell dt val
+  -- in cellt `shouldBe` (Right cell2)
 
 
 spec :: Spec

@@ -31,10 +31,10 @@ newtype TestT1 = TestT1 { unTestT1 :: Int } deriving (Eq, Show, Generic, ToSQL, 
 
 
 v2c :: (Show a, ToSQL a, FromSQL a, Eq a) => a -> Cell -> IO ()
-v2c !x !y = do
-  _ <- shouldBe (valueToCell x) y
-  _ <- shouldBe (cellToValue y) (Right x)
-  return ()
+v2c !x !y = error "v2c" --do
+  -- _ <- shouldBe (valueToCell x) y
+  -- _ <- shouldBe (cellToValue y) (Right x)
+  -- return ()
 
 spec :: Spec
 spec = do
