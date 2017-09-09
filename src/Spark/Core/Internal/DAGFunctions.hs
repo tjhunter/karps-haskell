@@ -34,6 +34,7 @@ module Spark.Core.Internal.DAGFunctions(
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
+import qualified Data.List.NonEmpty as N
 import Data.List(sortBy)
 import Data.Maybe
 import Data.Foldable(toList)
@@ -116,7 +117,7 @@ buildGraphFromList vxs eds = do
   -- 2. Find the lexicgraphic order (if possible)
   vxById <- _vertexById vxs
   -- The topological information
-  let edTopo = myGroupBy $ (edgeFrom &&& edgeTo) <$> eds
+  let edTopo = M.map N.toList $ myGroupBy $ (edgeFrom &&& edgeTo) <$> eds
   let vertexById :: VertexId -> DagTry (Vertex v)
       vertexById vid = case M.lookup vid vxById of
         Nothing -> throwError $ sformat ("buildGraphFromList: vertex id found in edge but not in vertices: "%sh) vid
@@ -138,13 +139,13 @@ buildGraphFromList vxs eds = do
         _ <- vertexById (edgeFrom e)
         return (edgeFrom e, VertexEdge vxTo e)
   vEdges <- sequence $ vertexEdge <$> eds
-  let edgeMap = M.map V.fromList (myGroupBy vEdges)
+  let edgeMap = M.map (V.fromList . N.toList) (myGroupBy vEdges)
   return $ Graph edgeMap (V.fromList lexico)
 
 _vertexById :: (Show v) => [Vertex v] -> DagTry (M.Map VertexId (Vertex v))
 _vertexById vxs =
   -- This is probably not the most pretty, but it works.
-  let vxById = myGroupBy $ (vertexId &&& id) <$> vxs
+  let vxById = M.map N.toList $ myGroupBy $ (vertexId &&& id) <$> vxs
       f (vid, [vx]) = pure (vid, vx)
       f (vid, l) = throwError $ sformat ("_VertexById: Multiple vertices with the same id: "%sh%" in "%sh) vid l
   in M.fromList <$> sequence (f <$> M.toList vxById)
@@ -246,7 +247,7 @@ reverseGraph g =
                 edgeTo = fromNid,
                 edgeData = edgeData ed }
           in (oldEndVid, VertexEdge { veEdge = ed', veEndVertex = endVx })
-    edges = myGroupBy $ concat $ flipVEdge <$> M.toList (gEdges g)
+    edges = M.map N.toList $ myGroupBy $ concat $ flipVEdge <$> M.toList (gEdges g)
   in Graph (V.fromList <$> edges) (V.reverse (gVertices g))
 
 -- | A generic transform over the graph that may account for potential failures
@@ -356,7 +357,7 @@ pruneLexicographic :: VertexId -> [(VertexId, [VertexId], a)] -> [a]
 pruneLexicographic hvid l =
   let f (vid, l', a) = (vid, (l', a))
       allVertices = myGroupBy (f <$> l)
-      allVertices' = M.map head allVertices
+      allVertices' = M.map N.head allVertices
   in reverse $ _pruneLexicographic allVertices' S.empty [hvid]
 
 {-| Makes the vertex information (including node id) available as part of the

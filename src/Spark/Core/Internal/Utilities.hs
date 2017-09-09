@@ -21,19 +21,23 @@ module Spark.Core.Internal.Utilities(
   traceHint,
   SF.sh,
   (<&>),
-  (<>)
+  (<>),
+  NonEmpty( (:|) )
   ) where
 
 import qualified Data.Text as T
 import qualified Formatting.ShortFormatters as SF
+import qualified Data.List.NonEmpty as N
 import Control.Arrow ((&&&))
 import Data.List
 import Data.Function
 import Data.Text(Text)
+import Data.Maybe(mapMaybe)
 import Formatting
 import Debug.Trace(trace)
 import qualified Data.Map.Strict as M
 import Data.Monoid((<>))
+import  Data.List.NonEmpty( NonEmpty( (:|) ) )
 import GHC.Stack(HasCallStack)
 
 -- import qualified Spark.Core.Internal.LocatedBase as LB
@@ -46,15 +50,19 @@ import GHC.Stack(HasCallStack)
 data UnknownType
 
 -- | group by
--- TODO: have a non-empty list instead
-myGroupBy' :: (Ord b) => (a -> b) -> [a] -> [(b, [a])]
-myGroupBy' f = map (f . head &&& id)
-                   . groupBy ((==) `on` f)
-                   . sortBy (compare `on` f)
+myGroupBy' :: (Ord b) => (a -> b) -> [a] -> [(b, NonEmpty a)]
+myGroupBy' f l = l4 where
+  g :: NonEmpty (u,v) -> (u, NonEmpty v)
+  g ((h,t) :| r) = (h, t :| (snd <$> r))
+  l0 = (f &&& id) <$> l
+  l1 = groupBy ((==) `on` fst) l0
+  l2 = mapMaybe N.nonEmpty l1
+  l3 = g <$> l2
+  l4 = sortBy (compare `on` fst) l3
 
 -- | group by
 -- TODO: have a non-empty list instead
-myGroupBy :: (Ord a) => [(a, b)] -> M.Map a [b]
+myGroupBy :: (Ord a) => [(a, b)] -> M.Map a (NonEmpty b)
 myGroupBy l = let
   l2 = myGroupBy' fst l in
   M.map (snd <$>) $ M.fromList l2

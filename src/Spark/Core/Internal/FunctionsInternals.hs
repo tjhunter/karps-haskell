@@ -336,7 +336,7 @@ _columnOrigin :: [UntypedColumnData] -> [UntypedDataset]
 _columnOrigin l =
   let
     groups = myGroupBy' (nodeId . colOrigin) l
-  in (colOrigin . head . snd) <$> groups
+  in (colOrigin . N.head . snd) <$> groups
 
 -- The packing algorithm
 -- It eliminates the broadcast variables into joins and then wraps the

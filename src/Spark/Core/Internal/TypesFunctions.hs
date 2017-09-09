@@ -132,7 +132,7 @@ _sToTreeRepr l = do
   let withHeads = concatMap f l
   let g = myGroupBy withHeads
   let groupst = M.toList g <&> \(h, l') ->
-         _sToTreeRepr l' <&> second (StructField (FieldName h))
+         _sToTreeRepr (N.toList l') <&> second (StructField (FieldName h))
   groups <- sequence groupst
   checkedGroups <- _packWithIndex groups
   hDtr <- hDtrt

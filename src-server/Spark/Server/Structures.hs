@@ -13,6 +13,7 @@ import Spark.Core.Dataset(UntypedNode)
 import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Internal.ContextStructures(ComputeGraph)
 import Spark.Core.Internal.Client
+import Spark.Core.Internal.Utilities(NonEmpty)
 import Spark.Core.Internal.ProtoUtils
 import qualified Proto.Karps.Proto.Graph as PGraph
 import qualified Proto.Karps.Proto.ApiInternal as PAI
@@ -33,7 +34,7 @@ data SeenNode = SeenNode {
 } deriving (Eq, Show)
 
 -- TODO: use NonEmpty instead
-type NodeMap = Map NodeId [GlobalPath]
+type NodeMap = Map NodeId (NonEmpty GlobalPath)
 
 {-| The request to transform a (functional) graph to a pinned graph.
 

@@ -111,7 +111,7 @@ buildCGraphFromList vxs eds inputs outputs = do
   let vertexById = myGroupBy $ (vertexId &&& id) <$> vxs
   let f :: VertexId -> DagTry (Vertex v)
       f vid = case M.lookup vid vertexById of
-        Just [vx] -> pure vx
+        Just (vx :| _) -> pure vx
         _ -> throwError $ sformat ("buildCGraphFromList: a vertex id:"%sh%" is not part of the graph.") vid
   inputs' <- sequence $ f <$> V.fromList inputs
   outputs' <- sequence $ f <$> V.fromList outputs
@@ -152,7 +152,7 @@ _getSubsetVertex vxs vids =
   let vertexById = myGroupBy $ (vertexId &&& id) <$> V.toList vxs
       f :: VertexId -> m (Vertex v)
       f vid = case M.lookup vid vertexById of
-        Just [vx] -> pure vx
+        Just (vx :| _) -> pure vx
         -- A failure here is a construction error of the graph.
         _ -> fail . T.unpack $ sformat ("buildCGraphFromList: a vertex id:"%sh%" is not part of the graph.") vid
   in sequence $ f <$> vids

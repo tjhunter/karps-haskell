@@ -216,7 +216,7 @@ _usePathsForIds d =
           f (Vertex vid n) = (vid, parseNodeId (nodePath n))
       m = myGroupBy vertexPairs
       replaceVid vid = case M.lookup vid m of
-          Just [vid'] -> return vid'
+          Just (vid' :| _) -> return vid'
           _ -> fail $ "_usePathsForIds: programming error: cannot find id " ++ show vid ++ " in map " ++ show m
       replaceVertex (Vertex vid v) = Vertex <$> (replaceVid vid) <*> (pure v)
       replaceEdge (Edge vid1 vid2 e) = Edge <$> (replaceVid vid1) <*> (replaceVid vid2) <*> (pure e)
