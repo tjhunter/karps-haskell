@@ -18,7 +18,6 @@ module Spark.Core.Internal.OpStructures(
   StandardOperator(..),
   NodeShape(..),
   CoreNodeInfo(..),
-  -- CoreNodeBuilder,
   ColOp(..),
   TransformField(..),
   StructuredTransform(..),
@@ -36,15 +35,24 @@ module Spark.Core.Internal.OpStructures(
   emptyExtra
 ) where
 
+import qualified Data.Vector as V
 import Data.ByteString(ByteString)
 import Data.Text as T
 import Data.Vector(Vector)
+import Data.ProtoLens.Message(def)
+import Control.Monad(join)
+import Formatting
+import Lens.Family2 ((&), (.~), (^.))
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.RowStructures(Cell)
+import Spark.Core.Try
+import Spark.Core.Internal.Utilities(sh)
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
 import qualified Proto.Karps.Proto.Graph as PG
+import qualified Proto.Karps.Proto.Std as PS
+import qualified Proto.Karps.Proto.StructuredTransform as PST
 
 {-| The name of a SQL function.
 
@@ -107,7 +115,7 @@ data DataInputStamp = DataInputStamp Text deriving (Eq, Show)
 --   | PartitioningInvariant
 --     -- | The strongest invariant. It respects the canonical partition order
 --     -- and it outputs the same number of elements.
---     -- This is typically a map.
+--     -- This is typically a maPST.
 --     -- This operator can be used locally with the signature a -> a
 --   | DirectPartitioningInvariant
 
@@ -205,7 +213,7 @@ data StructuredTransform =
 
 {-| When applying a UDAF, determines if it should only perform the algebraic
 portion of the UDAF (initialize+update+merge), or if it also performs the final,
-non-algebraic step.
+non-algebraic stePST.
 -}
 data UdafApplication = Algebraic | Complete deriving (Eq, Show)
 
@@ -361,3 +369,100 @@ instance FromProto PG.OpExtra OpExtra where
 
 instance ToProto PG.OpExtra OpExtra where
   toProto (OpExtra x) = PG.OpExtra x
+
+instance ToProto PST.Column ColOp where
+  toProto = _colOpToProto Nothing
+
+instance FromProto PST.Column ColOp where
+  fromProto c = snd <$> _fromProto' c where
+    _structFromProto :: PST.ColumnStructure -> Try ColOp
+    _structFromProto (PST.ColumnStructure l) =
+      ColStruct . V.fromList <$> l2 where
+        l' = sequence (_fromProto' <$> l)
+        f (Nothing, _) = tryError $ sformat ("colOpFromProto: found a field with no name "%sh) l
+        f (Just fn, co) = pure $ TransformField fn co
+        l'' = (f <$>) <$> l'
+        l2 = join (sequence <$> l'')
+    _funFromProto :: PST.ColumnFunction -> Try ColOp
+    _funFromProto (PST.ColumnFunction fname l) = ColFunction fname <$> x where
+        l2 = _fromProto' <$> V.fromList l
+        x = (snd <$>) <$> sequence l2
+    _fromProto :: PST.Column'Content -> Try ColOp
+    _fromProto (PST.Column'Struct cs) = _structFromProto cs
+    _fromProto (PST.Column'Function f) = _funFromProto f
+    _fromProto (PST.Column'Extraction ce) =
+      pure . ColExtraction . fieldPathFromProto $ ce
+    _fromProto' :: PST.Column -> Try (Maybe FieldName, ColOp)
+    _fromProto' c' = do
+      x <- case c' ^. PST.maybe'content of
+        Just con -> _fromProto con
+        Nothing -> tryError $ sformat ("colOpFromProto: cannot understand column struture "%sh) c'
+      let l = case c' ^. PST.fieldName of
+                x' | x' == "" -> Nothing
+                x' -> Just x'
+      return (FieldName <$> l, x)
+
+instance FromProto PST.Aggregation AggOp where
+  fromProto = snd . _aggOpFromProto
+
+instance ToProto PST.Aggregation AggOp where
+  toProto AggUdaf{} = error "_aggOpToProto: not implemented: AggUdaf"
+  toProto (AggFunction sfn v) =
+    (def :: PST.Aggregation) & PST.op .~ x where
+      x = (def :: PST.AggregationFunction)
+          & PST.functionName .~ sfn
+          & PST.inputs .~ [fieldPathToProto v]
+  toProto (AggStruct v) =
+    (def :: PST.Aggregation) & PST.struct .~ x where
+      f :: AggField -> PST.Aggregation
+      f (AggField n v') = toProto v' & PST.fieldName .~ unFieldName n
+      x = (def :: PST.AggregationStructure) & PST.fields .~ (f <$> V.toList v)
+
+instance ToProto PS.LocalPointer Pointer where
+  toProto (Pointer c p (NodeShape dt _)) =
+    (def :: PS.LocalPointer)
+        & PS.computation .~ toProto c
+        & PS.localPath .~ toProto p
+        & PS.dataType .~ toProto dt
+
+_colOpToProto :: Maybe FieldName -> ColOp -> PST.Column
+_colOpToProto _ (ColLit _ _) = error "_colOpToProto: literal"
+_colOpToProto fn (ColExtraction (FieldPath l)) =
+  _colProto fn & PST.extraction .~ e where
+    e = (def :: PST.ColumnExtraction) & PST.path .~ V.toList (unFieldName <$> l)
+_colOpToProto fn (ColFunction txt cols) =
+  _colProto fn & PST.function .~ f where
+    l = V.toList (_colOpToProto Nothing <$> cols)
+    f = (def :: PST.ColumnFunction)
+          & PST.functionName .~ txt
+          & PST.inputs .~ l
+_colOpToProto fn (ColStruct v) =
+  _colProto fn & PST.struct .~ s where
+    s = (def :: PST.ColumnStructure) & PST.fields .~ l
+    f (TransformField fn' co) = _colOpToProto (Just fn') co
+    l = V.toList (f <$> v)
+
+_colProto :: Maybe FieldName -> PST.Column
+_colProto (Just fn) = def & PST.fieldName .~ unFieldName fn
+_colProto Nothing = def
+
+
+_aggOpFromProto :: PST.Aggregation -> (Maybe FieldName, Try AggOp)
+_aggOpFromProto a =  (f, y) where
+  f1 = a ^. PST.fieldName
+  f = if f1 == "" then Nothing else Just (FieldName f1)
+  y = case a ^. PST.maybe'aggOp of
+      Nothing -> tryError $ sformat ("_aggOpFromProto: deserialization failed: missing op on "%sh) a
+      Just (PST.Aggregation'Op af) -> _aggFunFromProto af
+      Just (PST.Aggregation'Struct s) -> _aggStructFromProto s
+
+_aggFunFromProto :: PST.AggregationFunction -> Try AggOp
+_aggFunFromProto (PST.AggregationFunction sfn [fpp]) =
+  pure $ AggFunction sfn (fieldPathFromProto fpp)
+_aggFunFromProto x = tryError $ sformat ("_aggFunFromProto: deserialization failed on "%sh) x
+
+_aggStructFromProto :: PST.AggregationStructure -> Try AggOp
+_aggStructFromProto (PST.AggregationStructure l) = AggStruct . V.fromList <$> v where
+    f (Just fn, x) = AggField <$> pure fn <*> x
+    f x = tryError $ sformat ("_aggStructFromProto: deserialization failed on "%sh) x
+    v = sequence (f . _aggOpFromProto <$> l)

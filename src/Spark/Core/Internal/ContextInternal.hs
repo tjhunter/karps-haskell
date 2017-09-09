@@ -52,7 +52,7 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
-import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
+-- import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
 import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..))
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()
@@ -123,9 +123,9 @@ insertSourceInfo cg l = do
 
 {-| A list of file sources that are being requested by the compute graph -}
 inputSourcesRead :: ComputeGraph -> [HdfsPath]
-inputSourcesRead cg =
+inputSourcesRead cg = undefined
   -- TODO: make unique elements
-  mapMaybe (hdfsPath.onOp.vertexData) (toList (cdVertices cg))
+  -- mapMaybe (hdfsPath.onOp.vertexData) (toList (cdVertices cg))
 
 -- Here are the steps being run
 --  - node collection + cycle detection
@@ -255,16 +255,16 @@ _buildComputation session cg =
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
 _updateVertex :: M.Map HdfsPath DataInputStamp -> OperatorNode -> Try OperatorNode
-_updateVertex m un =
-  let no = onOp un in case hdfsPath no of
-    Just p -> case M.lookup p m of
-      Just dis ->
-        -- TODO this is incorrect, the node ID should not contain dummy
-        -- information
-        updateSourceStamp no dis <&> updateOpNodeOp un (NodeContext [] [])
-      -- TODO: this is for debugging, but it could be eventually relaxed.
-      Nothing -> tryError $ "_updateVertex: Expected to find path " <> show' p
-    Nothing -> pure un
+_updateVertex m un = undefined
+  -- let no = onOp un in case hdfsPath no of
+  --   Just p -> case M.lookup p m of
+  --     Just dis ->
+  --       -- TODO this is incorrect, the node ID should not contain dummy
+  --       -- information
+  --       updateSourceStamp no dis <&> updateOpNodeOp un (NodeContext [] [])
+  --     -- TODO: this is for debugging, but it could be eventually relaxed.
+  --     Nothing -> tryError $ "_updateVertex: Expected to find path " <> show' p
+  --   Nothing -> pure un
 
 _updateVertex2 ::
   M.Map HdfsPath DataInputStamp ->

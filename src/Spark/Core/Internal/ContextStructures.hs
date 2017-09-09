@@ -44,14 +44,6 @@ data SparkSessionConf = SparkSessionConf {
   --
   -- The default value is "" (a new random context name will be chosen).
   confRequestedSessionName :: !Text,
-  {-| If enabled, attempts to prune the computation graph as much as possible.
-
-  This option is useful in interactive sessions when long chains of computations
-  are extracted. This forces the execution of only the missing parts.
-  The algorithm is experimental, so disabling it is a safe option.
-
-  Disabled by default.
-  -}
   confUseNodePrunning :: !Bool
 } deriving (Show)
 
@@ -92,4 +84,3 @@ A graph of computation, in which the nodes have a direct relation to each other
 in a way that is not tracked with the edges. This should be
 used sparingly. Used only in older algorithms. -}
 type TiedComputeGraph = Graph UntypedNode StructureEdge
-    

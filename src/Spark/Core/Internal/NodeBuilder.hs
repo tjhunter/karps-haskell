@@ -10,7 +10,6 @@ module Spark.Core.Internal.NodeBuilder(
   -- Basic tools
   cniStandardOp,
   cniStandardOp',
-  convertToExtra,
   -- No parent
   buildOpExtra,
   -- One parent
@@ -37,6 +36,7 @@ import Data.ProtoLens.Message(Message)
 import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
 
 import Spark.Core.Internal.OpStructures
+import Spark.Core.Internal.OpFunctions(convertToExtra)
 import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Try
 
@@ -149,9 +149,6 @@ buildOpLExtra opName f =buildOp1Extra opName f' where
   f' (NodeShape dt Distributed) = fail $ "buildOpLExtra: " ++ show opName ++ ": expected local node, but got a distributed node of type " ++ show dt ++ " instead."
   f' (NodeShape dt Local) = f dt
 
-
-convertToExtra :: Message x => x -> OpExtra
-convertToExtra = OpExtra . encodeMessage
 
 {-| Converts a typed builder to an untyped builder.
 -}

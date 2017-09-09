@@ -11,7 +11,6 @@ module Spark.Core.Internal.Joins(
   joinObs'
 ) where
 
-import qualified Data.Vector as V
 import Control.Arrow
 
 import Spark.Core.Internal.ColumnStructures
@@ -25,7 +24,7 @@ import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions(structTypeFromFields)
 import Spark.Core.Try
 import Spark.Core.StructuresInternal(unsafeFieldName)
-import Spark.Core.Internal.NodeBuilder(NodeBuilder, convertToExtra, buildOpDDExtra, cniStandardOp)
+import Spark.Core.Internal.NodeBuilder(NodeBuilder, buildOpDDExtra, cniStandardOp)
 import qualified Proto.Karps.Proto.Std as PStd
 
 {-| Standard (inner) join on two sets of data.

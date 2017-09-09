@@ -26,6 +26,7 @@ import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.ContextInternal
+import Spark.Core.TestUtils
 import Spark.Core.Internal.Pruning(emptyNodeCache)
 
 data TestType = AutocacheNode | CacheNode | UncacheNode | Dataset | Row deriving (Eq, Show)
@@ -157,7 +158,7 @@ spec = do
       g `shouldSatisfy` isRight
       ((length . toList . gVertices) <$> g) `shouldBe` Right 8
   describe "Autocaching integration tests" $ do
-    it "test 1" $ do
+    xit "test 1" $ do
       let l = [1,2,3] :: [Int]
       let ds = dataset l
       let ds' = autocache ds

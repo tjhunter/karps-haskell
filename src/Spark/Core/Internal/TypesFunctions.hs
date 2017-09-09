@@ -37,7 +37,6 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Text(Text, intercalate)
 import qualified Data.Vector as V
-import Lens.Family2 ((^.))
 import Formatting
 
 
@@ -48,7 +47,6 @@ import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesStructuresRepr(DataTypeRepr, DataTypeElementRepr)
 import qualified Spark.Core.Internal.TypesStructuresRepr as DTR
 import Spark.Core.Try
-import qualified Proto.Karps.Proto.Types as P
 
 -- Performs a cast of the type.
 -- This may throw an error if the required type b is not

@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Spark.Core.Internal.RowUtils(
   -- jsonToCell,
@@ -20,7 +21,6 @@ import qualified Data.Vector as V
 import Control.Monad.Except
 
 import Spark.Core.Internal.TypesStructures
-import Spark.Core.Internal.TypesFunctions
 import Spark.Core.Internal.RowStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Try
