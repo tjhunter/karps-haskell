@@ -85,7 +85,6 @@ library
                        Spark.Core.Internal.CachingUntyped,
                        Spark.Core.Internal.Display,
                        Spark.Core.Internal.FunctionsInternals,
-                       Spark.Core.Internal.LocatedBase,
                        Spark.Core.Internal.RowGenerics,
                        Spark.Core.Internal.RowStructures,
                        Spark.Core.Internal.RowUtils,
@@ -97,10 +96,8 @@ library
                        base16-bytestring,
                        binary >= 0.7 && < 0.9,
                        bytestring,
-                       --cereal,
                        containers,
                        cryptohash-sha256,
-                       --deepseq,
                        either,
                        exceptions,
                        formatting,
@@ -142,7 +139,7 @@ executable karps-server
                      , proto-lens-protoc >= 0.2.2
                      , text
                      , scotty
-                     , cereal
+                    --  , cereal
                      , containers
                      , unordered-containers
                      , vector

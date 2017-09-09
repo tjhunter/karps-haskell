@@ -7,7 +7,7 @@
 {-| A collection of small utility functions.
 -}
 module Spark.Core.Internal.Utilities(
-  LB.HasCallStack,
+  HasCallStack,
   UnknownType,
   myGroupBy,
   myGroupBy',
@@ -34,8 +34,9 @@ import Formatting
 import Debug.Trace(trace)
 import qualified Data.Map.Strict as M
 import Data.Monoid((<>))
+import GHC.Stack(HasCallStack)
 
-import qualified Spark.Core.Internal.LocatedBase as LB
+-- import qualified Spark.Core.Internal.LocatedBase as LB
 
 (<&>) :: Functor f => f a -> (a -> b) -> f b
 (<&>) = flip fmap
@@ -59,9 +60,12 @@ myGroupBy l = let
   M.map (snd <$>) $ M.fromList l2
 
 
+error' :: (HasCallStack) => Text -> a
+error' = error . T.unpack
+
 -- | Missing implementations in the code base.
-missing :: (LB.HasCallStack) => Text -> a
-missing msg = LB.error $ T.concat ["MISSING IMPLEMENTATION: ", msg]
+missing :: (HasCallStack) => Text -> a
+missing msg = error' $ T.concat ["MISSING IMPLEMENTATION: ", msg]
 
 {-| The function that is used to trigger exception due to internal programming
 errors.
@@ -69,10 +73,10 @@ errors.
 Currently, all programming errors simply trigger an exception. All these
 impure functions are tagged with an implicit call stack argument.
 -}
-failure :: (LB.HasCallStack) => Text -> a
-failure msg = LB.error (T.concat ["FAILURE in Spark. Hint: ", msg])
+failure :: (HasCallStack) => Text -> a
+failure msg = error' (T.concat ["FAILURE in Spark. Hint: ", msg])
 
-failure' :: (LB.HasCallStack) => Format Text (a -> Text) -> a -> c
+failure' :: (HasCallStack) => Format Text (a -> Text) -> a -> c
 failure' x = failure . sformat x
 
 
@@ -81,9 +85,9 @@ or throws the error.
 
 This function is not total.
 -}
-forceRight :: (LB.HasCallStack, Show a) => Either a b -> b
+forceRight :: (HasCallStack, Show a) => Either a b -> b
 forceRight (Right b) = b
-forceRight (Left a) = LB.error $
+forceRight (Left a) = error' $
   sformat ("Failure from either, got instead a left: "%shown) a
 
 -- | Force the complete evaluation of a list to WNF.
