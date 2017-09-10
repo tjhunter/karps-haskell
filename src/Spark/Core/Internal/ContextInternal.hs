@@ -16,7 +16,6 @@ module Spark.Core.Internal.ContextInternal(
   prepareComputation,
   buildComputationGraph,
   performGraphTransforms,
-  getTargetNodes,
   getObservables,
   insertSourceInfo,
   updateCache,
@@ -56,7 +55,7 @@ import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
 -- import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
-import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..))
+import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..), Locality(..))
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()
 import Spark.Core.Internal.DAGFunctions(buildVertexList, graphMapVertices)
@@ -231,7 +230,7 @@ _buildComputation session cg =
   -- TODO it is missing the first node here, hoping it is the first one.
   in case terminalNodePaths of
     [p] ->
-      return $ Computation sid cid allTiedNodes [p] p terminalNodeIds
+      return $ Computation sid cid cg [p] p terminalNodeIds
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
 _updateVertex :: M.Map ResourcePath ResourceStamp -> OperatorNode -> Try OperatorNode
@@ -270,33 +269,11 @@ _extract1 :: FinalResult -> DataType -> Try Cell
 _extract1 (Left nf) _ = tryError $ sformat ("got an error "%shown) nf
 _extract1 (Right ncs) _ = pure $ ncsData ncs
 
--- Gets the relevant nodes for this computation from this spark session.
--- The computation is assumed to be correct and to contain all the nodes
--- already.
--- TODO: make it a total function
--- TODO: this is probably not needed anymore
-getTargetNodes :: (HasCallStack) => Computation -> [UntypedLocalData]
-getTargetNodes comp =
-  let
-    fun2 :: (HasCallStack) => UntypedNode -> UntypedLocalData
-    fun2 n = case (unObservable' . asLocalObservable) <$> castLocality n of
-      Right (Right x) -> x
-      err -> failure $ sformat ("_getNodes:fun2: err="%shown%" n="%shown) err n
-    finalNodeNames = cTerminalNodes comp
-    dct = M.fromList $ (nodePath &&& id) <$> cNodes comp
-    untyped2 = finalNodeNames <&> \n ->
-      let err = failure $ sformat ("Could not find "%sh%" in "%sh) n dct
-      in M.findWithDefault err n dct
-  in fun2 <$> untyped2
-
 {-| Retrieves all the observables from a computation.
 -}
-getObservables :: Computation -> [UntypedLocalData]
-getObservables comp =
-  let fun n = case (unObservable' . asLocalObservable) <$> castLocality n of
-          Right (Right x) -> return x
-          _ -> Nothing
-  in catMaybes $ fun <$> cNodes comp
+getObservables :: Computation -> [OperatorNode]
+getObservables comp = filter f (graphVertexData . cNodes $ comp) where
+  f = (Local ==) . nsLocality . onShape
 
 {-| Updates the cache, and returns the updates if there are any.
 

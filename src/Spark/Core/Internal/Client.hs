@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -8,16 +7,20 @@ module Spark.Core.Internal.Client where
 
 import Data.Text(Text, pack)
 import Lens.Family2((^.), (&), (.~))
+import Data.Default(def)
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Dataset(UntypedNode)
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
+import Spark.Core.Internal.RowUtils()
 import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Internal.RowStructures(Cell)
-import Spark.Core.Internal.BrainStructures(LocalSessionId)
+import Spark.Core.Internal.BrainFunctions()
+import Spark.Core.Internal.BrainStructures(LocalSessionId, ComputeGraph)
 import Spark.Core.Internal.ProtoUtils
+import Spark.Core.Try
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Interface as PI
 import qualified Proto.Karps.Proto.Computation as PC
@@ -33,7 +36,7 @@ data RDDId = RDDId {
 data Computation = Computation {
   cSessionId :: !LocalSessionId,
   cId :: !ComputationID,
-  cNodes :: ![UntypedNode], -- TODO: check to replace with OperatorNode?
+  cNodes :: !ComputeGraph, -- TODO: check to replace with OperatorNode?
   -- Non-empty
   cTerminalNodes :: ![NodePath],
   -- The node at the top of the computation.
@@ -46,7 +49,7 @@ data Computation = Computation {
 
 data BatchComputationResult = BatchComputationResult {
   bcrTargetLocalPath :: !NodePath,
-  bcrResults :: ![(NodePath, [NodePath], PossibleNodeStatus)]
+  bcrResults :: ![(NodePath, PossibleNodeStatus)]
 } deriving (Show)
 
 data RDDInfo = RDDInfo {
@@ -78,10 +81,34 @@ data NodeComputationFailure = NodeComputationFailure {
 } deriving (Show)
 
 instance ToProto PI.CreateComputationRequest Computation where
-  toProto = undefined
+  toProto c = (def :: PI.CreateComputationRequest)
+    & PI.session .~ toProto (cSessionId c)
+    & PI.requestedComputation .~ toProto (cId c)
+    & PI.requestedPaths .~ [toProto (cCollectingNode c)]
+    & PI.graph .~ toProto (cNodes c)
 
 instance FromProto PC.ComputationResult (NodePath, PossibleNodeStatus) where
-  fromProto = undefined
+  fromProto cr = do
+    np <- extractMaybe' cr PC.maybe'localPath "local_path"
+    case cr ^. PC.status of
+      PC.UNUSED -> tryError "FromProto PC.ComputationResult: missing status"
+      PC.SCHEDULED ->
+        return (np, NodeQueued)
+      PC.RUNNING ->
+        return (np, NodeRunning)
+      PC.FINISHED_SUCCESS -> do
+        cwt <- extractMaybe cr PC.maybe'finalResult "final_result"
+        (c, dt) <- fromProto cwt
+        let ncs = NodeComputationSuccess c dt
+        -- TODO: add the spark stats
+        return (np, NodeFinishedSuccess (Just ncs) Nothing)
+      PC.FINISHED_FAILURE ->
+        return (np, NodeFinishedFailure ncf) where
+          txt = cr ^. PC.finalError
+          ncf = NodeComputationFailure txt
 
 instance FromProto PC.BatchComputationResult BatchComputationResult where
-  fromProto = undefined
+  fromProto bcr = do
+    np <- extractMaybe' bcr PC.maybe'targetPath "target_path"
+    l <- sequence $ fromProto <$> (bcr ^. PC.results)
+    return $ BatchComputationResult np l

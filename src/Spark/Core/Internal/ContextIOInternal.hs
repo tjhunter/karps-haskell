@@ -14,6 +14,7 @@ module Spark.Core.Internal.ContextIOInternal(
 ) where
 
 import qualified Data.Text as T
+import qualified Data.Vector as V
 import qualified Network.Wreq as W
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -27,6 +28,7 @@ import Control.Monad.Trans(lift)
 import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
 import Control.Monad.Except(MonadError)
 import Control.Monad.IO.Class
+import Data.List(find)
 import Data.ProtoLens.Message(Message, def)
 import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
 import Data.ByteString.Lazy(ByteString)
@@ -46,7 +48,7 @@ import Spark.Core.Internal.ContextInternal
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.DatasetFunctions(untypedLocalData, nodePath)
-import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, nodeOpNode)
+import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, nodeOpNode, onId, onPath)
 import Spark.Core.Internal.OpStructures(DataInputStamp(..), NodeShape(..))
 import Spark.Core.Internal.RowGenericsFrom(cellToValue)
 import Spark.Core.Row
@@ -120,9 +122,8 @@ waitForCompletion :: Computation -> SparkState (Try Cell)
 waitForCompletion comp = do
   -- We track all the observables, instead of simply the targets.
   let obss = getObservables comp
-  let trackedNodes = obss <&> \n ->
-        (nodeId n, nodePath n,
-         onShape (nodeOpNode n))
+  let trackedNodes = obss <&> \on ->
+        (onId on, onPath on, onShape on)
   nrs' <- _computationMultiStatus (cId comp) HS.empty trackedNodes
   logDebugN $ "waitForCompletion: nrs'=" <> show' nrs'
   -- Find the main result again in the list of everything.
@@ -141,8 +142,7 @@ computationStats ::
   ComputationID -> SparkState BatchComputationResult
 computationStats cid = do
   logDebugN $ "computationStats: stats for " <> show' cid
-  session <- get
-  _computationStats session cid
+  _computationStatus cid (NodePath V.empty)
 
 {-| Exposed for debugging -}
 createComputation :: ComputeGraph -> SparkState (Try Computation)
@@ -214,14 +214,6 @@ type DefLogger a = LoggingT IO a
 _runLogger :: DefLogger a -> IO a
 _runLogger = runStdoutLoggingT
 
-_post :: (MonadIO m, Postable a) =>
-  Text -> a -> m (W.Response ByteString)
-_post url = liftIO . W.post (T.unpack url)
-
-_get :: (MonadIO m) =>
-  Text -> m (W.Response ByteString)
-_get url = liftIO $ W.get (T.unpack url)
-
 -- TODO move to more general utilities
 -- Performs repeated polling until the result can be converted
 -- to a certain other type.
@@ -284,17 +276,32 @@ _sendComputation session comp = do
   return ()
 
 _computationToProto :: Computation -> PI.CreateComputationRequest
-_computationToProto = undefined
+_computationToProto = toProto
 
-_computationStatus :: (MonadLoggerIO m, MonadError e m) =>
-  SparkSession -> ComputationID -> NodePath -> m PossibleNodeStatus
-_computationStatus session compId npath = do
+_computationStatus ::
+  ComputationID ->
+  NodePath ->
+  SparkState BatchComputationResult
+_computationStatus compId npath = do
+  session <- get
   let msg = (def :: PI.ComputationStatusRequest)
-  msg' <- _sendBackend' session "ComputationStatus" msg
-  _possibleNodeStatusFromProto msg'
+        & PI.session .~ toProto (ssId session)
+        & PI.computation .~ toProto compId
+        & PI.requestedPaths .~ [toProto npath]
+  msg' <- _sendBackend "ComputationStatus" msg
+  bcr <- _wrapTry (fromProto msg')
+  return bcr
 
-_possibleNodeStatusFromProto :: (MonadError e m) => PC.BatchComputationResult -> m PossibleNodeStatus
-_possibleNodeStatusFromProto = undefined
+_computationStatus1 :: ComputationID -> NodePath -> SparkState PossibleNodeStatus
+_computationStatus1 cid np = do
+  bcr <- _computationStatus cid np
+  requested <- case find ((np ==) . fst) (bcrResults bcr) of
+    Just (_, r) -> pure r
+    Nothing -> do
+      logInfoN "_computationMultiStatus: missing requested"
+      fail "_computationMultiStatus"
+  return requested
+
 
 -- TODO: not sure how this works when trying to make a fix point: is it going to
 -- blow up the 'stack'?
@@ -309,17 +316,16 @@ _computationMultiStatus ::
   [(NodeId, NodePath, NodeShape)] ->
   SparkState [(NodeId, Try Cell)]
 _computationMultiStatus _ _ [] = return []
-_computationMultiStatus cid done l0 = do
-  session <- get
-  -- TODO: doing some hacks here to accomodate for some old code
-  let l' = f <$> l0 where f (nid, np, ns) = (nid, np, ns, np)
+_computationMultiStatus cid done l' = do
   -- Find the nodes that still need processing (i.e. that have not previously
   -- finished with a success)
-  let f (nid, _, _, _) = not $ HS.member nid done
+  let f (nid, _, _) = not $ HS.member nid done
   let needsProcessing = filter f l'
   -- Poll a bunch of nodes to try to get a status update.
-  let statusl = _try (_computationStatus session cid) <$> needsProcessing :: [SparkState (NodeId, NodePath, NodeShape, PossibleNodeStatus)]
-  status <- sequence statusl
+  let f2 (nid, np, ns) = do
+        requested <- _computationStatus1 cid np
+        return (nid, np, ns, requested)
+  status <- sequence $ f2 <$> needsProcessing
   -- Update the state with the new data
   (updated, statusUpdate) <- returnPure $ updateCache cid status
   forM_ statusUpdate $ \(p, s) -> case s of
@@ -331,42 +337,30 @@ _computationMultiStatus cid done l0 = do
         logInfoN $ "_computationMultiStatus: " <> prettyNodePath p <> " running"
   -- Filter out the updated nodes, so that we do not ask for them again.
   let updatedNids = HS.union done (HS.fromList (fst <$> updated))
-  let g (nid, _, _, _) = not $ HS.member nid updatedNids
+  let g (nid, _, _) = not $ HS.member nid updatedNids
   let stillNeedsProcessing = filter g needsProcessing
   -- Do not block uselessly if we have nothing else to do
   if null stillNeedsProcessing
   then return updated
   else do
+    session <- get
     let delayMillis = confPollingIntervalMillis $ ssConf session
     _ <- liftIO $ threadDelay (delayMillis * 1000)
     -- TODO: this chaining is certainly not tail-recursive
     -- How much of a memory leak is it?
-    let stillNeedsProcessing' = f' <$> stillNeedsProcessing where f' (nid, np, ns, _) = (nid, np, ns)
+    let stillNeedsProcessing' = f' <$> stillNeedsProcessing where f' (nid, np, ns) = (nid, np, ns)
     reminder <- _computationMultiStatus cid updatedNids stillNeedsProcessing'
     return $ updated ++ reminder
 
-_try :: (Monad m) => (y -> m z) -> (x, x', x'', y) -> m (x, x', x'', z)
-_try f (x, x', x'', y) = f y <&> \z -> (x, x', x'', z)
-
-_computationStats :: (MonadLoggerIO m, MonadError e m) =>
-  SparkSession -> ComputationID -> m BatchComputationResult
-_computationStats session compId = do
-  let msg = (def :: PI.ComputationStatusRequest)
-  msg' <- _sendBackend' session "ComputationStatus" msg
-  _batchComputationResultFromProto msg'
-
-_batchComputationResultFromProto :: (MonadError e m) => PC.BatchComputationResult -> m BatchComputationResult
-_batchComputationResultFromProto = undefined
-
-_waitSingleComputation :: (MonadLoggerIO m, MonadError e m) =>
-  SparkSession -> Computation -> NodePath -> m FinalResult
+_waitSingleComputation ::
+  SparkSession -> Computation -> NodePath -> SparkState FinalResult
 _waitSingleComputation session comp npath =
   let
     extract :: PossibleNodeStatus -> Maybe FinalResult
     extract (NodeFinishedSuccess (Just s) _) = Just $ Right s
     extract (NodeFinishedFailure f) = Just $ Left f
     extract _ = Nothing
-    getStatus = _computationStatus session (cId comp) npath
+    getStatus = _computationStatus1 (cId comp) npath
     i = confPollingIntervalMillis $ ssConf session
   in
     _pollMonad getStatus i extract
