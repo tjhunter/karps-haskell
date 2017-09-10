@@ -41,6 +41,7 @@ import Network.Wreq.Types(Postable)
 import System.Random(randomIO)
 
 import Spark.Core.Dataset
+import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.Client
 import Spark.Core.Internal.ContextInternal
 import Spark.Core.Internal.ContextStructures

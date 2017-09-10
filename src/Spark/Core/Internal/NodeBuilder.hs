@@ -29,14 +29,11 @@ module Spark.Core.Internal.NodeBuilder(
   buildOp3,
 ) where
 
--- import qualified Data.Aeson as A
 import Data.Text(Text)
--- import Data.Text.Encoding(encodeUtf8)
 import Data.ProtoLens.Message(Message)
 import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
 
 import Spark.Core.Internal.OpStructures
-import Spark.Core.Internal.OpFunctions(convertToExtra)
 import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Try
 

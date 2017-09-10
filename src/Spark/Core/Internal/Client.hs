@@ -14,6 +14,7 @@ import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Internal.RowStructures(Cell)
+import Spark.Core.Internal.BrainStructures(LocalSessionId)
 import Spark.Core.Internal.ProtoUtils
 import qualified Proto.Karps.Proto.Computation as PC
 
@@ -22,10 +23,6 @@ import qualified Proto.Karps.Proto.Computation as PC
 data RDDId = RDDId {
  unRDDId :: !Int
 } deriving (Eq, Show, Ord)
-
-data LocalSessionId = LocalSessionId {
-  unLocalSession :: !Text
-} deriving (Eq, Show)
 
 data Computation = Computation {
   cSessionId :: !LocalSessionId,
@@ -79,10 +76,3 @@ data NodeComputationSuccess = NodeComputationSuccess {
 data NodeComputationFailure = NodeComputationFailure {
   ncfMessage :: !Text
 } deriving (Show)
-
-
-instance FromProto PC.SessionId LocalSessionId where
-  fromProto (PC.SessionId x) = pure $ LocalSessionId x
-
-instance ToProto PC.SessionId LocalSessionId where
-  toProto = PC.SessionId . unLocalSession

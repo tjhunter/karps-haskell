@@ -12,7 +12,6 @@
 
 module Spark.Core.Internal.ContextInternal(
   FinalResult,
-  TransformDetails(..),
   inputSourcesRead,
   prepareComputation,
   buildComputationGraph,
@@ -44,6 +43,7 @@ import Spark.Core.Dataset
 import Spark.Core.Try
 import Spark.Core.Row
 import Spark.Core.Types
+import Spark.Core.Internal.BrainStructures
 import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..), prettyNodePath)
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.CachingUntyped
@@ -65,32 +65,6 @@ import Spark.Core.Internal.Utilities
 
 -- The result from querying the status of a computation
 type FinalResult = Either NodeComputationFailure NodeComputationSuccess
-
-{-| The details from all the transform phases in Karps.
-
-The fields are in order of the compilation phases.
--}
--- TODO use in the transform below.
-data TransformDetails = TransformDetails {
-  -- | The initial graph
-  tdInitial :: !ComputeGraph,
-  {-| After source data insertion.
-  -}
-  tdWithSource :: !(Try ComputeGraph),
-  {-| Initial pruning to swap nodes that have been computed already -}
-  tdPruned :: !(Try ComputeGraph),
-  {-| The first-order nodes (functional group by) have been reduced to
-  simple DAG operations.
-  -}
-  tdZeroOrder :: !(Try ComputeGraph),
-  {-| The autocache requests have been fullfilled -}
-  tdAutocache :: !(Try ComputeGraph),
-  {-| Caching has been checked. -}
-  tdCacheCheck :: !(Try ComputeGraph),
-  {-| The final graph that contains the operations targeted to specific
-  devices. -}
-  tdFinal :: !(Try ComputeGraph)
-}
 
 {-| Given a context for the computation and a graph of computation, builds a
 computation object.
@@ -169,7 +143,7 @@ performGraphTransforms session cg = do
   -- The paths are used as vertex ids, so there is no need to tied the nodes.
   let g = computeGraphToGraph cg
   let conf = ssConf session
-  let pruned = if confUseNodePrunning conf
+  let pruned = if ccUseNodePruning . confCompiler $ conf
                then pruneGraphDefault (ssNodeCache session) g
                else g
   -- Autocache + caching pass pass
@@ -195,17 +169,6 @@ convertToTiedGraph cg =
           parents' = fst <$> filter (\(_, e) -> e == ParentEdge) l
           logicalDeps = fst <$> filter (\(_, e) -> e == LogicalEdge) l
           n = nodeFromContext on parents' logicalDeps
-
-_defaultDetails :: ComputeGraph -> TransformDetails
-_defaultDetails cg = TransformDetails {
-    tdInitial = cg,
-    tdWithSource = mis,
-    tdPruned = mis,
-    tdZeroOrder = mis,
-    tdAutocache = mis,
-    tdCacheCheck = mis,
-    tdFinal = mis
-  } where mis = fail "Phase not computed yet"
 
 {-| Switches the IDs of the graph from node ids to paths (which should be available and computed at that point) -}
 _usePathsForIds :: ComputeDag UntypedNode StructureEdge -> Try ComputeGraph

@@ -22,6 +22,7 @@ import Spark.Core.Dataset(UntypedNode)
 import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Try
 import Spark.Server.Structures
+import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.Utilities(myGroupBy, sh)
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures(ComputeNode(..), unTypedLocality, StructureEdge(..), OperatorNode(..))
@@ -38,26 +39,26 @@ import Spark.Core.Types
 import qualified Proto.Karps.Proto.Graph as PG
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 
-
-_parseInput :: PAI.PerformGraphTransform -> Try GraphTransform
-_parseInput pgt = do
-   sid <- extractMaybe' pgt PAI.maybe'session "session"
-   cid <- extractMaybe' pgt PAI.maybe'computation "computation"
-   l <- sequence $ fromProto <$> (pgt ^. PAI.availableNodes)
-   let g = undefined
-   return GraphTransform {
-      gtSessionId = sid,
-      gtComputationId = cid,
-      gtGraph = g,
-      gtNodeMap = myGroupBy l
-    }
-
-{-| Parses an outside transform into a GraphTransform.
-
-TODO: add some notion of registry to handle unknown operations.
--}
-parseInput :: PAI.PerformGraphTransform -> Try GraphTransform
-parseInput pgt = undefined --do
+--
+-- _parseInput :: PAI.PerformGraphTransform -> Try GraphTransform
+-- _parseInput pgt = do
+--    sid <- extractMaybe' pgt PAI.maybe'session "session"
+--    cid <- extractMaybe' pgt PAI.maybe'computation "computation"
+--    l <- sequence $ fromProto <$> (pgt ^. PAI.availableNodes)
+--    let g = undefined
+--    return GraphTransform {
+--       gtSessionId = sid,
+--       gtComputationId = cid,
+--       gtGraph = g,
+--       gtNodeMap = myGroupBy l
+--     }
+--
+-- {-| Parses an outside transform into a GraphTransform.
+--
+-- TODO: add some notion of registry to handle unknown operations.
+-- -}
+-- parseInput :: PAI.PerformGraphTransform -> Try GraphTransform
+-- parseInput pgt = undefined --do
   -- let requested = parseNodeId <$> requestedPaths pgt
   -- let nodes0 = PGraph.nodes . functionalGraph $ pgt
   -- -- As inputs, only keep the ids of the nodes that have no parents
@@ -121,14 +122,14 @@ instance FromProto PG.Node ParsedNode where
       pnDeps = deps,
       pnType = dt
     }
-
-{-| Writes the response. Nothing fancy here.
--}
-protoResponse :: GraphTransformResult -> Try PAI.GraphTransformResponse
-protoResponse (GTRSuccess (GraphTransformSuccess nodes _)) = undefined
-  -- pure $ PAI.GraphTransformResponse (PGraph.Graph (_toNode <$> nodes)) []
-protoResponse (GTRFailure (GraphTransformFailure msg)) =
-  tryError msg
+--
+-- {-| Writes the response. Nothing fancy here.
+-- -}
+-- protoResponse :: GraphTransformResult -> Try PAI.GraphTransformResponse
+-- protoResponse (GTRSuccess (GraphTransformSuccess nodes _)) = undefined
+--   -- pure $ PAI.GraphTransformResponse (PGraph.Graph (_toNode <$> nodes)) []
+-- protoResponse (GTRFailure (GraphTransformFailure msg)) =
+--   tryError msg
 
 
 -- Internal stuff

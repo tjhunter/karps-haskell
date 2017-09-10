@@ -12,6 +12,7 @@ module Spark.Core.Internal.ComputeDag(
   ComputeDag(..),
   computeGraphToGraph,
   graphToComputeGraph,
+  graphVertexData,
   mapVertices,
   mapVertexData,
   buildCGraph,
@@ -94,6 +95,9 @@ mapVertexData f = mapVertices (f . vertexData)
 buildCGraph :: (GraphOperations v e, Show v) =>
   v -> DagTry (ComputeDag v e)
 buildCGraph n = graphToComputeGraph <$> buildGraph n
+
+graphVertexData :: ComputeDag v e -> [v]
+graphVertexData cg = vertexData <$> V.toList (cdVertices cg)
 
 {-| Builds a compute graph from a list of vertex and edge informations.
 

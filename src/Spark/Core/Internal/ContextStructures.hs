@@ -20,14 +20,11 @@ import Data.Text(Text)
 import Control.Monad.State(StateT, State)
 import Control.Monad.Logger(LoggingT)
 
-import Spark.Core.Internal.Client(LocalSessionId)
-import Spark.Core.Internal.ComputeDag(ComputeDag)
+import Spark.Core.Internal.BrainStructures(LocalSessionId, ComputeGraph, CompilerConf)
 import Spark.Core.Internal.DAGStructures(Graph)
 import Spark.Core.Internal.OpStructures(HdfsPath(..))
-import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.Pruning
-import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge, OperatorNode)
-import qualified Proto.Karps.Proto.Graph as PG
+import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge,)
 
 -- | The configuration of a remote spark session in Karps.
 data SparkSessionConf = SparkSessionConf {
@@ -44,7 +41,7 @@ data SparkSessionConf = SparkSessionConf {
   --
   -- The default value is "" (a new random context name will be chosen).
   confRequestedSessionName :: !Text,
-  confUseNodePrunning :: !Bool
+  confCompiler :: !CompilerConf
 } deriving (Show)
 
 -- | A session in Spark.
@@ -71,12 +68,6 @@ type SparkStatePure x = State SparkSession x
 type SparkStatePureT m = StateT SparkSession m
 type SparkStateT m = LoggingT (SparkStatePureT m)
 
-{-| internal
-
-A graph of computations. This graph is a direct acyclic graph. Each node is
-associated to a global path.
--}
-type ComputeGraph = ComputeDag OperatorNode StructureEdge
 
 {-| internal
 

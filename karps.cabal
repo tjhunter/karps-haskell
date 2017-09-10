@@ -28,6 +28,8 @@ library
                        Spark.Core.Internal.AggregationFunctions,
                        Spark.Core.Internal.Arithmetics,
                        Spark.Core.Internal.ArithmeticsImpl,
+                       Spark.Core.Internal.BrainStructures,
+                       Spark.Core.Internal.BrainFunctions,
                        Spark.Core.Internal.Caching,
                        Spark.Core.Internal.CanRename,
                        Spark.Core.Internal.Client,
@@ -98,6 +100,7 @@ library
                        bytestring,
                        containers,
                        cryptohash-sha256,
+                       data-default,
                        either,
                        exceptions,
                        formatting,
@@ -169,6 +172,7 @@ test-suite karps-test
   build-depends:       base
                      , bytestring
                      , containers
+                     , data-default
                      , formatting
                      , karps
                      , hspec >= 2.0 && < 2.3
@@ -199,6 +203,7 @@ test-suite karps-test-integration
                      , base
                      , bytestring
                      , containers
+                     , data-default
                      , formatting
                      , karps
                      , hspec >= 2.0 && < 2.4

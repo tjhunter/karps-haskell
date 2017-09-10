@@ -9,6 +9,7 @@ import qualified Data.ByteString.Char8 as C8
 import Data.Either(isLeft, isRight)
 import Control.Arrow((&&&))
 import Data.Text(Text)
+import Data.Default(def)
 import Data.Foldable(toList)
 import Formatting
 
@@ -19,7 +20,7 @@ import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Internal.Caching
 -- Required for instance resolution
 import Spark.Core.StructuresInternal()
-import Spark.Core.Internal.Client(LocalSessionId(..))
+import Spark.Core.Internal.BrainStructures(LocalSessionId(..))
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DAGFunctions
 import Spark.Core.Internal.DatasetStructures
@@ -91,7 +92,7 @@ intErrors ld =
 
 emptySession :: SparkSession
 emptySession = SparkSession c (LocalSessionId "id") 3 emptyNodeCache
-  where c = SparkSessionConf "end_point" (negate 1) 10 "session_name" True
+  where c = SparkSessionConf "end_point" (negate 1) 10 "session_name" def
 
 spec :: Spec
 spec = do

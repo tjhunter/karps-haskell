@@ -8,28 +8,17 @@ import Data.Default
 import Data.Text(pack)
 import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
 import qualified Data.ByteString.Lazy as LBS
-import Lens.Family2 ((&), (.~), (^.))
+import Lens.Family2 ((&), (.~))
 
--- import Spark.Proto.ApiInternal(GraphTransformResponse, PerformGraphTransform)
-import Spark.Server.StructureParsing(parseInput, protoResponse)
 import Spark.Server.Transform(transform)
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 
-mainProcessing :: PAI.PerformGraphTransform -> PAI.GraphTransformResponse
-mainProcessing item =
-  let res = do
-        parsed <- parseInput item
-        let opt = transform parsed
-        protoResponse opt
-  in case res of
-    Right x -> x
-    Left err -> error (show err)
 
 -- It should be a graph transform
 serverFunction :: LBS.ByteString -> LBS.ByteString
 serverFunction bs = LBS.fromStrict . encodeMessage $ x where
   x = case decodeMessage (LBS.toStrict bs) of
-      Right pgt -> mainProcessing pgt
+      Right pgt -> transform pgt
       Left txt -> msg where
         msg0 = def :: PAI.GraphTransformResponse
         am = (def :: PAI.AnalysisMessage) & PAI.content .~ pack txt
