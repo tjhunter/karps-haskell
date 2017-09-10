@@ -26,6 +26,7 @@ import qualified Data.ProtoLens.Reexport.Data.ByteString
 import qualified Data.ProtoLens.Reexport.Lens.Labels as Lens.Labels
 import qualified Proto.Karps.Proto.Computation
 import qualified Proto.Karps.Proto.Graph
+import qualified Proto.Karps.Proto.Io
 import qualified Proto.Tensorflow.Core.Framework.Graph
 
 data AnalysisMessage = AnalysisMessage{_AnalysisMessage'computation
@@ -211,6 +212,179 @@ instance Data.ProtoLens.Message AnalysisMessage where
                     ("path", path__field_descriptor),
                     ("content", content__field_descriptor),
                     ("level", level__field_descriptor)])
+
+data AnalyzeResourceResponse = AnalyzeResourceResponse{_AnalyzeResourceResponse'successes
+                                                       :: ![ResourceStatus],
+                                                       _AnalyzeResourceResponse'failures ::
+                                                       ![AnalyzeResourceResponse'FailedStatus]}
+                             deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ [ResourceStatus], b ~ [ResourceStatus],
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "successes" f AnalyzeResourceResponse
+         AnalyzeResourceResponse a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _AnalyzeResourceResponse'successes
+                 (\ x__ y__ -> x__{_AnalyzeResourceResponse'successes = y__}))
+              Prelude.id
+
+instance (a ~ [AnalyzeResourceResponse'FailedStatus],
+          b ~ [AnalyzeResourceResponse'FailedStatus], Prelude.Functor f) =>
+         Lens.Labels.HasLens "failures" f AnalyzeResourceResponse
+         AnalyzeResourceResponse a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _AnalyzeResourceResponse'failures
+                 (\ x__ y__ -> x__{_AnalyzeResourceResponse'failures = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default AnalyzeResourceResponse where
+        def
+          = AnalyzeResourceResponse{_AnalyzeResourceResponse'successes = [],
+                                    _AnalyzeResourceResponse'failures = []}
+
+instance Data.ProtoLens.Message AnalyzeResourceResponse where
+        descriptor
+          = let successes__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "successes"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor ResourceStatus)
+                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked successes)
+                      :: Data.ProtoLens.FieldDescriptor AnalyzeResourceResponse
+                failures__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "failures"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           AnalyzeResourceResponse'FailedStatus)
+                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked failures)
+                      :: Data.ProtoLens.FieldDescriptor AnalyzeResourceResponse
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.AnalyzeResourceResponse")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, successes__field_descriptor),
+                    (Data.ProtoLens.Tag 2, failures__field_descriptor)])
+                (Data.Map.fromList
+                   [("successes", successes__field_descriptor),
+                    ("failures", failures__field_descriptor)])
+
+data AnalyzeResourceResponse'FailedStatus = AnalyzeResourceResponse'FailedStatus{_AnalyzeResourceResponse'FailedStatus'resource
+                                                                                 ::
+                                                                                 !(Prelude.Maybe
+                                                                                     Proto.Karps.Proto.Io.ResourcePath),
+                                                                                 _AnalyzeResourceResponse'FailedStatus'error
+                                                                                 :: !Data.Text.Text}
+                                          deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ Proto.Karps.Proto.Io.ResourcePath,
+          b ~ Proto.Karps.Proto.Io.ResourcePath, Prelude.Functor f) =>
+         Lens.Labels.HasLens "resource" f
+         AnalyzeResourceResponse'FailedStatus
+         AnalyzeResourceResponse'FailedStatus a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens
+                 _AnalyzeResourceResponse'FailedStatus'resource
+                 (\ x__ y__ ->
+                    x__{_AnalyzeResourceResponse'FailedStatus'resource = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'resource" f
+         AnalyzeResourceResponse'FailedStatus
+         AnalyzeResourceResponse'FailedStatus a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens
+                 _AnalyzeResourceResponse'FailedStatus'resource
+                 (\ x__ y__ ->
+                    x__{_AnalyzeResourceResponse'FailedStatus'resource = y__}))
+              Prelude.id
+
+instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "error" f AnalyzeResourceResponse'FailedStatus
+         AnalyzeResourceResponse'FailedStatus a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens
+                 _AnalyzeResourceResponse'FailedStatus'error
+                 (\ x__ y__ ->
+                    x__{_AnalyzeResourceResponse'FailedStatus'error = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default
+         AnalyzeResourceResponse'FailedStatus where
+        def
+          = AnalyzeResourceResponse'FailedStatus{_AnalyzeResourceResponse'FailedStatus'resource
+                                                   = Prelude.Nothing,
+                                                 _AnalyzeResourceResponse'FailedStatus'error =
+                                                   Data.ProtoLens.fieldDefault}
+
+instance Data.ProtoLens.Message
+         AnalyzeResourceResponse'FailedStatus where
+        descriptor
+          = let resource__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "resource"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Karps.Proto.Io.ResourcePath)
+                      (Data.ProtoLens.OptionalField maybe'resource)
+                      ::
+                      Data.ProtoLens.FieldDescriptor AnalyzeResourceResponse'FailedStatus
+                error__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "error"
+                      (Data.ProtoLens.StringField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional error)
+                      ::
+                      Data.ProtoLens.FieldDescriptor AnalyzeResourceResponse'FailedStatus
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.AnalyzeResourceResponse.FailedStatus")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, resource__field_descriptor),
+                    (Data.ProtoLens.Tag 2, error__field_descriptor)])
+                (Data.Map.fromList
+                   [("resource", resource__field_descriptor),
+                    ("error", error__field_descriptor)])
+
+data AnalyzeResourcesRequest = AnalyzeResourcesRequest{_AnalyzeResourcesRequest'resources
+                                                       :: ![Proto.Karps.Proto.Io.ResourcePath]}
+                             deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ [Proto.Karps.Proto.Io.ResourcePath],
+          b ~ [Proto.Karps.Proto.Io.ResourcePath], Prelude.Functor f) =>
+         Lens.Labels.HasLens "resources" f AnalyzeResourcesRequest
+         AnalyzeResourcesRequest a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _AnalyzeResourcesRequest'resources
+                 (\ x__ y__ -> x__{_AnalyzeResourcesRequest'resources = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default AnalyzeResourcesRequest where
+        def
+          = AnalyzeResourcesRequest{_AnalyzeResourcesRequest'resources = []}
+
+instance Data.ProtoLens.Message AnalyzeResourcesRequest where
+        descriptor
+          = let resources__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "resources"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Karps.Proto.Io.ResourcePath)
+                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked resources)
+                      :: Data.ProtoLens.FieldDescriptor AnalyzeResourcesRequest
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.AnalyzeResourcesRequest")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, resources__field_descriptor)])
+                (Data.Map.fromList [("resources", resources__field_descriptor)])
 
 data CompilerStep = CompilerStep{_CompilerStep'phase ::
                                  !CompilingPhase,
@@ -769,7 +943,9 @@ data PerformGraphTransform = PerformGraphTransform{_PerformGraphTransform'sessio
                                                    _PerformGraphTransform'availableNodes ::
                                                    ![NodeMapItem],
                                                    _PerformGraphTransform'requestedPaths ::
-                                                   ![Proto.Karps.Proto.Graph.Path]}
+                                                   ![Proto.Karps.Proto.Graph.Path],
+                                                   _PerformGraphTransform'knownResources ::
+                                                   ![ResourceStatus]}
                            deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Proto.Karps.Proto.Computation.SessionId,
@@ -858,6 +1034,16 @@ instance (a ~ [Proto.Karps.Proto.Graph.Path],
                  (\ x__ y__ -> x__{_PerformGraphTransform'requestedPaths = y__}))
               Prelude.id
 
+instance (a ~ [ResourceStatus], b ~ [ResourceStatus],
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "knownResources" f PerformGraphTransform
+         PerformGraphTransform a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _PerformGraphTransform'knownResources
+                 (\ x__ y__ -> x__{_PerformGraphTransform'knownResources = y__}))
+              Prelude.id
+
 instance Data.Default.Class.Default PerformGraphTransform where
         def
           = PerformGraphTransform{_PerformGraphTransform'session =
@@ -865,7 +1051,8 @@ instance Data.Default.Class.Default PerformGraphTransform where
                                   _PerformGraphTransform'computation = Prelude.Nothing,
                                   _PerformGraphTransform'functionalGraph = Prelude.Nothing,
                                   _PerformGraphTransform'availableNodes = [],
-                                  _PerformGraphTransform'requestedPaths = []}
+                                  _PerformGraphTransform'requestedPaths = [],
+                                  _PerformGraphTransform'knownResources = []}
 
 instance Data.ProtoLens.Message PerformGraphTransform where
         descriptor
@@ -903,6 +1090,13 @@ instance Data.ProtoLens.Message PerformGraphTransform where
                       (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked
                          requestedPaths)
                       :: Data.ProtoLens.FieldDescriptor PerformGraphTransform
+                knownResources__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "known_resources"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor ResourceStatus)
+                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked
+                         knownResources)
+                      :: Data.ProtoLens.FieldDescriptor PerformGraphTransform
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.PerformGraphTransform")
@@ -911,13 +1105,94 @@ instance Data.ProtoLens.Message PerformGraphTransform where
                     (Data.ProtoLens.Tag 2, computation__field_descriptor),
                     (Data.ProtoLens.Tag 3, functionalGraph__field_descriptor),
                     (Data.ProtoLens.Tag 4, availableNodes__field_descriptor),
-                    (Data.ProtoLens.Tag 5, requestedPaths__field_descriptor)])
+                    (Data.ProtoLens.Tag 5, requestedPaths__field_descriptor),
+                    (Data.ProtoLens.Tag 6, knownResources__field_descriptor)])
                 (Data.Map.fromList
                    [("session", session__field_descriptor),
                     ("computation", computation__field_descriptor),
                     ("functional_graph", functionalGraph__field_descriptor),
                     ("available_nodes", availableNodes__field_descriptor),
-                    ("requested_paths", requestedPaths__field_descriptor)])
+                    ("requested_paths", requestedPaths__field_descriptor),
+                    ("known_resources", knownResources__field_descriptor)])
+
+data ResourceStatus = ResourceStatus{_ResourceStatus'resource ::
+                                     !(Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath),
+                                     _ResourceStatus'stamp ::
+                                     !(Prelude.Maybe Proto.Karps.Proto.Io.ResourceStamp)}
+                    deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ Proto.Karps.Proto.Io.ResourcePath,
+          b ~ Proto.Karps.Proto.Io.ResourcePath, Prelude.Functor f) =>
+         Lens.Labels.HasLens "resource" f ResourceStatus ResourceStatus a b
+         where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ResourceStatus'resource
+                 (\ x__ y__ -> x__{_ResourceStatus'resource = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'resource" f ResourceStatus
+         ResourceStatus a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ResourceStatus'resource
+                 (\ x__ y__ -> x__{_ResourceStatus'resource = y__}))
+              Prelude.id
+
+instance (a ~ Proto.Karps.Proto.Io.ResourceStamp,
+          b ~ Proto.Karps.Proto.Io.ResourceStamp, Prelude.Functor f) =>
+         Lens.Labels.HasLens "stamp" f ResourceStatus ResourceStatus a b
+         where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ResourceStatus'stamp
+                 (\ x__ y__ -> x__{_ResourceStatus'stamp = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourceStamp,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourceStamp,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'stamp" f ResourceStatus ResourceStatus a
+         b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ResourceStatus'stamp
+                 (\ x__ y__ -> x__{_ResourceStatus'stamp = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default ResourceStatus where
+        def
+          = ResourceStatus{_ResourceStatus'resource = Prelude.Nothing,
+                           _ResourceStatus'stamp = Prelude.Nothing}
+
+instance Data.ProtoLens.Message ResourceStatus where
+        descriptor
+          = let resource__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "resource"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Karps.Proto.Io.ResourcePath)
+                      (Data.ProtoLens.OptionalField maybe'resource)
+                      :: Data.ProtoLens.FieldDescriptor ResourceStatus
+                stamp__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "stamp"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Karps.Proto.Io.ResourceStamp)
+                      (Data.ProtoLens.OptionalField maybe'stamp)
+                      :: Data.ProtoLens.FieldDescriptor ResourceStatus
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.ResourceStatus")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, resource__field_descriptor),
+                    (Data.ProtoLens.Tag 2, stamp__field_descriptor)])
+                (Data.Map.fromList
+                   [("resource", resource__field_descriptor),
+                    ("stamp", stamp__field_descriptor)])
 
 availableNodes ::
                forall f s t a b .
@@ -941,6 +1216,20 @@ content
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "content")
 
+error ::
+      forall f s t a b . Lens.Labels.HasLens "error" f s t a b =>
+        Lens.Family2.LensLike f s t a b
+error
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "error")
+
+failures ::
+         forall f s t a b . Lens.Labels.HasLens "failures" f s t a b =>
+           Lens.Family2.LensLike f s t a b
+failures
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "failures")
+
 functionalGraph ::
                 forall f s t a b .
                   Lens.Labels.HasLens "functionalGraph" f s t a b =>
@@ -962,6 +1251,14 @@ graphDef ::
 graphDef
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "graphDef")
+
+knownResources ::
+               forall f s t a b .
+                 Lens.Labels.HasLens "knownResources" f s t a b =>
+                 Lens.Family2.LensLike f s t a b
+knownResources
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "knownResources")
 
 level ::
       forall f s t a b . Lens.Labels.HasLens "level" f s t a b =>
@@ -1032,12 +1329,27 @@ maybe'relevantId
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'relevantId")
 
+maybe'resource ::
+               forall f s t a b .
+                 Lens.Labels.HasLens "maybe'resource" f s t a b =>
+                 Lens.Family2.LensLike f s t a b
+maybe'resource
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'resource")
+
 maybe'session ::
               forall f s t a b . Lens.Labels.HasLens "maybe'session" f s t a b =>
                 Lens.Family2.LensLike f s t a b
 maybe'session
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'session")
+
+maybe'stamp ::
+            forall f s t a b . Lens.Labels.HasLens "maybe'stamp" f s t a b =>
+              Lens.Family2.LensLike f s t a b
+maybe'stamp
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'stamp")
 
 messages ::
          forall f s t a b . Lens.Labels.HasLens "messages" f s t a b =>
@@ -1096,6 +1408,20 @@ requestedPaths
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "requestedPaths")
 
+resource ::
+         forall f s t a b . Lens.Labels.HasLens "resource" f s t a b =>
+           Lens.Family2.LensLike f s t a b
+resource
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "resource")
+
+resources ::
+          forall f s t a b . Lens.Labels.HasLens "resources" f s t a b =>
+            Lens.Family2.LensLike f s t a b
+resources
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "resources")
+
 session ::
         forall f s t a b . Lens.Labels.HasLens "session" f s t a b =>
           Lens.Family2.LensLike f s t a b
@@ -1103,12 +1429,26 @@ session
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "session")
 
+stamp ::
+      forall f s t a b . Lens.Labels.HasLens "stamp" f s t a b =>
+        Lens.Family2.LensLike f s t a b
+stamp
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "stamp")
+
 steps ::
       forall f s t a b . Lens.Labels.HasLens "steps" f s t a b =>
         Lens.Family2.LensLike f s t a b
 steps
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "steps")
+
+successes ::
+          forall f s t a b . Lens.Labels.HasLens "successes" f s t a b =>
+            Lens.Family2.LensLike f s t a b
+successes
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "successes")
 
 value ::
       forall f s t a b . Lens.Labels.HasLens "value" f s t a b =>

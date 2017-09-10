@@ -237,6 +237,68 @@ instance Data.ProtoLens.Message InputOption where
                     ("string_value", stringValue__field_descriptor),
                     ("bool_value", boolValue__field_descriptor)])
 
+data ResourcePath = ResourcePath{_ResourcePath'uri ::
+                                 !Data.Text.Text}
+                  deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "uri" f ResourcePath ResourcePath a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ResourcePath'uri
+                 (\ x__ y__ -> x__{_ResourcePath'uri = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default ResourcePath where
+        def = ResourcePath{_ResourcePath'uri = Data.ProtoLens.fieldDefault}
+
+instance Data.ProtoLens.Message ResourcePath where
+        descriptor
+          = let uri__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "uri"
+                      (Data.ProtoLens.StringField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional uri)
+                      :: Data.ProtoLens.FieldDescriptor ResourcePath
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.ResourcePath")
+                (Data.Map.fromList [(Data.ProtoLens.Tag 1, uri__field_descriptor)])
+                (Data.Map.fromList [("uri", uri__field_descriptor)])
+
+data ResourceStamp = ResourceStamp{_ResourceStamp'data' ::
+                                   !Data.Text.Text}
+                   deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "data'" f ResourceStamp ResourceStamp a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ResourceStamp'data'
+                 (\ x__ y__ -> x__{_ResourceStamp'data' = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default ResourceStamp where
+        def
+          = ResourceStamp{_ResourceStamp'data' = Data.ProtoLens.fieldDefault}
+
+instance Data.ProtoLens.Message ResourceStamp where
+        descriptor
+          = let data'__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "data"
+                      (Data.ProtoLens.StringField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional data')
+                      :: Data.ProtoLens.FieldDescriptor ResourceStamp
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.ResourceStamp")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, data'__field_descriptor)])
+                (Data.Map.fromList [("data", data'__field_descriptor)])
+
 data SourceDescription = SourceDescription{_SourceDescription'path
                                            :: !Data.Text.Text,
                                            _SourceDescription'source :: !Data.Text.Text,
@@ -371,6 +433,13 @@ boolValue
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "boolValue")
 
+data' ::
+      forall f s t a b . Lens.Labels.HasLens "data'" f s t a b =>
+        Lens.Family2.LensLike f s t a b
+data'
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "data'")
+
 doubleValue ::
             forall f s t a b . Lens.Labels.HasLens "doubleValue" f s t a b =>
               Lens.Family2.LensLike f s t a b
@@ -479,3 +548,10 @@ stringValue ::
 stringValue
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "stringValue")
+
+uri ::
+    forall f s t a b . Lens.Labels.HasLens "uri" f s t a b =>
+      Lens.Family2.LensLike f s t a b
+uri
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "uri")

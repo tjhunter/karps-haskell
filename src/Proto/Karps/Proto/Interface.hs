@@ -26,6 +26,7 @@ import qualified Data.ProtoLens.Reexport.Data.ByteString
 import qualified Data.ProtoLens.Reexport.Lens.Labels as Lens.Labels
 import qualified Proto.Karps.Proto.Computation
 import qualified Proto.Karps.Proto.Graph
+import qualified Proto.Karps.Proto.Io
 
 data CompilationResult = CompilationResult{_CompilationResult'error
                                            :: !Data.Text.Text,
@@ -714,16 +715,13 @@ instance Data.ProtoLens.Message CreateSessionResponse where
                 (Data.Map.fromList [])
 
 data HdfsResourceStatus = HdfsResourceStatus{_HdfsResourceStatus'path
-                                             ::
-                                             !(Prelude.Maybe
-                                                 Proto.Karps.Proto.Computation.ResourcePath),
+                                             :: !(Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath),
                                              _HdfsResourceStatus'error :: !Data.Text.Text,
                                              _HdfsResourceStatus'return :: !Data.Text.Text}
                         deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
-instance (a ~ Proto.Karps.Proto.Computation.ResourcePath,
-          b ~ Proto.Karps.Proto.Computation.ResourcePath,
-          Prelude.Functor f) =>
+instance (a ~ Proto.Karps.Proto.Io.ResourcePath,
+          b ~ Proto.Karps.Proto.Io.ResourcePath, Prelude.Functor f) =>
          Lens.Labels.HasLens "path" f HdfsResourceStatus HdfsResourceStatus
          a b where
         lensOf _
@@ -732,9 +730,8 @@ instance (a ~ Proto.Karps.Proto.Computation.ResourcePath,
                  (\ x__ y__ -> x__{_HdfsResourceStatus'path = y__}))
               (Data.ProtoLens.maybeLens Data.Default.Class.def)
 
-instance (a ~
-            Prelude.Maybe Proto.Karps.Proto.Computation.ResourcePath,
-          b ~ Prelude.Maybe Proto.Karps.Proto.Computation.ResourcePath,
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
           Prelude.Functor f) =>
          Lens.Labels.HasLens "maybe'path" f HdfsResourceStatus
          HdfsResourceStatus a b where
@@ -776,7 +773,7 @@ instance Data.ProtoLens.Message HdfsResourceStatus where
                   = Data.ProtoLens.FieldDescriptor "path"
                       (Data.ProtoLens.MessageField ::
                          Data.ProtoLens.FieldTypeDescriptor
-                           Proto.Karps.Proto.Computation.ResourcePath)
+                           Proto.Karps.Proto.Io.ResourcePath)
                       (Data.ProtoLens.OptionalField maybe'path)
                       :: Data.ProtoLens.FieldDescriptor HdfsResourceStatus
                 error__field_descriptor
@@ -808,7 +805,7 @@ data ResourceStatusRequest = ResourceStatusRequest{_ResourceStatusRequest'sessio
                                                    !(Prelude.Maybe
                                                        Proto.Karps.Proto.Computation.SessionId),
                                                    _ResourceStatusRequest'resources ::
-                                                   ![Proto.Karps.Proto.Computation.ResourcePath]}
+                                                   ![Proto.Karps.Proto.Io.ResourcePath]}
                            deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Proto.Karps.Proto.Computation.SessionId,
@@ -833,9 +830,8 @@ instance (a ~
                  (\ x__ y__ -> x__{_ResourceStatusRequest'session = y__}))
               Prelude.id
 
-instance (a ~ [Proto.Karps.Proto.Computation.ResourcePath],
-          b ~ [Proto.Karps.Proto.Computation.ResourcePath],
-          Prelude.Functor f) =>
+instance (a ~ [Proto.Karps.Proto.Io.ResourcePath],
+          b ~ [Proto.Karps.Proto.Io.ResourcePath], Prelude.Functor f) =>
          Lens.Labels.HasLens "resources" f ResourceStatusRequest
          ResourceStatusRequest a b where
         lensOf _
@@ -863,7 +859,7 @@ instance Data.ProtoLens.Message ResourceStatusRequest where
                   = Data.ProtoLens.FieldDescriptor "resources"
                       (Data.ProtoLens.MessageField ::
                          Data.ProtoLens.FieldTypeDescriptor
-                           Proto.Karps.Proto.Computation.ResourcePath)
+                           Proto.Karps.Proto.Io.ResourcePath)
                       (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked resources)
                       :: Data.ProtoLens.FieldDescriptor ResourceStatusRequest
               in

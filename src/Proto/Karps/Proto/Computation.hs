@@ -457,36 +457,6 @@ instance Data.ProtoLens.Message RDDInfo where
                     ("repr", repr__field_descriptor),
                     ("parents", parents__field_descriptor)])
 
-data ResourcePath = ResourcePath{_ResourcePath'uri ::
-                                 !Data.Text.Text}
-                  deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
-
-instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "uri" f ResourcePath ResourcePath a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ResourcePath'uri
-                 (\ x__ y__ -> x__{_ResourcePath'uri = y__}))
-              Prelude.id
-
-instance Data.Default.Class.Default ResourcePath where
-        def = ResourcePath{_ResourcePath'uri = Data.ProtoLens.fieldDefault}
-
-instance Data.ProtoLens.Message ResourcePath where
-        descriptor
-          = let uri__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "uri"
-                      (Data.ProtoLens.StringField ::
-                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
-                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional uri)
-                      :: Data.ProtoLens.FieldDescriptor ResourcePath
-              in
-              Data.ProtoLens.MessageDescriptor
-                (Data.Text.pack "karps.core.ResourcePath")
-                (Data.Map.fromList [(Data.ProtoLens.Tag 1, uri__field_descriptor)])
-                (Data.Map.fromList [("uri", uri__field_descriptor)])
-
 data ResultStatus = UNUSED
                   | RUNNING
                   | FINISHED_SUCCESS
@@ -757,10 +727,3 @@ targetPath ::
 targetPath
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "targetPath")
-
-uri ::
-    forall f s t a b . Lens.Labels.HasLens "uri" f s t a b =>
-      Lens.Family2.LensLike f s t a b
-uri
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "uri")

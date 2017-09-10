@@ -36,6 +36,7 @@ import qualified Proto.Karps.Proto.ApiInternal as PAI
 
 For a list of all the steps done, look at the list of the steps in api_internal.proto
 -}
+-- TODO: add the source stamps
 performTransform ::
   CompilerConf ->
   NodeMap ->
