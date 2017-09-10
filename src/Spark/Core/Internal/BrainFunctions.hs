@@ -7,7 +7,9 @@
 This part of the computation is stateless and does not depend on the
 DSL or on the server.
 -}
-module Spark.Core.Internal.BrainFunctions(performTransform) where
+module Spark.Core.Internal.BrainFunctions(
+  TransformReturn,
+  performTransform) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
@@ -32,6 +34,8 @@ import qualified Proto.Karps.Proto.Graph as PG
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 
 
+type TransformReturn = Either GraphTransformFailure GraphTransformSuccess
+
 {-| The main function that calls mos of the functions in the background.
 
 For a list of all the steps done, look at the list of the steps in api_internal.proto
@@ -40,11 +44,33 @@ For a list of all the steps done, look at the list of the steps in api_internal.
 performTransform ::
   CompilerConf ->
   NodeMap ->
+  ResourceList ->
   ComputeGraph ->
-  Either GraphTransformFailure GraphTransformSuccess
+  TransformReturn
 performTransform = undefined
 
 
+-- {-| Exposed for debugging -}
+-- updateSourceInfo :: ComputeGraph -> SparkState (Try ComputeGraph)
+-- updateSourceInfo cg = do
+--   let sources = inputSourcesRead cg
+--   if null sources
+--   then return (pure cg)
+--   else do
+--     logDebugN $ "updateSourceInfo: found sources " <> show' sources
+--     -- Get the source stamps. Any error at this point is considered fatal.
+--     stampsRet <- checkDataStamps sources
+--     logDebugN $ "updateSourceInfo: retrieved stamps " <> show' stampsRet
+--     let stampst = sequence $ _f <$> stampsRet
+--     let cgt = insertSourceInfo cg =<< stampst
+--     return cgt
+
+
+-- _parseStamp :: StampReturn -> Maybe (HdfsPath, Try DataInputStamp)
+-- _parseStamp sr = case (stampReturn sr, stampReturnError sr) of
+--   (Just s, _) -> pure (HdfsPath (stampReturnPath sr), pure (DataInputStamp s))
+--   (Nothing, Just err) -> pure (HdfsPath (stampReturnPath sr), tryError err)
+--   _ -> Nothing -- No error being returned for now, we just discard it.
 
 -- ********* INSTANCES ***********
 

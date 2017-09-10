@@ -26,6 +26,7 @@ import qualified Data.ProtoLens.Reexport.Data.ByteString
 import qualified Data.ProtoLens.Reexport.Lens.Labels as Lens.Labels
 import qualified Proto.Karps.Proto.Computation
 import qualified Proto.Karps.Proto.Graph
+import qualified Proto.Karps.Proto.Interface
 import qualified Proto.Karps.Proto.Io
 import qualified Proto.Tensorflow.Core.Framework.Graph
 

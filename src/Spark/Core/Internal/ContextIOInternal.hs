@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Spark.Core.Internal.ContextIOInternal(
   returnPure,
@@ -10,7 +9,6 @@ module Spark.Core.Internal.ContextIOInternal(
   executeCommand1,
   executeCommand1',
   checkDataStamps,
-  updateSourceInfo,
   createComputation,
   computationStats
 ) where
@@ -22,28 +20,30 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import Control.Concurrent(threadDelay)
-import Lens.Family2((^.))
+import Lens.Family2((^.), (&), (.~))
 import Control.Monad(forM, forM_)
 import Control.Monad.State(mapStateT, get)
 import Control.Monad.Trans(lift)
 import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
 import Control.Monad.Except(MonadError)
 import Control.Monad.IO.Class
-import Data.ProtoLens.Message(Message)
+import Data.ProtoLens.Message(Message, def)
+import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
 import Data.ByteString.Lazy(ByteString)
 import Data.Functor.Identity(runIdentity)
 import Data.Word(Word8)
 import Data.Maybe(mapMaybe)
 import Data.Text(Text, pack)
-import GHC.Generics
 import Network.Wreq(responseBody)
 import Network.Wreq.Types(Postable)
 import System.Random(randomIO)
 
 import Spark.Core.Dataset
 import Spark.Core.Internal.BrainStructures
+import Spark.Core.Internal.BrainFunctions
 import Spark.Core.Internal.Client
 import Spark.Core.Internal.ContextInternal
+import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.DatasetFunctions(untypedLocalData, nodePath)
 import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, nodeOpNode)
@@ -53,8 +53,11 @@ import Spark.Core.Row
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
 import Spark.Core.Internal.Utilities
-import qualified Proto.Karps.Proto.Interface as PAPI
+import qualified Proto.Karps.Proto.Interface as PI
 import qualified Proto.Karps.Proto.Computation as PC
+import qualified Proto.Karps.Proto.Computation as PC
+import qualified Proto.Karps.Proto.ApiInternal as PAI
+import qualified Proto.Karps.Proto.Io as PI
 
 returnPure :: forall a. SparkStatePure a -> SparkState a
 returnPure p = lift $ mapStateT (return . runIdentity) p
@@ -70,8 +73,7 @@ createSparkSession conf = do
     "" -> liftIO _randomSessionName
     x -> pure x
   let session = _createSparkSession conf sessionName 0
-  let url = _sessionEndPoint session
-  logDebugN $ "Creating spark session at url: " <> url
+  logDebugN $ "Creating spark session"
   -- TODO get the current counter from remote
   _ <- _ensureSession session
   return session
@@ -101,15 +103,14 @@ executeCommand1 ld = do
 -- The main function to launch computations.
 executeCommand1' :: UntypedLocalData -> SparkState (Try Cell)
 executeCommand1' ld = do
-  logDebugN $ "executeCommand1': computing observable " <> show' ld
-  -- Retrieve the computation graph
+  logDebugN $ "compileCommand1: computing observable " <> show' ld
   let cgt = buildComputationGraph ld
   _ret cgt $ \cg -> do
-    cgWithSourceT <- updateSourceInfo cg
-    _ret cgWithSourceT $ \cgWithSource -> do
-      -- Update the computations with the stamps, and build the computation.
-      compt <- createComputation cgWithSource
+    sourcesT <- fetchSourceInfo cg
+    _ret sourcesT $ \sources -> do
+      (_, compt) <- returnPure $ compileComputation sources cg
       _ret compt $ \comp -> do
+        logDebugN $ "executeCommand1': computing observable " <> show' ld
         -- Run the computation.
         session <- get
         _ <- _sendComputation session comp
@@ -147,21 +148,17 @@ computationStats cid = do
 createComputation :: ComputeGraph -> SparkState (Try Computation)
 createComputation cg = returnPure $ prepareComputation cg
 
-{-| Exposed for debugging -}
-updateSourceInfo :: ComputeGraph -> SparkState (Try ComputeGraph)
-updateSourceInfo cg = do
+fetchSourceInfo :: ComputeGraph -> SparkState (Try ResourceList)
+fetchSourceInfo cg = do
   let sources = inputSourcesRead cg
   if null sources
-  then return (pure cg)
+  then return (pure [])
   else do
     logDebugN $ "updateSourceInfo: found sources " <> show' sources
     -- Get the source stamps. Any error at this point is considered fatal.
     stampsRet <- checkDataStamps sources
     logDebugN $ "updateSourceInfo: retrieved stamps " <> show' stampsRet
-    let stampst = sequence $ _f <$> stampsRet
-    let cgt = insertSourceInfo cg =<< stampst
-    return cgt
-
+    return $ sequence $ _f <$> stampsRet
 
 _ret :: Try a -> (a -> SparkState (Try b)) -> SparkState (Try b)
 _ret (Left x) _ = return (Left x)
@@ -172,12 +169,11 @@ _f (x, t) = case t of
                 Right u -> Right (x, u)
                 Left e -> Left e
 
-data StampReturn = StampReturn {
-  stampReturnPath :: !Text,
-  stampReturnError :: !(Maybe Text),
-  stampReturn :: !(Maybe Text)
-} deriving (Eq, Show, Generic)
-
+_wrapTry :: Try a -> SparkState a
+_wrapTry (Right x) = return x
+_wrapTry (Left err) = do
+  logDebugN $ "_wrapTry: got error: " <> show' err
+  fail . T.unpack . eMessage $ err
 
 {-| Given a list of paths, checks each of these paths on the file system of the
 given Spark cluster to infer the status of these resources.
@@ -185,22 +181,27 @@ given Spark cluster to infer the status of these resources.
 The primary role of this function is to check how recent these resources are
 compared to some previous usage.
 -}
-checkDataStamps :: [HdfsPath] -> SparkState [(HdfsPath, Try DataInputStamp)]
-checkDataStamps l = error "checkDataStamps"
--- TODO: use the proto interface instead.
--- do
---   session <- get
---   let url = _sessionResourceCheck session
---   status <- liftIO (W.asJSON =<< W.post (T.unpack url) (toJSON l) :: IO (W.Response [StampReturn]))
---   let s = status ^. responseBody
---   return $ mapMaybe _parseStamp s
+checkDataStamps :: [ResourcePath] -> SparkState [(ResourcePath, Try ResourceStamp)]
+checkDataStamps l = do
+  let msg = (def :: PAI.AnalyzeResourcesRequest) & PAI.resources .~ (toProto <$> l)
+  msg2 <- _sendBackend "check_resource" msg
+  _wrapTry (fromProto msg2)
 
+-- Send a proto to the backend, at the function name given.
+_sendBackend :: (Message m1, Message m2) => Text -> m1 -> SparkState m2
+_sendBackend function msg = do
+  session <- get
+  liftIO $ _runLogger $ _sendBackend' session function msg
 
-_parseStamp :: StampReturn -> Maybe (HdfsPath, Try DataInputStamp)
-_parseStamp sr = case (stampReturn sr, stampReturnError sr) of
-  (Just s, _) -> pure (HdfsPath (stampReturnPath sr), pure (DataInputStamp s))
-  (Nothing, Just err) -> pure (HdfsPath (stampReturnPath sr), tryError err)
-  _ -> Nothing -- No error being returned for now, we just discard it.
+_sendBackend' :: (MonadLoggerIO m, Message m1, Message m2) => SparkSession -> Text -> m1 -> m m2
+_sendBackend' session function msg = do
+  let url = _endPoint session function
+  status <- liftIO $ W.post (T.unpack url) (encodeMessage msg)
+  let s = status ^. responseBody
+  case decodeMessage (LBS.toStrict s) of
+    Left txt ->
+      fail txt
+    Right x -> return x
 
 _randomSessionName :: IO Text
 _randomSessionName = do
@@ -244,15 +245,14 @@ _createSparkSession conf sessionId idx =
 _port :: SparkSession -> Text
 _port = pack . show . confPort . ssConf
 
--- The URL of the end point
-_sessionEndPoint :: SparkSession -> Text
-_sessionEndPoint sess =
-  let port = _port sess
-      sid = (unLocalSession . ssId) sess
-  in
-    T.concat [
-      (confEndPoint . ssConf) sess, ":", port,
-      "/sessions/", sid]
+{-| The name of a function endpoint.
+-}
+_endPoint :: SparkSession -> Text -> Text
+_endPoint sess function =
+  T.concat [ (confEndPoint . ssConf) sess, ":", port,
+    "/rest_proto/", function] where
+      port = _sessionPortText sess
+
 
 _sessionResourceCheck :: SparkSession -> Text
 _sessionResourceCheck sess =
@@ -266,79 +266,34 @@ _sessionResourceCheck sess =
 _sessionPortText :: SparkSession -> Text
 _sessionPortText = pack . show . confPort . ssConf
 
--- The URL of the computation end point
-_compEndPoint :: SparkSession -> ComputationID -> Text
-_compEndPoint sess compId =
-  let port = _sessionPortText sess
-      sid = (unLocalSession . ssId) sess
-      cid = unComputationID compId
-  in
-    T.concat [
-      (confEndPoint . ssConf) sess, ":", port,
-      "/computations/", sid, "/", cid]
-
--- The URL of the status of a computation
-_compEndPointStatus :: SparkSession -> ComputationID -> Text
-_compEndPointStatus sess compId =
-  let port = _sessionPortText sess
-      sid = (unLocalSession . ssId) sess
-      cid = unComputationID compId
-  in
-    T.concat [
-      (confEndPoint . ssConf) sess, ":", port,
-      "/computations_status/", sid, "/", cid]
-
 -- Ensures that the server has instantiated a session with the given ID.
-_ensureSession :: (MonadLoggerIO m) => SparkSession -> m ()
-_ensureSession session = undefined -- do
-  -- let url = _sessionEndPoint session <> "/create"
-  -- _ <- _post url (toJSON 'a')
-  -- return ()
+_ensureSession :: forall m. (MonadLoggerIO m) => SparkSession -> m ()
+_ensureSession session = do
+  let msg = (def :: PI.CreateSessionRequest)
+  _ <- _sendBackend' session "CreateSession" msg :: m PI.CreateSessionResponse
+  return ()
 
 
 _sendComputation :: (MonadLoggerIO m) => SparkSession -> Computation -> m ()
 _sendComputation session comp = do
-  let base' = _compEndPoint session (cId comp)
-  let url = base' <> "/create"
-  logInfoN $ "Sending computations at url: " <> url <> "with nodes: " <> show' (cNodes comp)
-  _ <- _post url (_createComputationRequest comp)
+  logInfoN $ "Sending computations with nodes: " <> show' (cNodes comp)
+  -- TODO: fill the content
+  let msg = (def :: PI.CreateComputationRequest)
+  x <- _sendBackend' session "CreateComputation" msg
+  let _ = x :: PI.CreateComputationResponse
   return ()
 
-_createComputationRequest :: Computation -> ByteString
-_createComputationRequest = _encode . _computationToProto
-
-_computationToProto :: Computation -> PAPI.CreateComputationRequest
+_computationToProto :: Computation -> PI.CreateComputationRequest
 _computationToProto = undefined
-
--- _createComputationRequest' :: Computation -> A.Value
--- _createComputationRequest' comp =
---   -- TODO replace by the proto
---   object [
---     "session" .= toJSON (cSessionId comp),
---     "computation" .= toJSON (cId comp),
---     "requestedComputation" .= toJSON (cId comp),
---     "graph" .= object [
---       "nodes" .= toJSON (cNodes comp)
---     ]]
 
 _computationStatus :: (MonadLoggerIO m, MonadError e m) =>
   SparkSession -> ComputationID -> NodePath -> m PossibleNodeStatus
 _computationStatus session compId npath = do
-  let base' = _compEndPointStatus session compId
-  let rest = prettyNodePath npath
-  let url = base' <> rest
-  status1 <- _get url
-  let z = status1 ^. responseBody
-  logDebugN $ "_computationStatus:status1: " <> T.pack (show z)
-  r <- liftIO $ W.get (T.unpack url)
-  p <- _decode (r ^. responseBody)
-  s <- _possibleNodeStatusFromProto p
-  --  :: IO (W.Response PossibleNodeStatus)
-  -- status <- liftIO (_decode =<< )
-  -- let s = status ^. responseBody
-  return s
+  let msg = (def :: PI.ComputationStatusRequest)
+  msg' <- _sendBackend' session "ComputationStatus" msg
+  _possibleNodeStatusFromProto msg'
 
-_possibleNodeStatusFromProto :: (MonadError e m) => PAPI.ComputationStreamResponse -> m PossibleNodeStatus
+_possibleNodeStatusFromProto :: (MonadError e m) => PC.BatchComputationResult -> m PossibleNodeStatus
 _possibleNodeStatusFromProto = undefined
 
 -- TODO: not sure how this works when trying to make a fix point: is it going to
@@ -396,12 +351,9 @@ _try f (x, x', x'', y) = f y <&> \z -> (x, x', x'', z)
 _computationStats :: (MonadLoggerIO m, MonadError e m) =>
   SparkSession -> ComputationID -> m BatchComputationResult
 _computationStats session compId = do
-  let url = _compEndPointStatus session compId <> "/" -- The final / is mandatory
-  logDebugN $ "Sending computations stats request at url: " <> url
-  stats <- liftIO $ W.get (T.unpack url)
-  p <- _decode $ stats ^. responseBody
-  s <- _batchComputationResultFromProto p
-  return s
+  let msg = (def :: PI.ComputationStatusRequest)
+  msg' <- _sendBackend' session "ComputationStatus" msg
+  _batchComputationResultFromProto msg'
 
 _batchComputationResultFromProto :: (MonadError e m) => PC.BatchComputationResult -> m BatchComputationResult
 _batchComputationResultFromProto = undefined
@@ -418,9 +370,3 @@ _waitSingleComputation session comp npath =
     i = confPollingIntervalMillis $ ssConf session
   in
     _pollMonad getStatus i extract
-
-_encode :: (Message a) => a -> ByteString
-_encode = undefined
-
-_decode :: (Message a, MonadError e m) => ByteString -> m a
-_decode = undefined

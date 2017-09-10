@@ -714,196 +714,6 @@ instance Data.ProtoLens.Message CreateSessionResponse where
                 (Data.Map.fromList [])
                 (Data.Map.fromList [])
 
-data HdfsResourceStatus = HdfsResourceStatus{_HdfsResourceStatus'path
-                                             :: !(Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath),
-                                             _HdfsResourceStatus'error :: !Data.Text.Text,
-                                             _HdfsResourceStatus'return :: !Data.Text.Text}
-                        deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
-
-instance (a ~ Proto.Karps.Proto.Io.ResourcePath,
-          b ~ Proto.Karps.Proto.Io.ResourcePath, Prelude.Functor f) =>
-         Lens.Labels.HasLens "path" f HdfsResourceStatus HdfsResourceStatus
-         a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _HdfsResourceStatus'path
-                 (\ x__ y__ -> x__{_HdfsResourceStatus'path = y__}))
-              (Data.ProtoLens.maybeLens Data.Default.Class.def)
-
-instance (a ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
-          b ~ Prelude.Maybe Proto.Karps.Proto.Io.ResourcePath,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "maybe'path" f HdfsResourceStatus
-         HdfsResourceStatus a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _HdfsResourceStatus'path
-                 (\ x__ y__ -> x__{_HdfsResourceStatus'path = y__}))
-              Prelude.id
-
-instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "error" f HdfsResourceStatus HdfsResourceStatus
-         a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _HdfsResourceStatus'error
-                 (\ x__ y__ -> x__{_HdfsResourceStatus'error = y__}))
-              Prelude.id
-
-instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "return" f HdfsResourceStatus
-         HdfsResourceStatus a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _HdfsResourceStatus'return
-                 (\ x__ y__ -> x__{_HdfsResourceStatus'return = y__}))
-              Prelude.id
-
-instance Data.Default.Class.Default HdfsResourceStatus where
-        def
-          = HdfsResourceStatus{_HdfsResourceStatus'path = Prelude.Nothing,
-                               _HdfsResourceStatus'error = Data.ProtoLens.fieldDefault,
-                               _HdfsResourceStatus'return = Data.ProtoLens.fieldDefault}
-
-instance Data.ProtoLens.Message HdfsResourceStatus where
-        descriptor
-          = let path__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "path"
-                      (Data.ProtoLens.MessageField ::
-                         Data.ProtoLens.FieldTypeDescriptor
-                           Proto.Karps.Proto.Io.ResourcePath)
-                      (Data.ProtoLens.OptionalField maybe'path)
-                      :: Data.ProtoLens.FieldDescriptor HdfsResourceStatus
-                error__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "error"
-                      (Data.ProtoLens.StringField ::
-                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
-                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional error)
-                      :: Data.ProtoLens.FieldDescriptor HdfsResourceStatus
-                return__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "return"
-                      (Data.ProtoLens.StringField ::
-                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
-                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional return)
-                      :: Data.ProtoLens.FieldDescriptor HdfsResourceStatus
-              in
-              Data.ProtoLens.MessageDescriptor
-                (Data.Text.pack "karps.core.HdfsResourceStatus")
-                (Data.Map.fromList
-                   [(Data.ProtoLens.Tag 1, path__field_descriptor),
-                    (Data.ProtoLens.Tag 2, error__field_descriptor),
-                    (Data.ProtoLens.Tag 3, return__field_descriptor)])
-                (Data.Map.fromList
-                   [("path", path__field_descriptor),
-                    ("error", error__field_descriptor),
-                    ("return", return__field_descriptor)])
-
-data ResourceStatusRequest = ResourceStatusRequest{_ResourceStatusRequest'session
-                                                   ::
-                                                   !(Prelude.Maybe
-                                                       Proto.Karps.Proto.Computation.SessionId),
-                                                   _ResourceStatusRequest'resources ::
-                                                   ![Proto.Karps.Proto.Io.ResourcePath]}
-                           deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
-
-instance (a ~ Proto.Karps.Proto.Computation.SessionId,
-          b ~ Proto.Karps.Proto.Computation.SessionId, Prelude.Functor f) =>
-         Lens.Labels.HasLens "session" f ResourceStatusRequest
-         ResourceStatusRequest a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ResourceStatusRequest'session
-                 (\ x__ y__ -> x__{_ResourceStatusRequest'session = y__}))
-              (Data.ProtoLens.maybeLens Data.Default.Class.def)
-
-instance (a ~
-            Prelude.Maybe Proto.Karps.Proto.Computation.SessionId,
-          b ~ Prelude.Maybe Proto.Karps.Proto.Computation.SessionId,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "maybe'session" f ResourceStatusRequest
-         ResourceStatusRequest a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ResourceStatusRequest'session
-                 (\ x__ y__ -> x__{_ResourceStatusRequest'session = y__}))
-              Prelude.id
-
-instance (a ~ [Proto.Karps.Proto.Io.ResourcePath],
-          b ~ [Proto.Karps.Proto.Io.ResourcePath], Prelude.Functor f) =>
-         Lens.Labels.HasLens "resources" f ResourceStatusRequest
-         ResourceStatusRequest a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ResourceStatusRequest'resources
-                 (\ x__ y__ -> x__{_ResourceStatusRequest'resources = y__}))
-              Prelude.id
-
-instance Data.Default.Class.Default ResourceStatusRequest where
-        def
-          = ResourceStatusRequest{_ResourceStatusRequest'session =
-                                    Prelude.Nothing,
-                                  _ResourceStatusRequest'resources = []}
-
-instance Data.ProtoLens.Message ResourceStatusRequest where
-        descriptor
-          = let session__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "session"
-                      (Data.ProtoLens.MessageField ::
-                         Data.ProtoLens.FieldTypeDescriptor
-                           Proto.Karps.Proto.Computation.SessionId)
-                      (Data.ProtoLens.OptionalField maybe'session)
-                      :: Data.ProtoLens.FieldDescriptor ResourceStatusRequest
-                resources__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "resources"
-                      (Data.ProtoLens.MessageField ::
-                         Data.ProtoLens.FieldTypeDescriptor
-                           Proto.Karps.Proto.Io.ResourcePath)
-                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked resources)
-                      :: Data.ProtoLens.FieldDescriptor ResourceStatusRequest
-              in
-              Data.ProtoLens.MessageDescriptor
-                (Data.Text.pack "karps.core.ResourceStatusRequest")
-                (Data.Map.fromList
-                   [(Data.ProtoLens.Tag 1, session__field_descriptor),
-                    (Data.ProtoLens.Tag 2, resources__field_descriptor)])
-                (Data.Map.fromList
-                   [("session", session__field_descriptor),
-                    ("resources", resources__field_descriptor)])
-
-data ResourceStatusResponse = ResourceStatusResponse{_ResourceStatusResponse'hdfs
-                                                     :: ![HdfsResourceStatus]}
-                            deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
-
-instance (a ~ [HdfsResourceStatus], b ~ [HdfsResourceStatus],
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "hdfs" f ResourceStatusResponse
-         ResourceStatusResponse a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ResourceStatusResponse'hdfs
-                 (\ x__ y__ -> x__{_ResourceStatusResponse'hdfs = y__}))
-              Prelude.id
-
-instance Data.Default.Class.Default ResourceStatusResponse where
-        def = ResourceStatusResponse{_ResourceStatusResponse'hdfs = []}
-
-instance Data.ProtoLens.Message ResourceStatusResponse where
-        descriptor
-          = let hdfs__field_descriptor
-                  = Data.ProtoLens.FieldDescriptor "hdfs"
-                      (Data.ProtoLens.MessageField ::
-                         Data.ProtoLens.FieldTypeDescriptor HdfsResourceStatus)
-                      (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked hdfs)
-                      :: Data.ProtoLens.FieldDescriptor ResourceStatusResponse
-              in
-              Data.ProtoLens.MessageDescriptor
-                (Data.Text.pack "karps.core.ResourceStatusResponse")
-                (Data.Map.fromList
-                   [(Data.ProtoLens.Tag 1, hdfs__field_descriptor)])
-                (Data.Map.fromList [("hdfs", hdfs__field_descriptor)])
-
 compilationGraph ::
                  forall f s t a b .
                    Lens.Labels.HasLens "compilationGraph" f s t a b =>
@@ -941,13 +751,6 @@ graph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "graph")
 
-hdfs ::
-     forall f s t a b . Lens.Labels.HasLens "hdfs" f s t a b =>
-       Lens.Family2.LensLike f s t a b
-hdfs
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "hdfs")
-
 maybe'compilationResult ::
                         forall f s t a b .
                           Lens.Labels.HasLens "maybe'compilationResult" f s t a b =>
@@ -971,13 +774,6 @@ maybe'graph ::
 maybe'graph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'graph")
-
-maybe'path ::
-           forall f s t a b . Lens.Labels.HasLens "maybe'path" f s t a b =>
-             Lens.Family2.LensLike f s t a b
-maybe'path
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'path")
 
 maybe'pinnedGraph ::
                   forall f s t a b .
@@ -1034,13 +830,6 @@ maybe'updates
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'updates")
 
-path ::
-     forall f s t a b . Lens.Labels.HasLens "path" f s t a b =>
-       Lens.Family2.LensLike f s t a b
-path
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "path")
-
 pinnedGraph ::
             forall f s t a b . Lens.Labels.HasLens "pinnedGraph" f s t a b =>
               Lens.Family2.LensLike f s t a b
@@ -1073,26 +862,12 @@ requestedSession
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "requestedSession")
 
-resources ::
-          forall f s t a b . Lens.Labels.HasLens "resources" f s t a b =>
-            Lens.Family2.LensLike f s t a b
-resources
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "resources")
-
 results ::
         forall f s t a b . Lens.Labels.HasLens "results" f s t a b =>
           Lens.Family2.LensLike f s t a b
 results
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "results")
-
-return ::
-       forall f s t a b . Lens.Labels.HasLens "return" f s t a b =>
-         Lens.Family2.LensLike f s t a b
-return
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "return")
 
 session ::
         forall f s t a b . Lens.Labels.HasLens "session" f s t a b =>

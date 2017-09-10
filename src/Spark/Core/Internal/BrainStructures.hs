@@ -9,15 +9,17 @@ module Spark.Core.Internal.BrainStructures where
 import Data.Map.Strict(Map)
 import Data.Text(Text)
 import Data.Default
+import Lens.Family2 ((^.), (&), (.~))
 
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ComputeDag(ComputeDag)
 import Spark.Core.Internal.DatasetStructures(StructureEdge, OperatorNode)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
-import Spark.Core.Try(NodeError)
+import Spark.Core.Try(NodeError(..), Try)
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.ApiInternal as PAI
+import qualified Proto.Karps.Proto.Io as PI
 
 {-| The configuration of the compiler. All these options change the
 output reported by the compiler. They are fixed at compile time or by the
@@ -48,6 +50,12 @@ data LocalSessionId = LocalSessionId {
   unLocalSession :: !Text
 } deriving (Eq, Show)
 
+
+data ResourcePath = ResourcePath Text deriving (Eq, Show, Ord)
+
+data ResourceStamp = ResourceStamp Text deriving (Eq, Show)
+
+type ResourcesList = [(ResourcePath, ResourceStamp)]
 
 {-| A path that is unique across all the application. -}
 data GlobalPath = GlobalPath {
@@ -91,6 +99,7 @@ Note sure if this is the right design here.
 -}
 type ComputeGraph = ComputeDag OperatorNode StructureEdge
 
+type ResourceList = [(ResourcePath, ResourceStamp)]
 
 instance Default CompilerConf where
   def = CompilerConf {
@@ -102,3 +111,45 @@ instance FromProto PC.SessionId LocalSessionId where
 
 instance ToProto PC.SessionId LocalSessionId where
   toProto = PC.SessionId . unLocalSession
+
+instance FromProto PI.ResourcePath ResourcePath where
+  fromProto (PI.ResourcePath x) = pure $ ResourcePath x
+
+instance ToProto PI.ResourcePath ResourcePath where
+  toProto (ResourcePath x) = PI.ResourcePath x
+
+instance FromProto PI.ResourceStamp ResourceStamp where
+  fromProto (PI.ResourceStamp x) = pure $ ResourceStamp x
+
+instance ToProto PI.ResourceStamp ResourceStamp where
+  toProto (ResourceStamp x) = PI.ResourceStamp x
+
+instance FromProto PAI.AnalyzeResourceResponse'FailedStatus (ResourcePath, NodeError) where
+  fromProto fs = do
+    rp <- extractMaybe' fs PAI.maybe'resource "resource"
+    let e = fs ^. PAI.error
+    return (rp, Error [] e)
+
+instance ToProto PAI.AnalyzeResourceResponse'FailedStatus (ResourcePath, NodeError) where
+  toProto (rp, Error _ e) = (def :: PAI.AnalyzeResourceResponse'FailedStatus)
+    & PAI.resource .~ toProto rp
+    & PAI.error .~ e
+
+instance FromProto PAI.ResourceStatus (ResourcePath, ResourceStamp) where
+  fromProto rs = do
+    rp <- extractMaybe' rs PAI.maybe'resource "resource"
+    rs' <- extractMaybe' rs PAI.maybe'stamp "stamp"
+    return (rp, rs')
+
+instance ToProto PAI.ResourceStatus (ResourcePath, ResourceStamp) where
+  toProto (rp, rs) = (def :: PAI.ResourceStatus)
+      & PAI.resource .~ toProto rp
+      & PAI.stamp .~ toProto rs
+
+instance FromProto PAI.AnalyzeResourceResponse [(ResourcePath, Try ResourceStamp)] where
+  fromProto arr = do
+    successes <- sequence $ fromProto <$> arr ^. PAI.successes
+    failures <- sequence $ fromProto <$> arr ^. PAI.failures
+    let successes' = [(rp, pure s) | (rp, s) <- successes]
+    let failures' = [(rp, Left ne) | (rp, ne) <- failures]
+    return $ successes' ++ failures'

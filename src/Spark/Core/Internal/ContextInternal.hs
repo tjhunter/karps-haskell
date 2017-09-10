@@ -21,7 +21,9 @@ module Spark.Core.Internal.ContextInternal(
   insertSourceInfo,
   updateCache,
   convertToTiedGraph,
-  parseNodeId
+  parseNodeId,
+  currentCacheNodes,
+  compileComputation
 ) where
 
 import Control.Monad.State(get, put)
@@ -44,6 +46,7 @@ import Spark.Core.Try
 import Spark.Core.Row
 import Spark.Core.Types
 import Spark.Core.Internal.BrainStructures
+import Spark.Core.Internal.BrainFunctions
 import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..), prettyNodePath)
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.CachingUntyped
@@ -80,6 +83,17 @@ prepareComputation cg = do
   when (isRight compt) _increaseCompCounter
   return compt
 
+{-| Given a context for the computation, transforms a graph into a
+computation that can be executed by the backend.
+
+Increments counters if necessary.
+-}
+compileComputation ::
+  ResourceList ->
+  ComputeGraph ->
+  SparkStatePure (TransformReturn, Try Computation)
+compileComputation = missing "compileComputation"
+
 {-| Exposed for debugging
 
 Inserts the source information into the graph.
@@ -87,7 +101,7 @@ Inserts the source information into the graph.
 Note: after that, the node IDs may be different. The names and the paths
 will be kept though.
 -}
-insertSourceInfo :: ComputeGraph -> [(HdfsPath, DataInputStamp)] -> Try ComputeGraph
+insertSourceInfo :: ComputeGraph -> [(ResourcePath, ResourceStamp)] -> Try ComputeGraph
 insertSourceInfo cg l = do
   let m = M.fromList l
   let g = computeGraphToGraph cg
@@ -96,7 +110,7 @@ insertSourceInfo cg l = do
   return cg2
 
 {-| A list of file sources that are being requested by the compute graph -}
-inputSourcesRead :: ComputeGraph -> [HdfsPath]
+inputSourcesRead :: ComputeGraph -> [ResourcePath]
 inputSourcesRead cg = undefined
   -- TODO: make unique elements
   -- mapMaybe (hdfsPath.onOp.vertexData) (toList (cdVertices cg))
@@ -113,6 +127,9 @@ inputSourcesRead cg = undefined
 -- There is a lot more that could be done (merging the aggregations, etc.)
 -- but it is outside the scope of this MVP.
 -- TODO: should graph pruning be moved before naming?
+
+currentCacheNodes :: SparkStatePure NodeMap
+currentCacheNodes = missing "currentCacheNodes"
 
 {-| Builds the computation graph by expanding a single node until a transitive
 closure is reached.
@@ -217,7 +234,7 @@ _buildComputation session cg =
       return $ Computation sid cid allTiedNodes [p] p terminalNodeIds
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
-_updateVertex :: M.Map HdfsPath DataInputStamp -> OperatorNode -> Try OperatorNode
+_updateVertex :: M.Map ResourcePath ResourceStamp -> OperatorNode -> Try OperatorNode
 _updateVertex m un = undefined
   -- let no = onOp un in case hdfsPath no of
   --   Just p -> case M.lookup p m of
@@ -230,7 +247,7 @@ _updateVertex m un = undefined
   --   Nothing -> pure un
 
 _updateVertex2 ::
-  M.Map HdfsPath DataInputStamp ->
+  M.Map ResourcePath ResourceStamp ->
   OperatorNode ->
   [(OperatorNode, StructureEdge)] ->
   Try OperatorNode
