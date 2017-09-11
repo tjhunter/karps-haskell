@@ -23,6 +23,7 @@ import Spark.Core.Context
 import Spark.Core.Try
 
 import Spark.IO.Internal.InputGeneric
+import Spark.IO.Internal.InputStructures
 
 {-|
 -}

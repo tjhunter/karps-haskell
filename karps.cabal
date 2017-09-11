@@ -93,6 +93,7 @@ library
                        Spark.Core.Internal.RowUtils,
                        Spark.Core.Internal.StructuredBuilder,
                        Spark.IO.Internal.InputGeneric,
+                       Spark.IO.Internal.InputStructures,
                        Spark.IO.Internal.Json,
                        Spark.IO.Internal.OutputCommon
   build-depends:       base >= 4.8.1 && < 5,

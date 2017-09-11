@@ -64,7 +64,7 @@ import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry, structuredRegistry)
 import Spark.Core.Internal.Utilities
-import Spark.IO.Internal.InputGeneric(extractResourcePath, updateResourceStamp)
+import Spark.IO.Internal.InputStructures(extractResourcePath, updateResourceStamp)
 
 -- The result from querying the status of a computation
 type FinalResult = Either NodeComputationFailure NodeComputationSuccess
