@@ -262,6 +262,7 @@ _sessionPortText = pack . show . confPort . ssConf
 _ensureSession :: forall m. (MonadLoggerIO m) => SparkSession -> m ()
 _ensureSession session = do
   let msg = (def :: PI.CreateSessionRequest)
+        & PI.requestedSession .~ toProto (ssId session)
   _ <- _sendBackend' session "CreateSession" msg :: m PI.CreateSessionResponse
   return ()
 
