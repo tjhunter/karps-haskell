@@ -21,8 +21,10 @@ import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.TypesFunctions(arrayType', intType)
 
 
+-- TODO: there should be a collect_sorted instead, since we have stronger
+-- guarantees with Karps.
 collectAggBuilder :: AggSQLBuilder
-collectAggBuilder = AggSQLBuilder "collect_sorted" $ \dt ->
+collectAggBuilder = AggSQLBuilder "collect_list" $ \dt ->
   return (arrayType' dt, Nothing)
 
 countABuilder :: AggSQLBuilder

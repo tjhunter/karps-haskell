@@ -14,7 +14,16 @@ module Spark.Core.Internal.OpFunctions(
   convertToExtra,
   convertToExtra',
   decodeExtra,
-  decodeExtra'
+  decodeExtra',
+  -- Special operations names
+  nameLocalLiteral,
+  nameStructuredTransform,
+  nameLocalStructuredTransform,
+  nameDistributedLiteral,
+  nameGroupedReduction,
+  nameReduction,
+  nameBroadcastJoin,
+  namePointer
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA

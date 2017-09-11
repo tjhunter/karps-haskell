@@ -354,7 +354,10 @@ instance Data.ProtoLens.Message
                     ("error", error__field_descriptor)])
 
 data AnalyzeResourcesRequest = AnalyzeResourcesRequest{_AnalyzeResourcesRequest'resources
-                                                       :: ![Proto.Karps.Proto.Io.ResourcePath]}
+                                                       :: ![Proto.Karps.Proto.Io.ResourcePath],
+                                                       _AnalyzeResourcesRequest'session ::
+                                                       !(Prelude.Maybe
+                                                           Proto.Karps.Proto.Computation.SessionId)}
                              deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ [Proto.Karps.Proto.Io.ResourcePath],
@@ -367,9 +370,32 @@ instance (a ~ [Proto.Karps.Proto.Io.ResourcePath],
                  (\ x__ y__ -> x__{_AnalyzeResourcesRequest'resources = y__}))
               Prelude.id
 
+instance (a ~ Proto.Karps.Proto.Computation.SessionId,
+          b ~ Proto.Karps.Proto.Computation.SessionId, Prelude.Functor f) =>
+         Lens.Labels.HasLens "session" f AnalyzeResourcesRequest
+         AnalyzeResourcesRequest a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _AnalyzeResourcesRequest'session
+                 (\ x__ y__ -> x__{_AnalyzeResourcesRequest'session = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~
+            Prelude.Maybe Proto.Karps.Proto.Computation.SessionId,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Computation.SessionId,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'session" f AnalyzeResourcesRequest
+         AnalyzeResourcesRequest a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _AnalyzeResourcesRequest'session
+                 (\ x__ y__ -> x__{_AnalyzeResourcesRequest'session = y__}))
+              Prelude.id
+
 instance Data.Default.Class.Default AnalyzeResourcesRequest where
         def
-          = AnalyzeResourcesRequest{_AnalyzeResourcesRequest'resources = []}
+          = AnalyzeResourcesRequest{_AnalyzeResourcesRequest'resources = [],
+                                    _AnalyzeResourcesRequest'session = Prelude.Nothing}
 
 instance Data.ProtoLens.Message AnalyzeResourcesRequest where
         descriptor
@@ -380,12 +406,22 @@ instance Data.ProtoLens.Message AnalyzeResourcesRequest where
                            Proto.Karps.Proto.Io.ResourcePath)
                       (Data.ProtoLens.RepeatedField Data.ProtoLens.Unpacked resources)
                       :: Data.ProtoLens.FieldDescriptor AnalyzeResourcesRequest
+                session__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "session"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Karps.Proto.Computation.SessionId)
+                      (Data.ProtoLens.OptionalField maybe'session)
+                      :: Data.ProtoLens.FieldDescriptor AnalyzeResourcesRequest
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.AnalyzeResourcesRequest")
                 (Data.Map.fromList
-                   [(Data.ProtoLens.Tag 1, resources__field_descriptor)])
-                (Data.Map.fromList [("resources", resources__field_descriptor)])
+                   [(Data.ProtoLens.Tag 1, resources__field_descriptor),
+                    (Data.ProtoLens.Tag 2, session__field_descriptor)])
+                (Data.Map.fromList
+                   [("resources", resources__field_descriptor),
+                    ("session", session__field_descriptor)])
 
 data CompilerStep = CompilerStep{_CompilerStep'phase ::
                                  !CompilingPhase,

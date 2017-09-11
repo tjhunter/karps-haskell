@@ -183,7 +183,10 @@ compared to some previous usage.
 -}
 checkDataStamps :: [ResourcePath] -> SparkState [(ResourcePath, Try ResourceStamp)]
 checkDataStamps l = do
-  let msg = (def :: PAI.AnalyzeResourcesRequest) & PAI.resources .~ (toProto <$> l)
+  session <- get
+  let msg = (def :: PAI.AnalyzeResourcesRequest)
+        & PAI.resources .~ (toProto <$> l)
+        & PAI.session .~ toProto (ssId session)
   msg2 <- _sendBackend "check_resource" msg
   _wrapTry (fromProto msg2)
 
@@ -270,8 +273,11 @@ _ensureSession session = do
 _sendComputation :: (MonadLoggerIO m) => SparkSession -> Computation -> m ()
 _sendComputation session comp = do
   logInfoN $ "Sending computations with nodes: " <> show' (cNodes comp)
-  -- TODO: fill the content
   let msg = (def :: PI.CreateComputationRequest)
+       & PI.session .~ toProto (ssId session)
+       & PI.requestedComputation .~ toProto (cId comp)
+       & PI.graph .~ toProto (cNodes comp)
+       & PI.requestedPaths .~ (toProto <$> cTerminalNodes comp)
   x <- _sendBackend' session "CreateComputation" msg
   let _ = x :: PI.CreateComputationResponse
   return ()

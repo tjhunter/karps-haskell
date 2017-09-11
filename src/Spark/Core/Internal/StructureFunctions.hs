@@ -46,7 +46,7 @@ import Spark.Proto.Std(Shuffle(..), StructuredTransform(..), StructuredReduce(..
 This operation should not be used directly by the users. Use the functional
 builder instead. -}
 shuffleBuilder :: StructuredBuilderRegistry -> NodeBuilder
-shuffleBuilder reg = buildOpDExtra "org.spark.Shuffle" $ \dt (Shuffle agg) -> do
+shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (Shuffle agg) -> do
   -- Check first that the dataframe has two columns.
   (keyDt, groupDt) <- _splitGroupType dt
   dt' <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("group", groupDt)]
@@ -61,7 +61,7 @@ shuffleBuilder reg = buildOpDExtra "org.spark.Shuffle" $ \dt (Shuffle agg) -> do
 Users should use the functional one instead.
 -}
 transformBuilder :: StructuredBuilderRegistry -> NodeBuilder
-transformBuilder reg = buildOpDExtra "org.spark.StructuredTransform" $ \dt (StructuredTransform col) -> do
+transformBuilder reg = buildOpDExtra nameStructuredTransform $ \dt (StructuredTransform col) -> do
   co <- colOpFromProto col
   resDt <- colTypeStructured reg co dt
   return $ coreNodeInfo resDt Distributed (NodeStructuredTransform co)
@@ -71,7 +71,7 @@ transformBuilder reg = buildOpDExtra "org.spark.StructuredTransform" $ \dt (Stru
 Users should use the functional one instead.
 -}
 localTransformBuilder :: StructuredBuilderRegistry -> NodeBuilder
-localTransformBuilder reg = buildOpLExtra "org.spark.LocalStructuredTransform" $ \dt (StructuredTransform col) -> do
+localTransformBuilder reg = buildOpLExtra nameLocalStructuredTransform $ \dt (StructuredTransform col) -> do
   co <- colOpFromProto col
   resDt <- colTypeStructured reg co dt
   return $ coreNodeInfo resDt Local (NodeLocalStructuredTransform co)
