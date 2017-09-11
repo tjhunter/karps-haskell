@@ -13,7 +13,7 @@
 module Spark.Core.Internal.ContextInternal(
   FinalResult,
   inputSourcesRead,
-  prepareComputation,
+  -- prepareComputation,
   buildComputationGraph,
   performGraphTransforms,
   getObservables,
@@ -36,6 +36,7 @@ import Data.Maybe(mapMaybe, catMaybes)
 import Data.Either(isRight)
 import Data.Foldable(toList)
 import Control.Arrow((&&&))
+import Data.List(nub)
 import Formatting
 import qualified Data.Map.Strict as M
 import qualified Data.HashMap.Strict as HM
@@ -54,7 +55,6 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
--- import Spark.Core.Internal.OpFunctions(hdfsPath, updateSourceStamp)
 import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..), Locality(..))
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()
@@ -64,23 +64,11 @@ import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry, structuredRegistry)
 import Spark.Core.Internal.Utilities
+import Spark.IO.Internal.InputGeneric(extractResourcePath, updateResourceStamp)
 
 -- The result from querying the status of a computation
 type FinalResult = Either NodeComputationFailure NodeComputationSuccess
 
-{-| Given a context for the computation and a graph of computation, builds a
-computation object.
--}
-prepareComputation ::
-  ComputeGraph ->
-  SparkStatePure (Try Computation)
-prepareComputation cg = do
-  session <- get
-  let compt = do
-        cg2 <- performGraphTransforms session cg
-        _buildComputation session cg2
-  when (isRight compt) _increaseCompCounter
-  return compt
 
 {-| Given a context for the computation, transforms a graph into a
 computation that can be executed by the backend.
@@ -91,7 +79,19 @@ compileComputation ::
   ResourceList ->
   ComputeGraph ->
   SparkStatePure (TransformReturn, Try Computation)
-compileComputation = missing "compileComputation"
+compileComputation resources cg = do
+  session <- get
+  cache <- currentCacheNodes
+  let conf = confCompiler (ssConf session)
+  let t = performTransform conf cache resources cg
+  -- If the transform is successful, try to convert it to a computation.
+  let compt = case t of
+        Right gts ->
+            -- TODO: this is dropping all extra cache info
+            _buildComputation session (gtsNodes gts)
+        Left gtf -> Left (gtfMessage gtf)
+  when (isRight compt) _increaseCompCounter
+  return (t, compt)
 
 {-| Exposed for debugging
 
@@ -100,6 +100,7 @@ Inserts the source information into the graph.
 Note: after that, the node IDs may be different. The names and the paths
 will be kept though.
 -}
+-- TODO: move to the compiler
 insertSourceInfo :: ComputeGraph -> [(ResourcePath, ResourceStamp)] -> Try ComputeGraph
 insertSourceInfo cg l = do
   let m = M.fromList l
@@ -109,26 +110,29 @@ insertSourceInfo cg l = do
   return cg2
 
 {-| A list of file sources that are being requested by the compute graph -}
+-- This function hardcodes the IO nodes.
+-- There is currently no way to specify other nodes.
 inputSourcesRead :: ComputeGraph -> [ResourcePath]
-inputSourcesRead cg = undefined
-  -- TODO: make unique elements
-  -- mapMaybe (hdfsPath.onOp.vertexData) (toList (cdVertices cg))
+inputSourcesRead = nub . mapMaybe (extractResourcePath . onOp) . graphVertexData
 
 -- Here are the steps being run
 --  - node collection + cycle detection
 --  - naming:
 --    -> everything after that can be done with names, and on server
 --    -> for convenience, the vertex ids will be still the hash ids
---  - verification of cache/uncache
---  - deconstruction of unions and aggregations
---  - caching swap
---
--- There is a lot more that could be done (merging the aggregations, etc.)
--- but it is outside the scope of this MVP.
--- TODO: should graph pruning be moved before naming?
 
 currentCacheNodes :: SparkStatePure NodeMap
-currentCacheNodes = missing "currentCacheNodes"
+currentCacheNodes = do
+  session <- get
+  return . f session . ssNodeCache $ session where
+    f s' nc = M.fromList . HM.toList $ HM.mapMaybe g nc where
+        g nci | nciStatus nci == NodeCacheSuccess = Just (g' :| []) where
+          g' = GlobalPath {
+                gpSessionId = ssId s',
+                gpComputationId = nciComputation nci,
+                gpLocalPath = nciPath nci
+              }
+        g _ = Nothing
 
 {-| Builds the computation graph by expanding a single node until a transitive
 closure is reached.
@@ -187,6 +191,7 @@ convertToTiedGraph cg =
           n = nodeFromContext on parents' logicalDeps
 
 {-| Switches the IDs of the graph from node ids to paths (which should be available and computed at that point) -}
+-- TODO: it should be able to do all that with just graph traversals.
 _usePathsForIds :: ComputeDag UntypedNode StructureEdge -> Try ComputeGraph
 _usePathsForIds d =
   let g = computeGraphToGraph d

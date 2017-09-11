@@ -56,6 +56,21 @@ data ColumnUDFBuilder = ColumnUDFBuilder {
   cubBuilder :: !ColumnBuilderFunction
 }
 
+{-| The Universal aggregation builder.
+
+The builder must respect a couple of laws to be valid:
+
+1. it must be able to operate on a column of data, independently from the
+the other columns. In other words, it needs not access to the complete
+dataframe.
+
+2. Its output must verify the monoid laws: the empty set projects to the
+neutral element, and the union of dataset is a morphism.
+
+Spark provides a few ways to implement universal aggregators:
+ - as a SQL function (some of the built-ins)
+ - using the UDAF interface (excluding the post-processing operation)
+-}
 data AggSQLBuilder = AggSQLBuilder {
   asbName :: !SqlFunctionName,
   asbBuilder :: !AggBuilderFunction

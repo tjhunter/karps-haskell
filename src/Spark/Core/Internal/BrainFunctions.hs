@@ -15,6 +15,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
 import Data.Map.Strict(Map)
 import Data.Text(Text)
+import Data.Maybe(catMaybes)
 import Data.Default
 import Lens.Family2((&), (.~))
 import Data.Functor.Identity(runIdentity, Identity)
@@ -28,7 +29,7 @@ import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
 import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(onPath), onLocality, onType, onOp)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
 import Spark.Core.Internal.Display(displayGraph)
-import Spark.Core.Try(NodeError(..))
+import Spark.Core.Try
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Graph as PG
 import qualified Proto.Karps.Proto.ApiInternal as PAI
@@ -38,17 +39,53 @@ type TransformReturn = Either GraphTransformFailure GraphTransformSuccess
 
 {-| The main function that calls mos of the functions in the background.
 
+This function adopts the nanopass design, in which each step performs at most
+a couple of graph traversals (typically one).
+
 For a list of all the steps done, look at the list of the steps in api_internal.proto
 -}
--- TODO: add the source stamps
 performTransform ::
   CompilerConf ->
   NodeMap ->
   ResourceList ->
   ComputeGraph ->
   TransformReturn
-performTransform = undefined
+performTransform conf cache resources cg = _transform phases cg where
+  _m f x = if f conf then Just x else Nothing
+  phases = catMaybes [
+    _m ccUseNodePruning (PAI.REMOVE_UNREACHABLE, transPruneGraph),
+    pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
+    pure (PAI.POINTER_SWAP_1, transSwapCache cache),
+    pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache)
+    ]
 
+
+_transform :: [(PAI.CompilingPhase, ComputeGraph -> Try ComputeGraph)] -> ComputeGraph -> TransformReturn
+_transform l cg = f l [(PAI.INITIAL, cg)] cg where
+  f :: [(PAI.CompilingPhase, ComputeGraph -> Try ComputeGraph)] -> [(PAI.CompilingPhase, ComputeGraph)] -> ComputeGraph -> TransformReturn
+  f [] [] _ = error "should not have zero phase"
+  f [] l' cg' = Right $ GraphTransformSuccess cg' M.empty (reverse l')
+  f ((phase, fun):t) l' cg' =
+    case fun cg' of
+      Right cg2 ->
+        -- Success at applying this phase, moving on to the next one.
+        f t l2 cg2 where l2 = (phase, cg2) : l'
+      Left err ->
+        -- This phase failed, we stop here.
+        Left $ GraphTransformFailure err (reverse l')
+
+
+transSwapCache :: NodeMap -> ComputeGraph -> Try ComputeGraph
+transSwapCache cache cg = pure cg
+
+transInsertResource :: ResourceList -> ComputeGraph -> Try ComputeGraph
+transInsertResource resources cg = pure cg
+
+transPruneGraph :: ComputeGraph -> Try ComputeGraph
+transPruneGraph = pure
+
+transFillAutoCache :: ComputeGraph -> Try ComputeGraph
+transFillAutoCache = pure
 
 -- {-| Exposed for debugging -}
 -- updateSourceInfo :: ComputeGraph -> SparkState (Try ComputeGraph)

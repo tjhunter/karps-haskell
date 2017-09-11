@@ -12,7 +12,9 @@ module Spark.Core.Internal.OpFunctions(
   prettyShowColOp,
   prettyShowColFun,
   convertToExtra,
-  convertToExtra'
+  convertToExtra',
+  decodeExtra,
+  decodeExtra'
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
@@ -22,8 +24,9 @@ import Data.Text.Encoding(encodeUtf8)
 import Data.Text(Text)
 import Data.Char(isSymbol)
 import Data.ProtoLens.Message(Message)
-import Data.ProtoLens.Encoding(encodeMessage)
+import Data.ProtoLens.Encoding(encodeMessage, decodeMessage)
 
+import Spark.Core.Try
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
@@ -39,8 +42,8 @@ simpleShowOp (NodeLocalOp op') = soName op'
 simpleShowOp (NodeDistributedOp op') = soName op'
 simpleShowOp (NodeLocalLit _ _) = nameLocalLiteral
 simpleShowOp (NodeOpaqueAggregator op') = soName op'
-simpleShowOp (NodeAggregatorReduction ua) =
-  _jsonShowAggTrans . uaoInitialOuter $ ua
+-- simpleShowOp (NodeAggregatorReduction ua) =
+--   _jsonShowAggTrans . uaoInitialOuter $ ua
 simpleShowOp (NodeAggregatorLocalReduction ua) = _jsonShowSGO . uaoMergeBuffer $ ua
 simpleShowOp (NodeStructuredTransform _) = nameStructuredTransform
 simpleShowOp (NodeLocalStructuredTransform _) = nameLocalStructuredTransform
@@ -74,6 +77,14 @@ nameBroadcastJoin = "org.spark.BroadcastJoin"
 namePointer :: T.Text
 namePointer = "org.spark.PlaceholderCache"
 
+decodeExtra :: Message x => OpExtra -> Try x
+decodeExtra (OpExtra o) = case decodeMessage o of
+  Right x -> pure x
+  Left msg -> tryError $ "decodeExtra: " <> (T.pack msg)
+
+decodeExtra' :: (Message x, FromProto x y) => OpExtra -> Try y
+decodeExtra' o = decodeExtra o >>= fromProto
+
 {-| Converts a message to the extra content of an op.
 -}
 convertToExtra :: Message x => x -> OpExtra
@@ -88,12 +99,12 @@ convertToExtra' = convertToExtra . toProto
 {-| A text representation of the operation that is appealing for humans.
 -}
 prettyShowOp :: NodeOp -> T.Text
-prettyShowOp (NodeAggregatorReduction uao) =
-  case uaoInitialOuter uao of
-    OpaqueAggTransform so -> soName so
-    -- Try to have a pretty name for the simple reductions
-    InnerAggOp (AggFunction n _) -> n
-    _ -> simpleShowOp (NodeAggregatorReduction uao)
+-- prettyShowOp (NodeAggregatorReduction uao) =
+--   case uaoInitialOuter uao of
+--     OpaqueAggTransform so -> soName so
+--     -- Try to have a pretty name for the simple reductions
+--     InnerAggOp (AggFunction n _) -> n
+--     _ -> simpleShowOp (NodeAggregatorReduction uao)
 prettyShowOp x = simpleShowOp x
 
 
@@ -153,14 +164,16 @@ extraNodeOpData (NodeDistributedLit dt v) =
 extraNodeOpData (NodeDistributedOp so) = soExtra so
 extraNodeOpData (NodeGroupedReduction ao) =
   convertToExtra (PS.StructuredReduce (Just (toProto ao)))
-extraNodeOpData (NodeAggregatorReduction _) =
-  error "extraNodeOpData: NodeAggregatorReduction"
+-- extraNodeOpData (NodeAggregatorReduction _) =
+--   error "extraNodeOpData: NodeAggregatorReduction"
 extraNodeOpData (NodeOpaqueAggregator _) =
   error "extraNodeOpData: NodeOpaqueAggregator"
 extraNodeOpData (NodeLocalOp so) = soExtra so
 extraNodeOpData NodeBroadcastJoin = emptyExtra
-extraNodeOpData (NodeReduction _) =
-  error "extraNodeOpData: NodeReduction"
+extraNodeOpData (NodeReduction (OpaqueAggTransform _)) =
+  error "extraNodeOpData: NodeOpaqueAggregator -> OpaqueAggTransform"
+extraNodeOpData (NodeReduction (InnerAggOp ao)) =
+  convertToExtra (PS.StructuredReduce (Just (toProto ao)))
 extraNodeOpData (NodeAggregatorLocalReduction _) =
   error "extraNodeOpData: NodeAggregatorLocalReduction"
 extraNodeOpData (NodePointer p) = convertToExtra' p

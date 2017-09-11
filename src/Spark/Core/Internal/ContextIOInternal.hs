@@ -9,7 +9,7 @@ module Spark.Core.Internal.ContextIOInternal(
   executeCommand1,
   executeCommand1',
   checkDataStamps,
-  createComputation,
+  -- createComputation,
   computationStats
 ) where
 
@@ -144,9 +144,9 @@ computationStats cid = do
   logDebugN $ "computationStats: stats for " <> show' cid
   _computationStatus cid (NodePath V.empty)
 
-{-| Exposed for debugging -}
-createComputation :: ComputeGraph -> SparkState (Try Computation)
-createComputation cg = returnPure $ prepareComputation cg
+-- {-| Exposed for debugging -}
+-- createComputation :: ComputeGraph -> SparkState (Try Computation)
+-- createComputation cg = returnPure $ prepareComputation cg
 
 fetchSourceInfo :: ComputeGraph -> SparkState (Try ResourceList)
 fetchSourceInfo cg = do

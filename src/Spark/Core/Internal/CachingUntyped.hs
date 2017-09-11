@@ -45,7 +45,7 @@ uncache  n = n2 `parents` [untyped n]
 cachingType :: UntypedNode -> CacheTry NodeCachingType
 cachingType n = case nodeOp n of
   NodeLocalOp _ -> pure Stop
-  NodeAggregatorReduction _ -> pure Stop
+  -- NodeAggregatorReduction _ -> pure Stop
   NodeAggregatorLocalReduction _ -> pure Stop
   NodeOpaqueAggregator _ -> pure Stop
   NodeLocalLit _ _ -> pure Stop

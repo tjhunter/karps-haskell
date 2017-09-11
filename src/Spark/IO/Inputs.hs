@@ -1,6 +1,6 @@
 
 module Spark.IO.Inputs(
-  SparkPath,
+  ResourcePath,
   JsonMode,
   DataSchema,
   JsonOptions,
@@ -10,5 +10,6 @@ module Spark.IO.Inputs(
   jsonInfer
 ) where
 
+import Spark.Core.Internal.BrainStructures
 import Spark.IO.Internal.Json
 import Spark.IO.Internal.InputGeneric

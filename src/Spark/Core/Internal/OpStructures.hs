@@ -76,7 +76,7 @@ type OperatorName = T.Text
 
 These paths are usually not created by the user directly.
 -}
-data HdfsPath = HdfsPath Text deriving (Eq, Show, Ord)
+data HdfsPath = HdfsPath { unHdfsPath :: Text } deriving (Eq, Show, Ord)
 
 data OpExtra = OpExtra ByteString deriving (Eq, Show)
 
@@ -215,6 +215,7 @@ data StructuredTransform =
 portion of the UDAF (initialize+update+merge), or if it also performs the final,
 non-algebraic stePST.
 -}
+-- TODO: remove, it should split with a transform.
 data UdafApplication = Algebraic | Complete deriving (Eq, Show)
 
 data AggOp =
@@ -339,7 +340,7 @@ data NodeOp =
   | NodeReduction !AggTransform
     -- TODO: remove these
     -- | A universal aggregator.
-  | NodeAggregatorReduction UniversalAggregatorOp
+  -- | NodeAggregatorReduction UniversalAggregatorOp
   | NodeAggregatorLocalReduction UniversalAggregatorOp
     -- | A structured transform, performed either on a local node or a
     -- distributed node.

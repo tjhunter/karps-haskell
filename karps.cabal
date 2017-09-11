@@ -62,6 +62,7 @@ library
                        Spark.Core.Internal.TypesStructures,
                        Spark.Core.Internal.TypesStructuresRepr,
                        Spark.Core.Internal.TypesFunctions,
+                       Spark.Core.InternalStd.Aggregation,
                        Spark.Core.InternalStd.Column,
                        Spark.Core.InternalStd.Dataset,
                        Spark.Core.InternalStd.Observable,

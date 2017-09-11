@@ -221,11 +221,11 @@ _unrollStep pt un = traceHint ("_unrollStep: pt=" <> show' pt <> " un=" <> show'
           in PipedDataset ds'
         (PipedGroup g, NodeStructuredTransform co) ->
           _unrollGroupTrans g co
-        (PipedGroup g, NodeAggregatorReduction uao) ->
-          case uaoInitialOuter uao of
-            OpaqueAggTransform x -> _pError $ sformat ("Cannot apply opaque transform in the context of an aggregation: "%sh) x
-            InnerAggOp ao ->
-              PipedDataset $ _applyAggOp dt ao g
+        -- (PipedGroup g, NodeAggregatorReduction uao) ->
+        --   case uaoInitialOuter uao of
+        --     OpaqueAggTransform x -> _pError $ sformat ("Cannot apply opaque transform in the context of an aggregation: "%sh) x
+        --     InnerAggOp ao ->
+        --       PipedDataset $ _applyAggOp dt ao g
         _ -> _pError $ sformat (sh%": Operation not supported with trans="%sh%" and parents="%sh) op pt p
     l -> _pError $ sformat (sh%": expected one parent but got "%sh) un l
 

@@ -7,7 +7,8 @@
 module Spark.Core.Internal.BrainStructures where
 
 import Data.Map.Strict(Map)
-import Data.Text(Text)
+import Data.Text(Text, pack)
+import Data.String(IsString(..))
 import Data.Default
 import Lens.Family2 ((^.), (&), (.~))
 
@@ -51,7 +52,7 @@ data LocalSessionId = LocalSessionId {
 } deriving (Eq, Show)
 
 
-data ResourcePath = ResourcePath Text deriving (Eq, Show, Ord)
+data ResourcePath = ResourcePath { unResourcePath :: Text } deriving (Eq, Show, Ord)
 
 data ResourceStamp = ResourceStamp Text deriving (Eq, Show)
 
@@ -105,6 +106,9 @@ instance Default CompilerConf where
   def = CompilerConf {
       ccUseNodePruning = False
     }
+
+instance IsString ResourcePath where
+  fromString = ResourcePath . pack
 
 instance FromProto PC.SessionId LocalSessionId where
   fromProto (PC.SessionId x) = pure $ LocalSessionId x

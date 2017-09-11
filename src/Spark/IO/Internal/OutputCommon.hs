@@ -23,6 +23,7 @@ import Spark.Core.Dataset
 
 import Spark.Core.Internal.ColumnStructures(UnknownReference, UntypedColumnData)
 import Spark.Core.Internal.ColumnFunctions(dropColReference)
+import Spark.Core.Internal.OpStructures(HdfsPath)
 import Spark.Core.Internal.Utilities
 import Spark.IO.Internal.InputGeneric
 
@@ -61,10 +62,10 @@ data SavingDescription ref a = SavingDescription {
   buckets :: ![OutputBucket ref],
   savedCol :: !(Column ref a),
   saveFormat :: !DataFormat,
-  savePath :: !SparkPath
+  savePath :: !HdfsPath
 }
 
-saveDefaults :: SparkPath -> DataFormat -> Column ref a -> SavingDescription ref a
+saveDefaults :: HdfsPath -> DataFormat -> Column ref a -> SavingDescription ref a
 saveDefaults sp f c = SavingDescription {
   partitions = [],
   buckets = [],
@@ -108,7 +109,7 @@ data SaveOutput a = SaveOutput {
   overwriteOutput :: !(Dataset a)
 }
 
-save :: DataFormat -> SparkPath -> Dataset a -> SaveOutput a
+save :: DataFormat -> HdfsPath -> Dataset a -> SaveOutput a
 save = undefined
 --
 -- repeatDS :: Column ref Int -> Column ref a -> Dataset a

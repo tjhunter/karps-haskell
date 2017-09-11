@@ -31,9 +31,9 @@ module Spark.Core.Internal.NodeBuilder(
 
 import Data.Text(Text)
 import Data.ProtoLens.Message(Message)
-import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
 
 import Spark.Core.Internal.OpStructures
+import Spark.Core.Internal.OpFunctions(convertToExtra, decodeExtra)
 import Spark.Core.Internal.TypesStructures(DataType)
 import Spark.Core.Try
 
@@ -161,7 +161,7 @@ cniStandardOp loc opName dt extra = CoreNodeInfo {
     cniOp = NodeDistributedOp StandardOperator {
       soName = opName,
       soOutputType = dt,
-      soExtra = OpExtra $ encodeMessage extra
+      soExtra = convertToExtra extra
     }
   }
 
@@ -181,8 +181,5 @@ cniStandardOp' loc opName dt = CoreNodeInfo {
 
 
 _convertTyped :: Message a => (a -> [NodeShape] -> Try CoreNodeInfo) -> BuilderFunction
-_convertTyped _ (OpExtra s) _ | s == "" = fail "buildOp0: missing extra info"
-_convertTyped f (OpExtra s) l =
-  case decodeMessage s of
-    Right x -> f x l
-    Left msg -> fail $ "buildOp0: parsing of arguments failed: " ++ show msg
+_convertTyped _ (OpExtra s) _ | s == "" = tryError "buildOp0: missing extra info"
+_convertTyped f o l = decodeExtra o >>= \x -> f x l
