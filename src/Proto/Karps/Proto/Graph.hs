@@ -382,7 +382,9 @@ instance Data.ProtoLens.Message Node where
                     ("infered_type", inferedType__field_descriptor)])
 
 data OpExtra = OpExtra{_OpExtra'content ::
-                       !Data.ByteString.ByteString}
+                       !Data.ByteString.ByteString,
+                       _OpExtra'contentDebug :: !Data.Text.Text,
+                       _OpExtra'contentBase64 :: !Data.Text.Text}
              deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Data.ByteString.ByteString,
@@ -394,8 +396,29 @@ instance (a ~ Data.ByteString.ByteString,
                  (\ x__ y__ -> x__{_OpExtra'content = y__}))
               Prelude.id
 
+instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "contentDebug" f OpExtra OpExtra a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _OpExtra'contentDebug
+                 (\ x__ y__ -> x__{_OpExtra'contentDebug = y__}))
+              Prelude.id
+
+instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "contentBase64" f OpExtra OpExtra a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _OpExtra'contentBase64
+                 (\ x__ y__ -> x__{_OpExtra'contentBase64 = y__}))
+              Prelude.id
+
 instance Data.Default.Class.Default OpExtra where
-        def = OpExtra{_OpExtra'content = Data.ProtoLens.fieldDefault}
+        def
+          = OpExtra{_OpExtra'content = Data.ProtoLens.fieldDefault,
+                    _OpExtra'contentDebug = Data.ProtoLens.fieldDefault,
+                    _OpExtra'contentBase64 = Data.ProtoLens.fieldDefault}
 
 instance Data.ProtoLens.Message OpExtra where
         descriptor
@@ -405,12 +428,29 @@ instance Data.ProtoLens.Message OpExtra where
                          Data.ProtoLens.FieldTypeDescriptor Data.ByteString.ByteString)
                       (Data.ProtoLens.PlainField Data.ProtoLens.Optional content)
                       :: Data.ProtoLens.FieldDescriptor OpExtra
+                contentDebug__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "content_debug"
+                      (Data.ProtoLens.StringField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional contentDebug)
+                      :: Data.ProtoLens.FieldDescriptor OpExtra
+                contentBase64__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "content_base64"
+                      (Data.ProtoLens.StringField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional contentBase64)
+                      :: Data.ProtoLens.FieldDescriptor OpExtra
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.OpExtra")
                 (Data.Map.fromList
-                   [(Data.ProtoLens.Tag 1, content__field_descriptor)])
-                (Data.Map.fromList [("content", content__field_descriptor)])
+                   [(Data.ProtoLens.Tag 1, content__field_descriptor),
+                    (Data.ProtoLens.Tag 2, contentDebug__field_descriptor),
+                    (Data.ProtoLens.Tag 3, contentBase64__field_descriptor)])
+                (Data.Map.fromList
+                   [("content", content__field_descriptor),
+                    ("content_debug", contentDebug__field_descriptor),
+                    ("content_base64", contentBase64__field_descriptor)])
 
 data Path = Path{_Path'path :: ![Data.Text.Text]}
           deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
@@ -447,6 +487,20 @@ content ::
 content
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "content")
+
+contentBase64 ::
+              forall f s t a b . Lens.Labels.HasLens "contentBase64" f s t a b =>
+                Lens.Family2.LensLike f s t a b
+contentBase64
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "contentBase64")
+
+contentDebug ::
+             forall f s t a b . Lens.Labels.HasLens "contentDebug" f s t a b =>
+               Lens.Family2.LensLike f s t a b
+contentDebug
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "contentDebug")
 
 errorMessage ::
              forall f s t a b . Lens.Labels.HasLens "errorMessage" f s t a b =>

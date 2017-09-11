@@ -78,10 +78,13 @@ These paths are usually not created by the user directly.
 -}
 data HdfsPath = HdfsPath { unHdfsPath :: Text } deriving (Eq, Show, Ord)
 
-data OpExtra = OpExtra ByteString deriving (Eq, Show)
+data OpExtra = OpExtra {
+  opContent :: ByteString,
+  opContentDebug :: T.Text,
+  opContent64 :: T.Text } deriving (Eq, Show)
 
 emptyExtra :: OpExtra
-emptyExtra = OpExtra ""
+emptyExtra = OpExtra "" "" ""
 
 {-| A stamp that defines some notion of uniqueness of the data source.
 
@@ -366,10 +369,10 @@ instance ToProto PG.Locality Locality where
   toProto Local = PG.LOCAL
 
 instance FromProto PG.OpExtra OpExtra where
-  fromProto (PG.OpExtra x) = pure (OpExtra x)
+  fromProto (PG.OpExtra x txt b64) = pure (OpExtra x txt b64)
 
 instance ToProto PG.OpExtra OpExtra where
-  toProto (OpExtra x) = PG.OpExtra x
+  toProto (OpExtra x txt b64) = PG.OpExtra x txt b64
 
 instance ToProto PST.Column ColOp where
   toProto = _colOpToProto Nothing

@@ -181,5 +181,5 @@ cniStandardOp' loc opName dt = CoreNodeInfo {
 
 
 _convertTyped :: Message a => (a -> [NodeShape] -> Try CoreNodeInfo) -> BuilderFunction
-_convertTyped _ (OpExtra s) _ | s == "" = tryError "buildOp0: missing extra info"
+_convertTyped _ o _ | o == emptyExtra = tryError "buildOp0: missing extra info"
 _convertTyped f o l = decodeExtra o >>= \x -> f x l

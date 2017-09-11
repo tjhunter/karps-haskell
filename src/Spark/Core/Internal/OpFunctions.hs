@@ -29,11 +29,13 @@ module Spark.Core.Internal.OpFunctions(
 import qualified Crypto.Hash.SHA256 as SHA
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import Data.Text.Encoding(encodeUtf8)
+import qualified Data.ByteString.Base64 as B64
+import Data.Text.Encoding(encodeUtf8, decodeUtf8)
 import Data.Text(Text)
 import Data.Char(isSymbol)
 import Data.ProtoLens.Message(Message)
 import Data.ProtoLens.Encoding(encodeMessage, decodeMessage)
+import Data.ProtoLens.TextFormat(showMessage)
 
 import Spark.Core.Try
 import Spark.Core.Internal.OpStructures
@@ -87,7 +89,7 @@ namePointer :: T.Text
 namePointer = "org.spark.PlaceholderCache"
 
 decodeExtra :: Message x => OpExtra -> Try x
-decodeExtra (OpExtra o) = case decodeMessage o of
+decodeExtra (OpExtra o _ _) = case decodeMessage o of
   Right x -> pure x
   Left msg -> tryError $ "decodeExtra: " <> (T.pack msg)
 
@@ -97,7 +99,8 @@ decodeExtra' o = decodeExtra o >>= fromProto
 {-| Converts a message to the extra content of an op.
 -}
 convertToExtra :: Message x => x -> OpExtra
-convertToExtra = OpExtra . encodeMessage
+convertToExtra msg = OpExtra bin (T.pack (showMessage msg)) (decodeUtf8 (B64.encode bin)) where
+  bin = encodeMessage msg
 
 {-| Converts a haskell data structure that we know is backed by a proto to
 an opExtra.
@@ -191,7 +194,7 @@ extraNodeOpData (NodePointer p) = convertToExtra' p
 hashUpdateNodeOp :: SHA.Ctx -> NodeOp -> SHA.Ctx
 hashUpdateNodeOp ctx op' = SHA.updates ctx ["op", bsOp, "extra", bsExtra] where
   bsOp = encodeUtf8 $ simpleShowOp op'
-  (OpExtra bsExtra) = extraNodeOpData op'
+  (OpExtra bsExtra _ _) = extraNodeOpData op'
 
 
 prettyShowColFun :: T.Text -> [Text] -> T.Text

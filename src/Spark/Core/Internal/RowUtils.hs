@@ -104,7 +104,9 @@ _checkCell' sdt c = case (sdt, c) of
   (_, Empty) ->
     pure $ sformat ("Expected a strict value of type "%sh%" but no value") sdt
   (IntType, IntElement _) -> Nothing
+  (DoubleType, DoubleElement _) -> Nothing
   (StringType, StringElement _) -> Nothing
+  (BoolType, BoolElement _) -> Nothing
   (Struct s, RowElement (Row l)) -> _checkCell' (Struct s) (RowArray l)
   (Struct (StructType fields), RowArray cells') ->
     if V.length fields == V.length cells'

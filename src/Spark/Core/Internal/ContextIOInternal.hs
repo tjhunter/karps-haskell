@@ -187,7 +187,7 @@ checkDataStamps l = do
   let msg = (def :: PAI.AnalyzeResourcesRequest)
         & PAI.resources .~ (toProto <$> l)
         & PAI.session .~ toProto (ssId session)
-  msg2 <- _sendBackend "check_resource" msg
+  msg2 <- _sendBackend "ResourceStatus" msg
   _wrapTry (fromProto msg2)
 
 -- Send a proto to the backend, at the function name given.

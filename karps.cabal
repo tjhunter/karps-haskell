@@ -97,6 +97,7 @@ library
                        Spark.IO.Internal.OutputCommon
   build-depends:       base >= 4.8.1 && < 5,
                        base16-bytestring,
+                       base64-bytestring,
                        binary >= 0.7 && < 0.9,
                        bytestring,
                        containers,
