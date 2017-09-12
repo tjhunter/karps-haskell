@@ -4,10 +4,25 @@
 
 {-| The public data structures used by the Karps compiler.
 -}
-module Spark.Core.Internal.BrainStructures where
+module Spark.Core.Internal.BrainStructures(
+  CompilerConf(..),
+  LocalSessionId,
+  ResourcePath,
+  ResourceStamp,
+  ResourceList,
+  -- ResourcesList,
+  GlobalPath(..),
+  NodeMap,
+  GraphTransformSuccess(..),
+  GraphTransformFailure(..),
+  ComputeGraph,
+  resourcePath,
+  unResourcePath,
+  makeSessionId
+) where
 
 import Data.Map.Strict(Map)
-import Data.Text(Text, pack)
+import Data.Text(Text, pack, unpack)
 import Data.String(IsString(..))
 import Data.Default
 import Lens.Family2 ((^.), (&), (.~))
@@ -49,14 +64,23 @@ here.
 -}
 data LocalSessionId = LocalSessionId {
   unLocalSession :: !Text
-} deriving (Eq, Show)
+} deriving (Eq)
 
+makeSessionId :: Text -> LocalSessionId
+makeSessionId = LocalSessionId
 
-data ResourcePath = ResourcePath { unResourcePath :: Text } deriving (Eq, Show, Ord)
+data ResourcePath = ResourcePath Text deriving (Eq, Show, Ord)
+
+-- TODO: could do more checks here about schema, etc.
+resourcePath :: Text -> Try ResourcePath
+resourcePath = pure . ResourcePath
+
+unResourcePath :: ResourcePath -> Text
+unResourcePath (ResourcePath txt) = txt
 
 data ResourceStamp = ResourceStamp Text deriving (Eq, Show)
 
-type ResourcesList = [(ResourcePath, ResourceStamp)]
+-- type ResourcesList = [(ResourcePath, ResourceStamp)]
 
 {-| A path that is unique across all the application. -}
 data GlobalPath = GlobalPath {
@@ -101,6 +125,9 @@ Note sure if this is the right design here.
 type ComputeGraph = ComputeDag OperatorNode StructureEdge
 
 type ResourceList = [(ResourcePath, ResourceStamp)]
+
+instance Show LocalSessionId where
+  show = unpack . unLocalSession
 
 instance Default CompilerConf where
   def = CompilerConf {

@@ -57,6 +57,7 @@ module Spark.Core.Internal.DatasetFunctions(
   -- Operator node functions
   updateOpNode,
   updateOpNodeOp,
+  buildOpNode
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
@@ -237,6 +238,14 @@ castLocality node =
 -- This is a potentially long operation.
 nodeId :: ComputeNode loc a -> NodeId
 nodeId = _cnNodeId
+
+buildOpNode :: CoreNodeInfo -> NodePath -> NodeContext -> OperatorNode
+buildOpNode cni np nc = updateOpNode on nc id where
+  on = OperatorNode {
+    onId = error "buildOpNode",
+    onPath = np,
+    onNodeInfo = cni
+  }
 
 -- (internal)
 -- This operation should always be used to make sure that the

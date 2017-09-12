@@ -57,11 +57,12 @@ library
                        Spark.Core.Internal.ProtoUtils,
                        Spark.Core.Internal.Pruning,
                        Spark.Core.Internal.RowGenericsFrom,
-                       Spark.Core.Internal.Utilities,
+                       Spark.Core.Internal.StructuredBuilder,
                        Spark.Core.Internal.TypesGenerics,
                        Spark.Core.Internal.TypesStructures,
                        Spark.Core.Internal.TypesStructuresRepr,
                        Spark.Core.Internal.TypesFunctions,
+                       Spark.Core.Internal.Utilities,
                        Spark.Core.InternalStd.Aggregation,
                        Spark.Core.InternalStd.Column,
                        Spark.Core.InternalStd.Dataset,
@@ -91,7 +92,6 @@ library
                        Spark.Core.Internal.RowGenerics,
                        Spark.Core.Internal.RowStructures,
                        Spark.Core.Internal.RowUtils,
-                       Spark.Core.Internal.StructuredBuilder,
                        Spark.IO.Internal.InputGeneric,
                        Spark.IO.Internal.InputStructures,
                        Spark.IO.Internal.Json,
@@ -132,8 +132,7 @@ library
 executable karps-server
   hs-source-dirs:      src-server
   main-is:             Main.hs
-  other-modules:       Spark.Server.Structures,
-                       Spark.Server.StructureParsing,
+  other-modules:       Spark.Server.Registry,
                        Spark.Server.Transform
   default-language:    Haskell2010
   build-depends:       base

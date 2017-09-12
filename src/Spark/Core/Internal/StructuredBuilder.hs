@@ -7,7 +7,7 @@ module Spark.Core.Internal.StructuredBuilder(
   ColumnSQLBuilder(..),
   ColumnUDFBuilder(..),
   AggSQLBuilder(..),
-  StructuredBuilderRegistry(..),
+  StructuredBuilderRegistry,
   colTypeStructured,
   aggTypeStructured,
   refineColBuilderPost,
@@ -17,13 +17,19 @@ module Spark.Core.Internal.StructuredBuilder(
   checkNumber,
   checkStrictDataType,
   checkStrictDataTypeList,
-  structuredRegistry
+  -- Builder tools
+  registrySqlCol,
+  registryUdfCol,
+  registrySqlAgg,
+  buildStructuredRegistry
 ) where
 
-import Formatting
+import qualified Data.Map.Strict as M
+import qualified Data.List.NonEmpty as N
 import qualified Data.Vector as V
+import Control.Arrow ((&&&))
+import Formatting
 import Data.List(find)
-import Data.HashMap.Strict as HM
 
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.TypesStructures(DataType(..), StructField(..), StrictDataType(..), StructType(..), Nullable(..))
@@ -79,10 +85,32 @@ data AggSQLBuilder = AggSQLBuilder {
 {-| A registry of builder functions for structured builders.
 -}
 data StructuredBuilderRegistry = StructuredBuilderRegistry {
-  registrySqlCol :: SqlFunctionName -> Maybe ColumnBuilderFunction,
-  registryUdfCol :: UdfClassName -> Maybe ColumnBuilderFunction,
-  registrySqlAgg :: SqlFunctionName -> Maybe AggBuilderFunction
+  _registrySqlCol :: SqlFunctionName -> Maybe ColumnBuilderFunction,
+  _registryUdfCol :: UdfClassName -> Maybe ColumnBuilderFunction,
+  _registrySqlAgg :: SqlFunctionName -> Maybe AggBuilderFunction
 }
+
+registrySqlCol :: StructuredBuilderRegistry -> SqlFunctionName -> Maybe ColumnBuilderFunction
+registrySqlCol = _registrySqlCol
+
+registryUdfCol :: StructuredBuilderRegistry -> UdfClassName -> Maybe ColumnBuilderFunction
+registryUdfCol = _registryUdfCol
+
+registrySqlAgg :: StructuredBuilderRegistry -> SqlFunctionName -> Maybe AggBuilderFunction
+registrySqlAgg = _registrySqlAgg
+
+buildStructuredRegistry ::
+  [ColumnSQLBuilder] ->
+  [ColumnUDFBuilder] ->
+  [AggSQLBuilder] ->
+  StructuredBuilderRegistry
+buildStructuredRegistry sqls udfs sqlAggs = StructuredBuilderRegistry f1 f2 f3 where
+  f getName l = (`M.lookup` m) where
+          m = M.map N.head . myGroupBy $ (getName &&& id) <$> l
+  f1 = (csbBuilder <$>) . f csbName sqls
+  f2 = (cubBuilder <$>) . f cubName udfs
+  f3 = (asbBuilder <$>) . f asbName sqlAggs
+
 
 {-| Given the data type of a column, infers the type of the output through
 a structured transform. -}
@@ -155,16 +183,6 @@ colBuilder2Homo n f = ColumnSQLBuilder n f' where
 refineColBuilderPost :: ColumnSQLBuilder -> (DataType -> Try DataType) -> ColumnSQLBuilder
 refineColBuilderPost (ColumnSQLBuilder n f) f' = ColumnSQLBuilder n f'' where
   f'' x = f x >>= f'
-
-structuredRegistry :: [ColumnSQLBuilder] -> [ColumnUDFBuilder] -> [AggSQLBuilder] -> StructuredBuilderRegistry
-structuredRegistry cols udfs aggs = StructuredBuilderRegistry f1 f2 f3 where
-  g m n = HM.lookup n m
-  f1' (ColumnSQLBuilder n f) = (n, f)
-  f1 = g $ HM.fromList (f1' <$> cols)
-  f2' (ColumnUDFBuilder n f) = (n, f)
-  f2 = g $ HM.fromList (f2' <$> udfs)
-  f3' (AggSQLBuilder n f) = (n, f)
-  f3 = g $ HM.fromList (f3' <$> aggs)
 
 _extraction' :: FieldPath -> DataType -> Try DataType
 _extraction' fp = _extraction (V.toList (unFieldPath fp))

@@ -62,7 +62,7 @@ import Spark.Core.Internal.DAGFunctions(buildVertexList, graphMapVertices)
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry, structuredRegistry)
+import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry)
 import Spark.Core.Internal.Utilities
 import Spark.IO.Internal.InputStructures(extractResourcePath, updateResourceStamp)
 
@@ -324,9 +324,3 @@ _insertCacheUpdate cid nid p ns s = do
     let session' = session { ssNodeCache = m' }
     put session'
     return $ Just s
-
-_buildRegistry :: StructuredBuilderRegistry
-_buildRegistry = structuredRegistry cols udfs aggs where
-  cols = []
-  udfs = []
-  aggs = []

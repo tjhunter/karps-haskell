@@ -23,11 +23,12 @@ module Spark.Core.Internal.Utilities(
   (<&>),
   (<>),
   NonEmpty( (:|) )
-  ) where
+) where
 
 import qualified Data.Text as T
 import qualified Formatting.ShortFormatters as SF
 import qualified Data.List.NonEmpty as N
+import qualified Data.Map.Strict as M
 import Control.Arrow ((&&&))
 import Data.List
 import Data.Function
@@ -35,7 +36,6 @@ import Data.Text(Text)
 import Data.Maybe(mapMaybe)
 import Formatting
 import Debug.Trace(trace)
-import qualified Data.Map.Strict as M
 import Data.Monoid((<>))
 import  Data.List.NonEmpty( NonEmpty( (:|) ) )
 import GHC.Stack(HasCallStack)

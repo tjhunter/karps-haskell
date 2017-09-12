@@ -26,7 +26,7 @@ import Spark.Core.Internal.Utilities(forceRight)
 import Spark.Core.Internal.DatasetFunctions(asDF, emptyDataset, emptyLocalData)
 import Spark.Core.Internal.TypesStructures(SQLType(..))
 import Spark.Core.Internal.ContextStructures(SparkState)
-import Spark.Core.Internal.BrainStructures(ResourcePath(..))
+import Spark.Core.Internal.BrainStructures(ResourcePath, resourcePath, unResourcePath)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.OpFunctions(decodeExtra', convertToExtra')
 import Spark.Core.Internal.ProtoUtils
@@ -92,11 +92,12 @@ instance FromProto PIO.SourceDescription SourceDescription where
     s <- case sd ^. PIO.maybe'schema of
           Nothing -> pure InferSchema
           Just p -> UseSchema <$> fromProto p
+    rp <- resourcePath (sd ^. PIO.path)
     let st = case sd ^. PIO.stamp of
           "" -> Nothing
           x -> Just (DataInputStamp x)
     return SourceDescription {
-      inputPath = ResourcePath (sd ^. PIO.path),
+      inputPath = rp,
       inputSource = df,
       inputSchema = s,
       sdOptions = M.empty, -- TODO: not parsing options for now.

@@ -18,7 +18,8 @@ import Data.Text(pack)
 
 import Spark.Core.Types
 import Spark.Core.Dataset(DataFrame, Dataset, castType')
-import Spark.Core.Internal.BrainStructures(ResourcePath(..))
+import Spark.Core.Internal.BrainStructures(ResourcePath, resourcePath)
+import Spark.Core.Internal.Utilities(forceRight)
 import Spark.Core.Context
 import Spark.Core.Try
 
@@ -43,14 +44,19 @@ The source is not read at this point, it is just declared. It may be found to be
 invalid in subsequent computations.
 -}
 json' :: DataType -> String -> DataFrame
-json' dt p = genericWithSchema' dt (_jsonSourceDescription (ResourcePath (pack p)) defaultJsonOptions)
+json' dt p = do
+  rp <- resourcePath . pack $ p
+  let d = _jsonSourceDescription rp defaultJsonOptions
+  genericWithSchema' dt d
 
 {-| Declares a source of data of the given data type.
 
 The source is not read at this point, it is just declared.
 -}
 json :: (SQLTypeable a) => String -> Dataset a
-json p = genericWithSchema (_jsonSourceDescription (ResourcePath (pack p)) defaultJsonOptions)
+json p = genericWithSchema d where
+  rp = forceRight . resourcePath . pack $ p
+  d = _jsonSourceDescription rp defaultJsonOptions
 
 {-| Reads a source of data expected to be in the JSON format.
 

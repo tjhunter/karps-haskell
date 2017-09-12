@@ -7,6 +7,8 @@ and verifying graphs.
 module Spark.Core.Internal.NodeBuilder(
   BuilderFunction,
   NodeBuilder(..),
+  NodeBuilderRegistry,
+  NodeDefName,
   -- Basic tools
   cniStandardOp,
   cniStandardOp',
@@ -27,14 +29,21 @@ module Spark.Core.Internal.NodeBuilder(
   buildOpDL,
   -- Three parents
   buildOp3,
+  -- Registry functions
+  registryNode,
+  buildNodeRegistry
 ) where
 
+import qualified Data.Map.Strict as M
+import qualified Data.List.NonEmpty as N
+import Control.Arrow ((&&&))
 import Data.Text(Text)
 import Data.ProtoLens.Message(Message)
 
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.OpFunctions(convertToExtra, decodeExtra)
 import Spark.Core.Internal.TypesStructures(DataType)
+import Spark.Core.Internal.Utilities
 import Spark.Core.Try
 
 {-| Function that describes how to build a node, given some extra
@@ -42,11 +51,20 @@ data (which may be empty) and a context of all the parents' shapes.
 -}
 type BuilderFunction = OpExtra -> [NodeShape] -> Try CoreNodeInfo
 
+type NodeDefName = Text
+
 {-| Describes how to build a node.
 -}
 data NodeBuilder = NodeBuilder {
-  nbName :: !Text,
+  nbName :: !NodeDefName,
   nbBuilder :: !BuilderFunction
+}
+
+{-| A registry for node functions. This is the
+standard interface to build nodes from a set of existing nodes.
+-}
+data NodeBuilderRegistry = NodeBuilderRegistry {
+  _registryNode :: NodeDefName -> Maybe NodeBuilder
 }
 
 {-| This is the typed interface to building nodes.
@@ -55,6 +73,13 @@ This allows developers to properly define a schema to the content.
 -}
 data TypedNodeBuilder a = TypedNodeBuilder !Text (a -> [NodeShape] -> Try CoreNodeInfo)
 
+registryNode :: NodeBuilderRegistry -> NodeDefName -> Maybe NodeBuilder
+registryNode = _registryNode
+
+buildNodeRegistry :: [NodeBuilder] -> NodeBuilderRegistry
+buildNodeRegistry l = NodeBuilderRegistry f where
+  m = M.map N.head . myGroupBy $ (nbName &&& id) <$> l
+  f ndn = M.lookup ndn m
 
 buildOpExtra :: Message a => Text -> (a -> Try CoreNodeInfo) -> NodeBuilder
 buildOpExtra opName f = untypedBuilder $ TypedNodeBuilder opName f' where

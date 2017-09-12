@@ -11,14 +11,16 @@ import qualified Data.ByteString.Lazy as LBS
 import Lens.Family2 ((&), (.~))
 
 import Spark.Server.Transform(transform)
+import Spark.Core.Internal.BrainStructures(CompilerConf)
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 
 
 -- It should be a graph transform
 serverFunction :: LBS.ByteString -> LBS.ByteString
 serverFunction bs = LBS.fromStrict . encodeMessage $ x where
+  conf = (def :: CompilerConf)
   x = case decodeMessage (LBS.toStrict bs) of
-      Right pgt -> transform pgt
+      Right pgt -> transform conf pgt
       Left txt -> msg where
         msg0 = def :: PAI.GraphTransformResponse
         am = (def :: PAI.AnalysisMessage) & PAI.content .~ pack txt

@@ -235,7 +235,7 @@ _pollMonad rec delayMillis check = do
 _createSparkSession :: SparkSessionConf -> Text -> Integer -> SparkSession
 _createSparkSession conf sessionId idx =
   SparkSession conf sid idx HM.empty where
-    sid = LocalSessionId sessionId
+    sid = makeSessionId sessionId
 
 _port :: SparkSession -> Text
 _port = pack . show . confPort . ssConf
@@ -252,7 +252,7 @@ _endPoint sess function =
 _sessionResourceCheck :: SparkSession -> Text
 _sessionResourceCheck sess =
   let port = _port sess
-      sid = (unLocalSession . ssId) sess
+      sid = (T.pack . show . ssId) sess
   in
     T.concat [
       (confEndPoint . ssConf) sess, ":", port,
