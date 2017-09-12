@@ -12,5 +12,4 @@ module Spark.IO.Inputs(
 
 import Spark.Core.Internal.BrainStructures
 import Spark.IO.Internal.Json
-import Spark.IO.Internal.InputGeneric
 import Spark.IO.Internal.InputStructures

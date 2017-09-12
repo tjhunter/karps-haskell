@@ -176,10 +176,7 @@ extraNodeOpData (NodeDistributedLit dt v) =
 extraNodeOpData (NodeDistributedOp so) = soExtra so
 extraNodeOpData (NodeGroupedReduction ao) =
   convertToExtra (PS.StructuredReduce (Just (toProto ao)))
--- extraNodeOpData (NodeAggregatorReduction _) =
---   error "extraNodeOpData: NodeAggregatorReduction"
-extraNodeOpData (NodeOpaqueAggregator _) =
-  error "extraNodeOpData: NodeOpaqueAggregator"
+extraNodeOpData (NodeOpaqueAggregator so) = soExtra so
 extraNodeOpData (NodeLocalOp so) = soExtra so
 extraNodeOpData NodeBroadcastJoin = emptyExtra
 extraNodeOpData (NodeReduction (OpaqueAggTransform _)) =
