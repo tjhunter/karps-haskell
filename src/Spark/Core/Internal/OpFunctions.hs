@@ -80,7 +80,7 @@ nameGroupedReduction :: T.Text
 nameGroupedReduction = "org.spark.GroupedReduction"
 
 nameReduction :: T.Text
-nameReduction = "org.spark.Reduction"
+nameReduction = "org.spark.StructuredReduce"
 
 nameBroadcastJoin :: T.Text
 nameBroadcastJoin = "org.spark.BroadcastJoin"
@@ -91,7 +91,7 @@ namePointer = "org.spark.PlaceholderCache"
 decodeExtra :: Message x => OpExtra -> Try x
 decodeExtra (OpExtra o _ _) = case decodeMessage o of
   Right x -> pure x
-  Left msg -> tryError $ "decodeExtra: " <> (T.pack msg)
+  Left msg -> tryError $ "decodeExtra: " <> T.pack msg
 
 decodeExtra' :: (Message x, FromProto x y) => OpExtra -> Try y
 decodeExtra' o = decodeExtra o >>= fromProto
@@ -117,7 +117,7 @@ prettyShowOp :: NodeOp -> T.Text
 --     -- Try to have a pretty name for the simple reductions
 --     InnerAggOp (AggFunction n _) -> n
 --     _ -> simpleShowOp (NodeAggregatorReduction uao)
-prettyShowOp x = simpleShowOp x
+prettyShowOp = simpleShowOp
 
 
 -- A human-readable string that represents column operations.
@@ -179,9 +179,7 @@ extraNodeOpData (NodeGroupedReduction ao) =
 extraNodeOpData (NodeOpaqueAggregator so) = soExtra so
 extraNodeOpData (NodeLocalOp so) = soExtra so
 extraNodeOpData NodeBroadcastJoin = emptyExtra
-extraNodeOpData (NodeReduction (OpaqueAggTransform _)) =
-  error "extraNodeOpData: NodeOpaqueAggregator -> OpaqueAggTransform"
-extraNodeOpData (NodeReduction (InnerAggOp ao)) =
+extraNodeOpData (NodeReduction ao) =
   convertToExtra (PS.StructuredReduce (Just (toProto ao)))
 extraNodeOpData (NodeAggregatorLocalReduction _) =
   error "extraNodeOpData: NodeAggregatorLocalReduction"

@@ -50,11 +50,11 @@ cellFromProto dt (P.Cell (Just ce)) = x where
       RowArray . V.fromList <$> sequence (cellFromProto dt' <$> l)
     (Struct (StructType v), P.Cell'StructValue (P.Row l)) ->
       if length l /= V.length v
-      then throwError $ sformat ("cellToProto: struct: got "%sh%" values but structure has "%sh%" elements") (length l) (length v)
+      then throwError $ sformat ("cellFromProto: struct: got "%sh%" values but structure has "%sh%" elements") (length l) (length v)
       else RowElement . Row <$> sequence (f <$> l') where
         f (StructField _ dt', v') = cellFromProto dt' v'
         l' = V.zip v (V.fromList l)
-    _ -> throwError $ sformat ("cellToProto: mismatch "%sh) (sdt, ce)
+    _ -> throwError $ sformat ("cellFromProto: mismatch "%sh) (sdt, ce)
 
 
 
@@ -63,7 +63,7 @@ cellWithTypeFromProto (P.CellWithType (Just c) (Just pdt)) = do
   dt <- case fromProto pdt of
     Right x -> Right x
     Left s -> Left (show' s) -- TODO: this is bad.
-  cell <- cellFromProto dt c
+  cell <- cellFromProto (traceHint "dt=" dt) (traceHint "c=" c)
   return (cell, dt)
 cellWithTypeFromProto cwt =
   throwError $ sformat ("cellWithTypeFromProto: missing data in "%sh) cwt

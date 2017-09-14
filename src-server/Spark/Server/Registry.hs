@@ -5,6 +5,7 @@ module Spark.Server.Registry(
   nodeRegistry
 ) where
 
+import Spark.Core.InternalStd.Aggregation
 import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.DatasetStd
@@ -13,7 +14,14 @@ import Spark.Core.Internal.StructureFunctions
 
 -- TODO: fill the values
 structuredRegistry :: StructuredBuilderRegistry
-structuredRegistry = buildStructuredRegistry [] [] []
+structuredRegistry = buildStructuredRegistry sqls udfs aggs where
+  sqls = []
+  udfs = []
+  aggs = [collectAggBuilder,
+          countABuilder,
+          maxABuilder,
+          minABuilder,
+          sumABuilder]
 
 -- TODO: fill the values
 nodeRegistry :: NodeBuilderRegistry

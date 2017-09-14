@@ -88,11 +88,11 @@ localTransformBuilder reg = buildOpLExtra nameLocalStructuredTransform $ \dt (s 
 Users should use the functional one instead.
 -}
 reduceBuilder :: StructuredBuilderRegistry -> NodeBuilder
-reduceBuilder reg = buildOpDExtra "org.spark.StructuredReduce" $ \dt (src @ StructuredReduce {}) -> do
+reduceBuilder reg = buildOpDExtra nameReduction $ \dt (src @ StructuredReduce {}) -> do
   agg <- extractMaybe src PS.maybe'aggOp "agg_op"
   ao <- fromProto agg
   resDt <- aggTypeStructured reg ao dt
-  return $ coreNodeInfo resDt Local (NodeGroupedReduction ao)
+  return $ coreNodeInfo resDt Local (NodeReduction ao)
 
 {-| The functional shuffle builder.
 

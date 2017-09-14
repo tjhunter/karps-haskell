@@ -340,7 +340,7 @@ data NodeOp =
     --  - the first field is used as a key
     --  - the second field is passed to the reducer
   | NodeGroupedReduction !AggOp
-  | NodeReduction !AggTransform
+  | NodeReduction !AggOp
     -- TODO: remove these
     -- | A universal aggregator.
   -- | NodeAggregatorReduction UniversalAggregatorOp

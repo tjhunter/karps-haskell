@@ -7,13 +7,14 @@ module Spark.Core.Internal.ProtoUtils(ToProto(..), FromProto(..), extractMaybe, 
 import Data.ProtoLens.Message(Message(descriptor), MessageDescriptor(messageName))
 import Lens.Family2 ((^.), FoldLike)
 import Formatting
+import GHC.Stack(HasCallStack)
 import Data.Text(Text)
 
 import Spark.Core.Try(Try, tryError)
 
 {-| The class of types that can be read from a proto description. -}
 class FromProto p x | x -> p where
-  fromProto :: (Message p) => p -> Try x
+  fromProto :: (Message p, HasCallStack) => p -> Try x
 
 {-| The class of types that can be exported to a proto type. -}
 class ToProto p x | x -> p where
