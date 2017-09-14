@@ -7,6 +7,9 @@ module Spark.Server.Registry(
 
 import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.NodeBuilder
+import Spark.Core.Internal.DatasetStd
+import Spark.Core.Internal.Joins
+import Spark.Core.Internal.StructureFunctions
 
 -- TODO: fill the values
 structuredRegistry :: StructuredBuilderRegistry
@@ -14,4 +17,19 @@ structuredRegistry = buildStructuredRegistry [] [] []
 
 -- TODO: fill the values
 nodeRegistry :: NodeBuilderRegistry
-nodeRegistry = buildNodeRegistry []
+nodeRegistry = buildNodeRegistry [
+  broadcastPairBuilder,
+  functionalShuffleBuilder,
+  functionalTransformBuilder,
+  functionalLocalTransformBuilder,
+  functionalReduceBuilder,
+  identityBuilderD,
+  identityBuilderL,
+  -- joinBuilder,
+  literalBuilderD,
+  localTransformBuilder structuredRegistry,
+  placeholderBuilder,
+  pointerBuilder,
+  reduceBuilder structuredRegistry,
+  shuffleBuilder structuredRegistry,
+  transformBuilder structuredRegistry]

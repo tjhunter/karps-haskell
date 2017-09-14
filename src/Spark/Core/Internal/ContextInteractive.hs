@@ -152,7 +152,4 @@ _forceEither = _getOrThrow . tryEither
 
 _throw :: Text -> IO a
 _throw txt = throwM $
-  SparkInteractiveException Error {
-    ePath = [],
-    eMessage = txt
-  }
+  SparkInteractiveException $ nodeError txt

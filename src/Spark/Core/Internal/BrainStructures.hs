@@ -32,7 +32,7 @@ import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ComputeDag(ComputeDag)
 import Spark.Core.Internal.DatasetStructures(StructureEdge, OperatorNode)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
-import Spark.Core.Try(NodeError(..), Try)
+import Spark.Core.Try(NodeError, Try, nodeError, eMessage)
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 import qualified Proto.Karps.Proto.Io as PI
@@ -159,12 +159,12 @@ instance FromProto PAI.AnalyzeResourceResponse'FailedStatus (ResourcePath, NodeE
   fromProto fs = do
     rp <- extractMaybe' fs PAI.maybe'resource "resource"
     let e = fs ^. PAI.error
-    return (rp, Error [] e)
+    return (rp, nodeError e)
 
 instance ToProto PAI.AnalyzeResourceResponse'FailedStatus (ResourcePath, NodeError) where
-  toProto (rp, Error _ e) = (def :: PAI.AnalyzeResourceResponse'FailedStatus)
+  toProto (rp, e) = (def :: PAI.AnalyzeResourceResponse'FailedStatus)
     & PAI.resource .~ toProto rp
-    & PAI.error .~ e
+    & PAI.error .~ eMessage e
 
 instance FromProto PAI.ResourceStatus (ResourcePath, ResourceStamp) where
   fromProto rs = do

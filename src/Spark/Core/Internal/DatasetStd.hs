@@ -7,16 +7,9 @@ ubiquitous.
 -}
 module Spark.Core.Internal.DatasetStd where
 
-import Control.Monad.Except
 import qualified Data.Vector as V
 import Formatting
-import Data.Text(Text)
-import Data.Maybe(catMaybes, listToMaybe)
-import Formatting
-import qualified Data.Vector as V
-import Control.Monad.Except
 import Lens.Family2((^.))
-
 
 import Spark.Core.Try
 import Spark.Core.Row

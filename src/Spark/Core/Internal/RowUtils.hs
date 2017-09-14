@@ -36,7 +36,7 @@ instance FromProto P.CellWithType (Cell, DataType) where
 cellFromProto :: DataType -> P.Cell -> TryCell
 cellFromProto (NullableType _) (P.Cell Nothing) = pure Empty
 cellFromProto (StrictType sdt) (P.Cell Nothing) =
-  throwError $ sformat ("cellToProto: nothing given on a strict type: "%sh%", got null") sdt
+  throwError $ sformat ("cellFromProto: nothing given on a strict type: "%sh%", got null") sdt
 cellFromProto dt (P.Cell (Just ce)) = x where
   sdt = case dt of
     StrictType sdt' -> sdt'

@@ -13,10 +13,12 @@ module Spark.Core.Internal.BrainFunctions(
 
 import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
+import qualified Data.Text as T
 import Data.Map.Strict(Map)
 import Data.Text(Text)
 import Data.Maybe(catMaybes)
 import Data.Default
+import GHC.Stack(prettyCallStack)
 import Lens.Family2((&), (.~))
 import Data.Functor.Identity(runIdentity, Identity)
 
@@ -114,6 +116,7 @@ transFillAutoCache = pure
 instance ToProto PAI.AnalysisMessage NodeError where
   toProto ne = (def :: PAI.AnalysisMessage)
       & PAI.content .~ (eMessage ne)
+      & PAI.stackTracePretty .~ (T.pack . prettyCallStack . eCallStack $ ne)
 
 instance FromProto PAI.NodeMapItem (NodeId, GlobalPath) where
   fromProto nmi = do

@@ -33,25 +33,30 @@ import Formatting
 import Spark.Core.Internal.LocalDataFunctions()
 import Spark.Core.Internal.TypesFunctions(structTypeFromFields, extractFields)
 import Spark.Core.Internal.OpStructures
-import Spark.Core.Internal.OpFunctions(aggOpFromProto, colOpFromProto)
+import Spark.Core.Internal.OpFunctions
+-- import Spark.Core.Internal.OpFunctions(aggOpFromProto, colOpFromProto)
 import Spark.Core.Internal.TypesStructures
+import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.NodeBuilder
+
 import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.Utilities
 import Spark.Core.Try
-import Spark.Proto.Std(Shuffle(..), StructuredTransform(..), StructuredReduce(..))
+import Proto.Karps.Proto.Std(Shuffle(..), StructuredTransform(..), StructuredReduce(..))
+import qualified Proto.Karps.Proto.Std as PS
 
 {-| The low-level shuffle.
 
 This operation should not be used directly by the users. Use the functional
 builder instead. -}
 shuffleBuilder :: StructuredBuilderRegistry -> NodeBuilder
-shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (Shuffle agg) -> do
+shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (s @ Shuffle{}) -> do
   -- Check first that the dataframe has two columns.
   (keyDt, groupDt) <- _splitGroupType dt
   dt' <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("group", groupDt)]
   -- Get the type after the grouping.
-  ao <- aggOpFromProto agg
+  agg <- extractMaybe s PS.maybe'aggOp "agg_op"
+  ao <- fromProto agg
   aggDt <- aggTypeStructured reg ao dt'
   resDt <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("group", aggDt)]
   return $ coreNodeInfo resDt Distributed (NodeGroupedReduction ao)
@@ -61,8 +66,9 @@ shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (Shuffle agg) -> d
 Users should use the functional one instead.
 -}
 transformBuilder :: StructuredBuilderRegistry -> NodeBuilder
-transformBuilder reg = buildOpDExtra nameStructuredTransform $ \dt (StructuredTransform col) -> do
-  co <- colOpFromProto col
+transformBuilder reg = buildOpDExtra nameStructuredTransform $ \dt (s @ StructuredTransform {}) -> do
+  col <- extractMaybe s PS.maybe'colOp "col_op"
+  co <- fromProto col
   resDt <- colTypeStructured reg co dt
   return $ coreNodeInfo resDt Distributed (NodeStructuredTransform co)
 
@@ -71,8 +77,9 @@ transformBuilder reg = buildOpDExtra nameStructuredTransform $ \dt (StructuredTr
 Users should use the functional one instead.
 -}
 localTransformBuilder :: StructuredBuilderRegistry -> NodeBuilder
-localTransformBuilder reg = buildOpLExtra nameLocalStructuredTransform $ \dt (StructuredTransform col) -> do
-  co <- colOpFromProto col
+localTransformBuilder reg = buildOpLExtra nameLocalStructuredTransform $ \dt (s @ StructuredTransform {}) -> do
+  col <- extractMaybe s PS.maybe'colOp "col_op"
+  co <- fromProto col
   resDt <- colTypeStructured reg co dt
   return $ coreNodeInfo resDt Local (NodeLocalStructuredTransform co)
 
@@ -81,8 +88,9 @@ localTransformBuilder reg = buildOpLExtra nameLocalStructuredTransform $ \dt (St
 Users should use the functional one instead.
 -}
 reduceBuilder :: StructuredBuilderRegistry -> NodeBuilder
-reduceBuilder reg = buildOpDExtra "org.spark.StructuredReduce" $ \dt (StructuredReduce agg) -> do
-  ao <- aggOpFromProto agg
+reduceBuilder reg = buildOpDExtra "org.spark.StructuredReduce" $ \dt (src @ StructuredReduce {}) -> do
+  agg <- extractMaybe src PS.maybe'aggOp "agg_op"
+  ao <- fromProto agg
   resDt <- aggTypeStructured reg ao dt
   return $ coreNodeInfo resDt Local (NodeGroupedReduction ao)
 
@@ -103,7 +111,7 @@ functionalShuffleBuilder :: NodeBuilder
 functionalShuffleBuilder = buildOp3 "org.spark.FunctionalShuffle" $ \ns1 ns2 ns3 -> do
   -- Split the input type into the key type and value type.
   dt <- _checkShuffle Distributed ns1 ns2 ns3
-  return $ cniStandardOp Distributed "org.spark.FunctionalShuffle" dt ()
+  return $ cniStandardOp' Distributed "org.spark.FunctionalShuffle" dt
 
 {-| The functional transform builder.
 
@@ -116,7 +124,7 @@ and output characteristics.
 functionalTransformBuilder :: NodeBuilder
 functionalTransformBuilder = buildOp3 "org.spark.FunctionalTransform" $ \ns1 ns2 ns3 -> do
   _check Distributed ns1 ns2 ns3
-  return $ cniStandardOp Distributed "org.spark.FunctionalTransform" (nsType ns3) ()
+  return $ cniStandardOp' Distributed "org.spark.FunctionalTransform" (nsType ns3)
 
 {-| The functional transform builder, applied to local transforms.
 
@@ -129,14 +137,14 @@ and output characteristics.
 functionalLocalTransformBuilder :: NodeBuilder
 functionalLocalTransformBuilder = buildOp3 "org.spark.FunctionalLocalTransform" $ \ns1 ns2 ns3 -> do
   _check Local ns1 ns2 ns3
-  return $ cniStandardOp Local "org.spark.FunctionalLocalTransform" (nsType ns3) ()
+  return $ cniStandardOp' Local "org.spark.FunctionalLocalTransform" (nsType ns3)
 
 {-| The functional reduce builder.
 -}
 functionalReduceBuilder :: NodeBuilder
 functionalReduceBuilder = buildOp3 "org.spark.FunctionalReduce" $ \ns1 ns2 ns3 -> do
   dt <- _checkShuffle Distributed ns1 ns2 ns3
-  return $ cniStandardOp Local "org.spark.FunctionalReduce" dt ()
+  return $ cniStandardOp' Local "org.spark.FunctionalReduce" dt
 
 _splitGroupType :: DataType -> Try (DataType, DataType)
 _splitGroupType dt = do

@@ -39,7 +39,8 @@ data AnalysisMessage = AnalysisMessage{_AnalysisMessage'computation
                                        _AnalysisMessage'path ::
                                        !(Prelude.Maybe Proto.Karps.Proto.Graph.Path),
                                        _AnalysisMessage'content :: !Data.Text.Text,
-                                       _AnalysisMessage'level :: !MessageSeverity}
+                                       _AnalysisMessage'level :: !MessageSeverity,
+                                       _AnalysisMessage'stackTracePretty :: !Data.Text.Text}
                      deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Proto.Karps.Proto.Computation.ComputationId,
@@ -147,6 +148,16 @@ instance (a ~ MessageSeverity, b ~ MessageSeverity,
                  (\ x__ y__ -> x__{_AnalysisMessage'level = y__}))
               Prelude.id
 
+instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "stackTracePretty" f AnalysisMessage
+         AnalysisMessage a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _AnalysisMessage'stackTracePretty
+                 (\ x__ y__ -> x__{_AnalysisMessage'stackTracePretty = y__}))
+              Prelude.id
+
 instance Data.Default.Class.Default AnalysisMessage where
         def
           = AnalysisMessage{_AnalysisMessage'computation = Prelude.Nothing,
@@ -154,7 +165,8 @@ instance Data.Default.Class.Default AnalysisMessage where
                             _AnalysisMessage'relevantId = Prelude.Nothing,
                             _AnalysisMessage'path = Prelude.Nothing,
                             _AnalysisMessage'content = Data.ProtoLens.fieldDefault,
-                            _AnalysisMessage'level = Data.Default.Class.def}
+                            _AnalysisMessage'level = Data.Default.Class.def,
+                            _AnalysisMessage'stackTracePretty = Data.ProtoLens.fieldDefault}
 
 instance Data.ProtoLens.Message AnalysisMessage where
         descriptor
@@ -196,6 +208,13 @@ instance Data.ProtoLens.Message AnalysisMessage where
                          Data.ProtoLens.FieldTypeDescriptor MessageSeverity)
                       (Data.ProtoLens.PlainField Data.ProtoLens.Optional level)
                       :: Data.ProtoLens.FieldDescriptor AnalysisMessage
+                stackTracePretty__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "stack_trace_pretty"
+                      (Data.ProtoLens.StringField ::
+                         Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
+                      (Data.ProtoLens.PlainField Data.ProtoLens.Optional
+                         stackTracePretty)
+                      :: Data.ProtoLens.FieldDescriptor AnalysisMessage
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.AnalysisMessage")
@@ -205,14 +224,16 @@ instance Data.ProtoLens.Message AnalysisMessage where
                     (Data.ProtoLens.Tag 3, relevantId__field_descriptor),
                     (Data.ProtoLens.Tag 4, path__field_descriptor),
                     (Data.ProtoLens.Tag 5, content__field_descriptor),
-                    (Data.ProtoLens.Tag 6, level__field_descriptor)])
+                    (Data.ProtoLens.Tag 6, level__field_descriptor),
+                    (Data.ProtoLens.Tag 7, stackTracePretty__field_descriptor)])
                 (Data.Map.fromList
                    [("computation", computation__field_descriptor),
                     ("session", session__field_descriptor),
                     ("relevant_id", relevantId__field_descriptor),
                     ("path", path__field_descriptor),
                     ("content", content__field_descriptor),
-                    ("level", level__field_descriptor)])
+                    ("level", level__field_descriptor),
+                    ("stack_trace_pretty", stackTracePretty__field_descriptor)])
 
 data AnalyzeResourceResponse = AnalyzeResourceResponse{_AnalyzeResourceResponse'successes
                                                        :: ![ResourceStatus],
@@ -1465,6 +1486,14 @@ session ::
 session
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "session")
+
+stackTracePretty ::
+                 forall f s t a b .
+                   Lens.Labels.HasLens "stackTracePretty" f s t a b =>
+                   Lens.Family2.LensLike f s t a b
+stackTracePretty
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "stackTracePretty")
 
 stamp ::
       forall f s t a b . Lens.Labels.HasLens "stamp" f s t a b =>
