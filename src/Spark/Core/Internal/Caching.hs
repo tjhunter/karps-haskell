@@ -21,6 +21,7 @@ module Spark.Core.Internal.Caching(
 import Control.Monad.Identity
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
+import qualified Data.List.NonEmpty as N
 import qualified Data.Vector as V
 import qualified Data.Text as T
 import Control.Arrow((&&&))
@@ -154,7 +155,7 @@ _fillAutoCache acGen cg =
     -- Now group by stop vertex, so that each stop vertex has a list of
     -- associated cache and uncache nodes.
     -- Not sure if they may be several, but it just sounds like good practice.
-    tups = myGroupBy [(vertexId (unStopVertex svx), (cvx, uvx, svx)) | (cvx, uvx, l) <- acWithUncache,
+    tups = M.map N.toList $ myGroupBy [(vertexId (unStopVertex svx), (cvx, uvx, svx)) | (cvx, uvx, l) <- acWithUncache,
                                               svx <- l]
     -- Just in this case, it should work because of the construction above
     -- TODO: put a lot more documentation here, it is tricky code
@@ -238,7 +239,7 @@ _autoCachingCandidates cg =
       (Stop, set) -> (id &&& const (vertexId vx)) <$> toList set
       _ -> []
     -- cache vid -> Stop vertex id
-    acWithFringe = myGroupBy $ concatMap extractFringe (toList exps)
+    acWithFringe = M.map N.toList $ myGroupBy $ concatMap extractFringe (toList exps)
     vmap = vertexMap cg
     vmap' = vertexMap cg'
     -- TODO: should be a try and it should not fail

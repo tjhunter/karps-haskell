@@ -7,9 +7,8 @@
 {-| A collection of small utility functions.
 -}
 module Spark.Core.Internal.Utilities(
-  LB.HasCallStack,
+  HasCallStack,
   UnknownType,
-  pretty,
   myGroupBy,
   myGroupBy',
   missing,
@@ -17,31 +16,31 @@ module Spark.Core.Internal.Utilities(
   failure',
   forceRight,
   show',
-  encodeDeterministicPretty,
   withContext,
   strictList,
   traceHint,
   SF.sh,
   (<&>),
-  (<>)
-  ) where
+  (<>),
+  NonEmpty( (:|) )
+) where
 
-import Data.Aeson
-import Data.Aeson.Encode.Pretty
-import qualified Data.ByteString.Lazy.Char8 as Char8
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as T
 import qualified Formatting.ShortFormatters as SF
+import qualified Data.List.NonEmpty as N
+import qualified Data.Map.Strict as M
 import Control.Arrow ((&&&))
 import Data.List
 import Data.Function
 import Data.Text(Text)
+import Data.Maybe(mapMaybe)
 import Formatting
 import Debug.Trace(trace)
-import qualified Data.Map.Strict as M
 import Data.Monoid((<>))
+import  Data.List.NonEmpty( NonEmpty( (:|) ) )
+import GHC.Stack(HasCallStack)
 
-import qualified Spark.Core.Internal.LocatedBase as LB
+-- import qualified Spark.Core.Internal.LocatedBase as LB
 
 (<&>) :: Functor f => f a -> (a -> b) -> f b
 (<&>) = flip fmap
@@ -50,39 +49,31 @@ import qualified Spark.Core.Internal.LocatedBase as LB
 -- user.
 data UnknownType
 
-{-| Pretty printing for Aeson values (and deterministic output)
--}
-pretty :: Value -> Text
-pretty = T.pack . Char8.unpack . encodeDeterministicPretty
-
--- | Produces a bytestring output of a JSON value that is deterministic
--- and that is invariant to the insertion order of the keys.
--- (i.e the keys are stored in alphabetic order)
--- This is to ensure that all id computations are stable and reproducible
--- on the server part.
--- TODO(kps) use everywhere JSON is converted
-encodeDeterministicPretty :: Value -> LBS.ByteString
-encodeDeterministicPretty =
-  encodePretty' (defConfig { confIndent = Spaces 0, confCompare = compare })
+-- | group by
+myGroupBy' :: (Ord b) => (a -> b) -> [a] -> [(b, NonEmpty a)]
+myGroupBy' f l = l4 where
+  g :: NonEmpty (u,v) -> (u, NonEmpty v)
+  g ((h,t) :| r) = (h, t :| (snd <$> r))
+  l0 = (f &&& id) <$> l
+  l1 = groupBy ((==) `on` fst) l0
+  l2 = mapMaybe N.nonEmpty l1
+  l3 = g <$> l2
+  l4 = sortBy (compare `on` fst) l3
 
 -- | group by
 -- TODO: have a non-empty list instead
-myGroupBy' :: (Ord b) => (a -> b) -> [a] -> [(b, [a])]
-myGroupBy' f = map (f . head &&& id)
-                   . groupBy ((==) `on` f)
-                   . sortBy (compare `on` f)
-
--- | group by
--- TODO: have a non-empty list instead
-myGroupBy :: (Ord a) => [(a, b)] -> M.Map a [b]
+myGroupBy :: (Ord a) => [(a, b)] -> M.Map a (NonEmpty b)
 myGroupBy l = let
   l2 = myGroupBy' fst l in
   M.map (snd <$>) $ M.fromList l2
 
 
+error' :: (HasCallStack) => Text -> a
+error' = error . T.unpack
+
 -- | Missing implementations in the code base.
-missing :: (LB.HasCallStack) => Text -> a
-missing msg = LB.error $ T.concat ["MISSING IMPLEMENTATION: ", msg]
+missing :: (HasCallStack) => Text -> a
+missing msg = error' $ T.concat ["MISSING IMPLEMENTATION: ", msg]
 
 {-| The function that is used to trigger exception due to internal programming
 errors.
@@ -90,10 +81,10 @@ errors.
 Currently, all programming errors simply trigger an exception. All these
 impure functions are tagged with an implicit call stack argument.
 -}
-failure :: (LB.HasCallStack) => Text -> a
-failure msg = LB.error (T.concat ["FAILURE in Spark. Hint: ", msg])
+failure :: (HasCallStack) => Text -> a
+failure msg = error' (T.concat ["FAILURE in Spark. Hint: ", msg])
 
-failure' :: (LB.HasCallStack) => Format Text (a -> Text) -> a -> c
+failure' :: (HasCallStack) => Format Text (a -> Text) -> a -> c
 failure' x = failure . sformat x
 
 
@@ -102,9 +93,9 @@ or throws the error.
 
 This function is not total.
 -}
-forceRight :: (LB.HasCallStack, Show a) => Either a b -> b
+forceRight :: (HasCallStack, Show a) => Either a b -> b
 forceRight (Right b) = b
-forceRight (Left a) = LB.error $
+forceRight (Left a) = error' $
   sformat ("Failure from either, got instead a left: "%shown) a
 
 -- | Force the complete evaluation of a list to WNF.

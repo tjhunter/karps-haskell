@@ -20,7 +20,6 @@ module Spark.Core.Internal.FunctionsInternals(
   pack',
   struct',
   struct,
-  broadcastPair,
   -- Developer tools
   checkOrigin,
   projectColFunction,
@@ -29,17 +28,17 @@ module Spark.Core.Internal.FunctionsInternals(
   colOpNoBroadcast
 ) where
 
-import Control.Arrow
-import Data.Aeson(toJSON)
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
 import qualified Data.Text as T
+import Control.Arrow
 import Formatting
 
 import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.DatasetFunctions
+import Spark.Core.Internal.DatasetStd(broadcastPair)
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions
@@ -234,16 +233,16 @@ projectColFunction2' f o1' o2' = obsTry $ do
 colOpNoBroadcast :: GeneralizedColOp -> Try ColOp
 colOpNoBroadcast = _replaceObservables M.empty
 
-{-| Low-level operator that takes an observable and propagates it along the
-content of an existing dataset.
-
-Users are advised to use the Column-based `broadcast` function instead.
--}
-broadcastPair :: Dataset a -> LocalData b -> Dataset (a, b)
-broadcastPair ds ld = n `parents` [untyped ds, untyped ld]
-  where n = emptyNodeStandard (nodeLocality ds) sqlt name
-        sqlt = tupleType (nodeType ds) (nodeType ld)
-        name = "org.spark.BroadcastPair"
+-- {-| Low-level operator that takes an observable and propagates it along the
+-- content of an existing dataset.
+--
+-- Users are advised to use the Column-based `broadcast` function instead.
+-- -}
+-- broadcastPair :: Dataset a -> LocalData b -> Dataset (a, b)
+-- broadcastPair ds ld = n `parents` [untyped ds, untyped ld]
+--   where n = emptyNodeStandard (nodeLocality ds) sqlt name
+--         sqlt = tupleType (nodeType ds) (nodeType ld)
+--         name = "org.spark.BroadcastPair"
 
 
 _checkOrigin :: [UntypedColumnData] -> Try [UntypedColumnData]
@@ -337,7 +336,7 @@ _columnOrigin :: [UntypedColumnData] -> [UntypedDataset]
 _columnOrigin l =
   let
     groups = myGroupBy' (nodeId . colOrigin) l
-  in (colOrigin . head . snd) <$> groups
+  in (colOrigin . N.head . snd) <$> groups
 
 -- The packing algorithm
 -- It eliminates the broadcast variables into joins and then wraps the
@@ -375,7 +374,7 @@ _replaceObservables _ (GenColExtraction (FieldPath v)) =
   -- It is a normal extraction, prepend the suffix of the data structure.
   pure (ColExtraction (FieldPath v')) where
     v' = V.cons (unsafeFieldName "_1") v
-_replaceObservables _ (GenColLit dt c) = pure (ColLit dt (toJSON c))
+_replaceObservables _ (GenColLit dt c) = pure (ColLit dt c)
 _replaceObservables m (GenColFunction n v) =
   ColFunction n <$> sequence (_replaceObservables m <$> v)
 _replaceObservables m (GenColStruct v) = ColStruct <$> sequence (_replaceField m <$> v)

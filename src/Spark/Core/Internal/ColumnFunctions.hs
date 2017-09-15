@@ -34,18 +34,6 @@ module Spark.Core.Internal.ColumnFunctions(
   unColumn',
   column',
   tryCol',
-  -- -- Developer API (projection builders)
-  -- dynamicProjection,
-  -- stringToDynColProj,
-  -- pathToDynColProj,
-  -- colStaticProjToDynProj,
-  -- -- Developer API (projection transformers)
-  -- projectDSDyn,
-  -- projectDFDyn,
-  -- projectDsCol,
-  -- projectColCol,
-  -- projectColDynCol,
-  -- projectDColDCol,
   -- Public functions
   applyCol1,
   untypedCol,
@@ -285,6 +273,7 @@ homoColOp2 opName c1 c2 =
       _cOp = co,
       _cReferingPath = Nothing }
 
+
 makeColOp1 :: T.Text -> SQLType y -> Column ref x -> Column ref y
 makeColOp1 opName sqlt c =
   let co = GenColFunction opName (V.fromList (colOp <$> [c]))
@@ -306,10 +295,10 @@ _prettyShowColOp (GenColStruct v) =
 
 -- A new column data structure.
 _emptyColData :: Dataset a -> SQLType b -> FieldPath -> ColumnData a b
-_emptyColData ds sqlt path = ColumnData {
+_emptyColData ds sqlt path' = ColumnData {
   _cOrigin = untypedDataset ds,
   _cType = unSQLType sqlt,
-  _cOp = GenColExtraction path,
+  _cOp = GenColExtraction path',
   _cReferingPath = Nothing
 }
 

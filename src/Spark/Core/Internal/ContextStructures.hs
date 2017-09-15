@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Spark.Core.Internal.ContextStructures(
   SparkSessionConf(..),
@@ -6,6 +8,7 @@ module Spark.Core.Internal.ContextStructures(
   SparkState,
   SparkStatePure,
   ComputeGraph,
+  TiedComputeGraph,
   HdfsPath(..),
   NodeCacheInfo(..),
   NodeCacheStatus(..),
@@ -17,11 +20,11 @@ import Data.Text(Text)
 import Control.Monad.State(StateT, State)
 import Control.Monad.Logger(LoggingT)
 
-import Spark.Core.Internal.Client(LocalSessionId)
-import Spark.Core.Internal.ComputeDag(ComputeDag)
+import Spark.Core.Internal.BrainStructures(LocalSessionId, ComputeGraph, CompilerConf)
+import Spark.Core.Internal.DAGStructures(Graph)
 import Spark.Core.Internal.OpStructures(HdfsPath(..))
 import Spark.Core.Internal.Pruning
-import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge)
+import Spark.Core.Internal.DatasetStructures(UntypedNode, StructureEdge,)
 
 -- | The configuration of a remote spark session in Karps.
 data SparkSessionConf = SparkSessionConf {
@@ -38,15 +41,7 @@ data SparkSessionConf = SparkSessionConf {
   --
   -- The default value is "" (a new random context name will be chosen).
   confRequestedSessionName :: !Text,
-  {-| If enabled, attempts to prune the computation graph as much as possible.
-
-  This option is useful in interactive sessions when long chains of computations
-  are extracted. This forces the execution of only the missing parts.
-  The algorithm is experimental, so disabling it is a safe option.
-
-  Disabled by default.
-  -}
-  confUseNodePrunning :: !Bool
+  confCompiler :: !CompilerConf
 } deriving (Show)
 
 -- | A session in Spark.
@@ -73,9 +68,10 @@ type SparkStatePure x = State SparkSession x
 type SparkStatePureT m = StateT SparkSession m
 type SparkStateT m = LoggingT (SparkStatePureT m)
 
+
 {-| internal
 
-A graph of computations. This graph is a direct acyclic graph. Each node is
-associated to a global path.
--}
-type ComputeGraph = ComputeDag UntypedNode StructureEdge
+A graph of computation, in which the nodes have a direct relation to each other
+in a way that is not tracked with the edges. This should be
+used sparingly. Used only in older algorithms. -}
+type TiedComputeGraph = Graph UntypedNode StructureEdge

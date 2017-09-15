@@ -31,6 +31,7 @@ module Spark.Core.Context(
 
 import Data.Text(pack)
 
+import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.ContextStructures
 import Spark.Core.Internal.ContextIOInternal
 import Spark.Core.Internal.ContextInteractive
@@ -45,5 +46,7 @@ defaultConf =
     confPort = 8081,
     confPollingIntervalMillis = 500,
     confRequestedSessionName = "",
-    confUseNodePrunning = False -- Disable graph pruning by default
+    confCompiler = CompilerConf {
+      ccUseNodePruning = False -- Disable by default.
+    }
   }

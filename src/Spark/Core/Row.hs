@@ -4,7 +4,6 @@ module Spark.Core.Row(
   FromSQL,
   valueToCell,
   cellToValue,
-  jsonToCell,
   rowArray,
   rowCell
   ) where

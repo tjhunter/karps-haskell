@@ -1,95 +1,36 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Spark.IO.Internal.InputGeneric(
-  SparkPath(..),
-  DataSchema(..),
-  InputOptionValue(..),
-  InputOptionKey(..),
-  DataFormat(..),
-  SourceDescription(..),
   generic',
   genericWithSchema',
-  genericWithSchema
+  genericWithSchema,
+  extractResourcePath,
+  updateResourceStamp
 ) where
 
-import Data.Text(Text)
-import Data.String(IsString(..))
 import qualified Data.Map.Strict as M
-import qualified Data.Aeson as A
-import qualified Data.Text as T
-import Data.Aeson(toJSON, (.=))
--- import Debug.Trace
+import Data.Text(Text)
+import Lens.Family2((^.), (&), (.~))
+import Data.ProtoLens.Message(def)
 
 import Spark.Core.Types
-import Spark.Core.Context
 import Spark.Core.Try
 import Spark.Core.Dataset
 
 import Spark.Core.Internal.Utilities(forceRight)
 import Spark.Core.Internal.DatasetFunctions(asDF, emptyDataset, emptyLocalData)
 import Spark.Core.Internal.TypesStructures(SQLType(..))
+import Spark.Core.Internal.ContextStructures(SparkState)
+import Spark.Core.Internal.BrainStructures(ResourcePath(..))
 import Spark.Core.Internal.OpStructures
-
-{-| A path to some data that can be read by Spark.
--}
-newtype SparkPath = SparkPath Text deriving (Show, Eq)
-
-{-| The schema policty with respect to a data source. It should either
-request Spark to infer the schema from the source, or it should try to
-match the source against a schema provided by the user.
--}
-data DataSchema = InferSchema | UseSchema DataType deriving (Show, Eq)
-
-{-| The low-level option values accepted by the Spark reader API.
--}
-data InputOptionValue =
-    InputIntOption Int
-  | InputDoubleOption Double
-  | InputStringOption Text
-  | InputBooleanOption Bool
-  deriving (Eq, Show)
-
-instance A.ToJSON InputOptionValue where
-  toJSON (InputIntOption i) = toJSON i
-  toJSON (InputDoubleOption d) = toJSON d
-  toJSON (InputStringOption s) = toJSON s
-  toJSON (InputBooleanOption b) = toJSON b
-
-newtype InputOptionKey = InputOptionKey { unInputOptionKey :: Text } deriving (Eq, Show, Ord)
-
-{-| The type of the source.
-
-This enumeration contains all the data formats that are natively supported by
-Spark, either for input or for output, and allows the users to express their
-own format if requested.
--}
-data DataFormat =
-    JsonFormat
-  | TextFormat
-  | CsvFormat
-  | CustomSourceFormat !Text
-  deriving (Eq, Show)
--- data InputSource = JsonSource | TextSource | CsvSource | InputSource SparkPath
-
-{-| A description of a data source, following Spark's reader API version 2.
-
-Eeach source constists in an input source (json, xml, etc.), an optional schema
-for this source, and a number of options specific to this source.
-
-Since this descriptions is rather low-level, a number of wrappers of provided
-for each of the most popular sources that are already built into Spark.
--}
-data SourceDescription = SourceDescription {
-  inputPath :: !SparkPath,
-  inputSource :: !DataFormat,
-  inputSchema :: !DataSchema,
-  sdOptions :: !(M.Map InputOptionKey InputOptionValue),
-  inputStamp :: !(Maybe DataInputStamp)
-} deriving (Eq, Show)
-
-instance IsString SparkPath where
-  fromString = SparkPath . T.pack
+import Spark.Core.Internal.ContextIOInternal(executeCommand1)
+import Spark.Core.Internal.OpFunctions(decodeExtra', convertToExtra')
+import Spark.Core.Internal.ProtoUtils
+import Spark.IO.Internal.InputStructures
+import qualified Proto.Karps.Proto.Io as PIO
 
 {-| Generates a dataframe from a source description.
 
@@ -116,7 +57,7 @@ genericWithSchema' dt sd = asDF $ emptyDataset no (SQLType dt) where
   so = StandardOperator {
       soName = "org.spark.GenericDatasource",
       soOutputType = dt,
-      soExtra = A.toJSON sd'
+      soExtra = convertToExtra' sd'
     }
   no = NodeDistributedOp so
 
@@ -128,6 +69,7 @@ genericWithSchema sd =
   let sqlt = buildType :: SQLType a
       dt = unSQLType sqlt in
   forceRight $ castType sqlt =<< genericWithSchema' dt sd
+
 
 -- Wraps the action of inferring the schema.
 -- This is not particularly efficient here: it does a first pass to get the
@@ -144,41 +86,6 @@ _inferSchemaCmd sd = emptyLocalData no sqlt where
   so = StandardOperator {
       soName = "org.spark.InferSchema",
       soOutputType = dt,
-      soExtra = A.toJSON sd
+      soExtra = convertToExtra' sd
     }
   no = NodeOpaqueAggregator so
-
-instance A.ToJSON SparkPath where
-  toJSON (SparkPath p) = toJSON p
-
-instance A.ToJSON DataSchema where
-  toJSON InferSchema = A.Null
-  toJSON (UseSchema dt) = toJSON dt
-
-instance A.ToJSON DataFormat where
-  toJSON JsonFormat = "json"
-  toJSON TextFormat = "text"
-  toJSON CsvFormat = "csv"
-  toJSON (CustomSourceFormat s) = toJSON s
-
-instance A.ToJSON SourceDescription where
-  toJSON sd = A.object ([
-                "path" .= toJSON (inputPath sd),
-                "source" .= toJSON (inputSource sd),
-                "options" .= toJSON (f <$> M.toList (sdOptions sd))
-              ] ++ s ++ st) where
-                s = case inputSchema sd of
-                  InferSchema -> []
-                  UseSchema sch -> ["schema" .= toJSON sch]
-                st = case inputStamp sd of
-                  Nothing -> []
-                  Just txt -> ["stamp" .= toJSON txt]
-                f (k, v) =
-                  let x = case v of
-                        InputIntOption _ -> "intValue"
-                        InputDoubleOption _ -> "doubleValue"
-                        InputStringOption _ -> "stringValue"
-                        InputBooleanOption _ -> "boolValue"
-                  in A.object [
-                       "key" .= unInputOptionKey k,
-                       x .= toJSON v ]

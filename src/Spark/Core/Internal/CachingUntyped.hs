@@ -15,6 +15,7 @@ import Control.Monad.Except
 
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.DatasetStructures
+import Spark.Core.Internal.DatasetStd
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.PathsUntyped()
@@ -39,15 +40,17 @@ uncache :: ComputeNode loc a -> ComputeNode loc a
 uncache  n = n2 `parents` [untyped n]
   where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameUnpersist
 
-
+-- This still uses UntypedNode instead of OperatorNode
+-- because it relies on the parents too.
 cachingType :: UntypedNode -> CacheTry NodeCachingType
 cachingType n = case nodeOp n of
   NodeLocalOp _ -> pure Stop
-  NodeAggregatorReduction _ -> pure Stop
+  -- NodeAggregatorReduction _ -> pure Stop
   NodeAggregatorLocalReduction _ -> pure Stop
   NodeOpaqueAggregator _ -> pure Stop
   NodeLocalLit _ _ -> pure Stop
   NodeStructuredTransform _ -> pure Through
+  NodeLocalStructuredTransform _ -> pure Stop
   NodeDistributedLit _ _ -> pure Through
   NodeDistributedOp so | soName so == opnameCache ->
     pure $ CacheOp (vertexToId n)
@@ -79,5 +82,3 @@ autocacheGen = AutocacheGen {
       let x = uncache un
           vid' = VertexId . unNodeId . nodeId $ x -- f "_uncache" vid
       in Vertex vid' x
-
-      

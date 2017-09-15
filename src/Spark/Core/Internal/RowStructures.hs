@@ -1,9 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Spark.Core.Internal.RowStructures where
 
-import Data.Aeson
 import Data.Vector(Vector)
+import qualified Data.Vector as V
 import qualified Data.Text as T
+
+import Spark.Core.Internal.ProtoUtils
+import qualified Proto.Karps.Proto.Row as P
 
 -- | The basic representation of one row of data. This is a standard type that comes out of the
 -- SQL engine in Spark.
@@ -29,26 +34,14 @@ data Row = Row {
   } deriving (Show, Eq)
 
 
--- AESON INSTANCES
-
--- TODO(kps) add some workaround to account for the restriction of
--- JSON types:
--- int32 -> int32
--- double -> double
--- weird double -> string?
--- long/bigint -> string?
-
--- | Cell
-instance ToJSON Cell where
-  toJSON Empty = object []
-  toJSON (DoubleElement d) = object ["doubleValue" .= toJSON d]
-  toJSON (IntElement i) = object ["intValue" .= toJSON i]
-  toJSON (BoolElement b) = object ["boolValue" .= toJSON b]
-  toJSON (StringElement s) = object ["stringValue" .= toJSON s]
-  toJSON (RowArray arr) = object ["arrayValue" .=
-    object ["values" .= toJSON arr]]
-  toJSON (RowElement row) = object ["structValue" .= toJSON row]
-
--- | Row
-instance ToJSON Row where
-  toJSON (Row x) = object ["values" .= toJSON x]
+instance ToProto P.Cell Cell where
+  toProto = cellToProto where
+    cellToProto Empty = P.Cell Nothing
+    cellToProto (IntElement i) = P.Cell . Just . P.Cell'IntValue $ fromIntegral i
+    cellToProto (DoubleElement i) = P.Cell . Just . P.Cell'DoubleValue $ i
+    cellToProto (StringElement i) = P.Cell . Just . P.Cell'StringValue $ i
+    cellToProto (BoolElement i) = P.Cell . Just . P.Cell'BoolValue $ i
+    cellToProto (RowArray v) = P.Cell . Just . P.Cell'ArrayValue . P.ArrayCell $ v' where
+      v' = cellToProto <$> V.toList v
+    cellToProto (RowElement (Row v)) = P.Cell . Just . P.Cell'StructValue . P.Row $ v' where
+      v' = cellToProto <$> V.toList v

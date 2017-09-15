@@ -28,15 +28,17 @@ import Spark.Core.Internal.ColumnFunctions(untypedCol, colType, colOp, iUntypedC
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.LocalDataFunctions()
 import Spark.Core.Internal.FunctionsInternals
-import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields)
+import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields, extractFields)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Projections
 import Spark.Core.Internal.TypesStructures
+import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Try
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.CanRename
+-- import Spark.Proto.Std(Shuffle(..))
 
 {-| A dataset that has been partitioned according to some given field.
 -}
@@ -176,6 +178,7 @@ instance Show (GroupData key val) where
 
 -- ******** PRIVATE METHODS ********
 
+
 _keyCol :: GroupData key val -> UntypedColumnData
 _keyCol gd = ColumnData {
     _cOrigin = _gdRef gd,
@@ -218,11 +221,11 @@ _unrollStep pt un = traceHint ("_unrollStep: pt=" <> show' pt <> " un=" <> show'
           in PipedDataset ds'
         (PipedGroup g, NodeStructuredTransform co) ->
           _unrollGroupTrans g co
-        (PipedGroup g, NodeAggregatorReduction uao) ->
-          case uaoInitialOuter uao of
-            OpaqueAggTransform x -> _pError $ sformat ("Cannot apply opaque transform in the context of an aggregation: "%sh) x
-            InnerAggOp ao ->
-              PipedDataset $ _applyAggOp dt ao g
+        -- (PipedGroup g, NodeAggregatorReduction uao) ->
+        --   case uaoInitialOuter uao of
+        --     OpaqueAggTransform x -> _pError $ sformat ("Cannot apply opaque transform in the context of an aggregation: "%sh) x
+        --     InnerAggOp ao ->
+        --       PipedDataset $ _applyAggOp dt ao g
         _ -> _pError $ sformat (sh%": Operation not supported with trans="%sh%" and parents="%sh) op pt p
     l -> _pError $ sformat (sh%": expected one parent but got "%sh) un l
 
@@ -285,7 +288,8 @@ _extractColOp x y =
 _aggKey :: UntypedGroupData -> (UntypedColumnData -> Try UntypedLocalData) -> Try UntypedDataset
 _aggKey ugd f =
   let inputDt = unSQLType . colType . _valueCol $ ugd
-      p = placeholder inputDt :: UntypedDataset
+      p = error "_aggKey: not implemented"
+      --p = placeholder inputDt :: UntypedDataset
       startNid = nodeId p in do
   uld <- f (_unsafeCastColData (asCol p))
   case _unrollTransform (PipedGroup ugd) startNid (untyped uld) of

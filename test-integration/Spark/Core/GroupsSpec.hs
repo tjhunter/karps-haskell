@@ -12,6 +12,7 @@ import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.Column
 import Spark.Core.IntegrationUtilities
 import Spark.Core.CollectSpec(run)
+import Spark.Core.SimpleAddSpec(xrun)
 import Spark.Core.Internal.Groups
 
 sumGroup :: [MyPair] -> [(Text, Int)] -> IO ()
@@ -27,9 +28,9 @@ sumGroup l lexp = do
 spec :: Spec
 spec = do
   describe "Integration test - groups on (text, int)" $ do
-    run "empty" $
+    xrun "empty" $
       sumGroup [] []
-    run "one" $
+    xrun "one" $
       sumGroup [MyPair "x" 1] [("x", 1)]
-    run "two" $
+    xrun "two" $
       sumGroup [MyPair "x" 1, MyPair "x" 2, MyPair "y" 1] [("x", 3), ("y", 1)]

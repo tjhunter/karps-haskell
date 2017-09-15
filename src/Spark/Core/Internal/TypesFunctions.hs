@@ -19,14 +19,18 @@ module Spark.Core.Internal.TypesFunctions(
   structTypeTuple,
   structTypeTuple',
   tupleType,
+  tupleType',
   structName,
   iSingleField,
-  -- cellType,
+  extractFields,
+  isNumber,
+  mapDataType
 ) where
 
 import Control.Monad.Except
 import qualified Data.List.NonEmpty as N
 import Control.Arrow(second)
+import Control.Monad(when)
 import Data.Function(on)
 import Data.List(sort, nub, sortBy)
 import qualified Data.Map.Strict as M
@@ -84,8 +88,19 @@ colTypeFromFrame st @ (StructType fs) = case V.toList fs of
       StrictType dt
   _ -> StrictType (Struct st)
 
-
--- The strict int type
+{-| Attempts to extract the types of fields in a struct, given an expected
+list of field names. -}
+extractFields :: [FieldName] -> DataType -> Try [DataType]
+extractFields fieldNames (StrictType (Struct (StructType v))) = do
+  when (length fieldNames /= length v) $
+    tryError $ sformat ("extractFields: the expected number of fields does not match the number in the structure expected:"%sh%", provided: "%sh) fieldNames v
+  let f' (fn, StructField fn' dt) =
+        if fn == fn'
+        then pure dt
+        else tryError $ sformat ("extractField: the name of the field :"%sh%" does not match the expected name:"%sh) fn' fn
+  sequence $ f' <$> zip fieldNames (V.toList v)
+extractFields _ dt =
+  tryError $ sformat ("extractFields: expected a strict structure, got"%sh) dt
 
 compatibleTypes :: DataType -> DataType -> Bool
 compatibleTypes (StrictType sdt) (StrictType sdt') = _compatibleTypesStrict sdt sdt'
@@ -117,7 +132,7 @@ _sToTreeRepr l = do
   let withHeads = concatMap f l
   let g = myGroupBy withHeads
   let groupst = M.toList g <&> \(h, l') ->
-         _sToTreeRepr l' <&> second (StructField (FieldName h))
+         _sToTreeRepr (N.toList l') <&> second (StructField (FieldName h))
   groups <- sequence groupst
   checkedGroups <- _packWithIndex groups
   hDtr <- hDtrt
@@ -170,16 +185,30 @@ _compatibleTypesStrict _ _ = False
 
 tupleType :: SQLType a -> SQLType b -> SQLType (a, b)
 tupleType (SQLType dt1) (SQLType dt2) =
-  SQLType $ structType [structField "_1" dt1, structField "_2" dt2]
+  SQLType $ tupleType' dt1 dt2
+
+tupleType' :: DataType -> DataType -> DataType
+tupleType' dt1 dt2 = structType [structField "_1" dt1, structField "_2" dt2]
 
 intType :: DataType
 intType = StrictType IntType
+
+isNumber :: DataType -> Bool
+isNumber dt = case sdt of
+      IntType -> True
+      DoubleType -> True
+      _ -> False
+    where sdt = case dt of
+            StrictType sdt' -> sdt'
+            NullableType sdt' -> sdt'
+
 
 -- a string
 structField :: T.Text -> DataType -> StructField
 structField txt = StructField (FieldName txt)
 
 -- The strict structure type
+-- TODO: use a non-empty list
 structType :: [StructField] -> DataType
 structType = StrictType . Struct . StructType . V.fromList
 
@@ -200,6 +229,12 @@ arrayType (SQLType dt) = SQLType (arrayType' dt)
 iInnerStrictType :: DataType -> StrictDataType
 iInnerStrictType (StrictType st) = st
 iInnerStrictType (NullableType st) = st
+
+{-| Maps the inner strict data type, preserving the nullability information.
+-}
+mapDataType :: DataType -> (StrictDataType -> StrictDataType) -> DataType
+mapDataType (StrictType sdt) f =  StrictType (f sdt)
+mapDataType (NullableType sdt) f = NullableType (f sdt)
 
 iSingleField :: DataType -> Maybe DataType
 iSingleField (StrictType (Struct (StructType fields))) = case V.toList fields of
@@ -232,6 +267,9 @@ Note that unlike Spark and SQL, the indexing starts from 0.
 structTypeTuple' :: N.NonEmpty DataType -> DataType
 structTypeTuple' = StrictType . Struct . structTypeTuple
 
+{-| Returns an error if the list is empty or if the fields
+have duplicated names.
+-}
 structTypeFromFields :: [(FieldName, DataType)] -> Try StructType
 structTypeFromFields [] = tryError "You cannot build an empty structure"
 structTypeFromFields ((hfn, hdt):t) =

@@ -1,43 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-| The standard library of functions that operate on datasets.
--}
-module Spark.Core.InternalStd.Dataset(
-  autocache,
-  cache,
-  uncache,
-  broadcastPair,
-  -- Internal
-  opnameCache,
-  opnameUnpersist,
-  opnameAutocache,
-) where
 
-import qualified Data.Text as T
+This file contains all the operations that are then refered to by more
+-}
+module Spark.Core.InternalStd.Dataset where
 
 import Spark.Core.Internal.DatasetStructures
+import Spark.Core.Internal.NodeBuilder(cniStandardOp', NodeBuilder, buildOpD)
 import Spark.Core.Internal.OpStructures
+import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.DatasetFunctions
-import Spark.Core.Internal.TypesFunctions
 import Spark.Core.Internal.Caching
-import Spark.Core.Internal.CachingUntyped
-import Spark.Core.Internal.FunctionsInternals(broadcastPair)
-
-{-| Caches the dataset.
-
-This function instructs Spark to cache a dataset with the default persistence
-level in Spark (MEMORY_AND_DISK).
-
-Note that the dataset will have to be evaluated first for the caching to take
-effect, so it is usual to call `count` or other aggregrators to force
-the caching to occur.
--}
-cache :: Dataset a -> Dataset a
-cache  n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameCache
-
-
-
 
 {-| Automatically caches the dataset on a need basis, and performs deallocation
 when the dataset is not required.
@@ -51,6 +26,25 @@ If the dataset has no observable child, no uncaching operation is added: the
 autocache operation is equivalent to unconditional caching.
 -}
 autocache :: Dataset a -> Dataset a
-autocache n = n2 `parents` [untyped n]
-  where n2 = emptyNodeStandard (nodeLocality n) (nodeType n) opnameAutocache
+autocache n = forceRight $ fromBuilder1 n autocacheBuilder (nodeLocality n) (nodeType n)
 
+autocacheBuilder :: NodeBuilder
+autocacheBuilder = buildOpD opnameAutocache $ \dt ->
+  pure $ cniStandardOp' Distributed opnameAutocache dt
+
+
+{-| Caches the dataset.
+
+This function instructs Spark to cache a dataset with the default persistence
+level in Spark (MEMORY_AND_DISK).
+
+Note that the dataset will have to be evaluated first for the caching to take
+effect, so it is usual to call `count` or other aggregrators to force
+the caching to occur.
+-}
+cache :: Dataset a -> Dataset a
+cache n = forceRight $ fromBuilder1 n cacheBuilder (nodeLocality n) (nodeType n)
+
+cacheBuilder :: NodeBuilder
+cacheBuilder = buildOpD opnameCache $ \dt ->
+  pure $ cniStandardOp' Distributed opnameCache dt

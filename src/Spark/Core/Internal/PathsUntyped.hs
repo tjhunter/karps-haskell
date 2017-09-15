@@ -50,6 +50,16 @@ instance GraphOperations UntypedNode NodeEdge where
       loDeps = (const (DataStructureEdge LogicalEdge) &&& id) <$> nodeLogicalDependencies n
     in loParents ++ parents' ++ loDeps
 
+instance GraphOperations UntypedNode StructureEdge where
+  expandVertex n =
+    -- The logical parents are more important than the parents
+    let
+      -- The direct parents. They may overload with the scoping parents, but
+      -- this will be checked during the name analysis.
+      parents' = (const ParentEdge &&& id) <$> nodeParents n
+      loDeps = (const LogicalEdge &&& id) <$> nodeLogicalDependencies n
+    in parents' ++ loDeps
+
 instance HasNodeName UntypedNode where
   getNodeName = nodeName
   assignPath n p = updateNode n $ \n' -> n' { _cnPath = p }
@@ -75,7 +85,7 @@ tieNodes cd =
       g2 = runIdentity $ graphMapVertices g f
   in graphToComputeGraph g2
 
--- Assigs the paths, and drops the scoping edges.
+-- Assigns the paths, and drops the scoping edges.
 assignPathsUntyped :: (HasCallStack) =>
   ComputeDag UntypedNode NodeEdge -> Try (ComputeDag UntypedNode StructureEdge)
 assignPathsUntyped cd = do
