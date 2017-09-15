@@ -12,7 +12,10 @@ module Spark.Core.Internal.Display(
 
 import qualified Data.Map as M
 import qualified Data.Vector as V
+import qualified Data.Text as T
 import Data.Text(Text)
+import Data.Default
+import Lens.Family2 ((&), (.~))
 import Data.Monoid((<>))
 import Data.Functor.Identity(runIdentity, Identity)
 
@@ -22,7 +25,8 @@ import Spark.Core.Internal.ContextStructures(ComputeGraph)
 import Spark.Core.Internal.ComputeDag(computeGraphMapVertices, ComputeDag(cdVertices))
 import Spark.Core.Internal.DAGStructures(Vertex(vertexData))
 import Spark.Core.Internal.OpStructures()
-import Spark.Core.Internal.DatasetStructures(OperatorNode(..), StructureEdge(..))
+import Spark.Core.Internal.OpFunctions(simpleShowOp)
+import Spark.Core.Internal.DatasetStructures(OperatorNode(..), StructureEdge(..), onOp)
 import Spark.Core.StructuresInternal(prettyNodePath)
 
 {-| Converts a compute graph to a form that can be displayed by TensorBoard.
@@ -39,11 +43,13 @@ displayGraph cg = PG.GraphDef nodes where
 
 
 _displayNode :: OperatorNode -> [Text] -> [Text] -> PN.NodeDef
-_displayNode on parents logical = PN.NodeDef {
-    PN._NodeDef'name = prettyNodePath (onPath on),
-    PN._NodeDef'op = "", -- TODO: this is missing here
-    -- The ^ caret indicates logical deps.
-    PN._NodeDef'input = parents ++ (("^" <>) <$> logical),
-    PN._NodeDef'device = "",
-    PN._NodeDef'attr = M.empty
-  } -- TODO: add a lot more info here.
+_displayNode on parents logical = (def :: PN.NodeDef)
+    & PN.name .~ (trim . prettyNodePath . onPath $ on)
+    & PN.input .~ (trim <$> parents ++ (("^" <>) . trim <$> logical))
+    & PN.op .~ simpleShowOp (onOp on)
+    & PN.attr .~ M.empty
+    & PN.device .~ "/spark:0" where
+  trim txt
+      | T.null txt = ""
+      | T.head txt == '/' = T.tail txt
+      | otherwise = txt

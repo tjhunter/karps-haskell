@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-} -- not sure if this is a good idea.
 
 {-| This file is the major entry point for the Karps compiler.
 
@@ -52,13 +53,14 @@ performTransform ::
   ResourceList ->
   ComputeGraph ->
   TransformReturn
-performTransform conf cache resources cg = _transform phases cg where
+performTransform conf cache resources = _transform phases where
   _m f x = if f conf then Just x else Nothing
   phases = catMaybes [
     _m ccUseNodePruning (PAI.REMOVE_UNREACHABLE, transPruneGraph),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
-    pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache)
+    pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache),
+    pure (PAI.FINAL, pure)
     ]
 
 
@@ -144,7 +146,7 @@ instance ToProto PAI.GraphTransformResponse GraphTransformSuccess where
     & PAI.pinnedGraph .~ toProto (gtsNodes gts)
     & PAI.nodeMap .~ (toProto <$> l)
     & PAI.steps .~ (toProto <$> gtsCompilerSteps gts) where
-      l' = M.toList . (M.map N.toList) . gtsNodeMapUpdate $ gts
+      l' = M.toList . M.map N.toList . gtsNodeMapUpdate $ gts
       l = [(nid, gp) | (nid, gps) <- l', gp <- gps ]
 
 instance ToProto PAI.GraphTransformResponse GraphTransformFailure where
