@@ -376,7 +376,7 @@ _replaceObservables _ (GenColExtraction (FieldPath v)) =
     v' = V.cons (unsafeFieldName "_1") v
 _replaceObservables _ (GenColLit dt c) = pure (ColLit dt c)
 _replaceObservables m (GenColFunction n v) =
-  ColFunction n <$> sequence (_replaceObservables m <$> v)
+  (\x -> ColFunction n x Nothing) <$> sequence (_replaceObservables m <$> v)
 _replaceObservables m (GenColStruct v) = ColStruct <$> sequence (_replaceField m <$> v)
 _replaceObservables m (BroadcastColOp uld) =
    case M.lookup (nodeId uld) m of

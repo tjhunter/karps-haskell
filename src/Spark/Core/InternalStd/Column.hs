@@ -22,7 +22,7 @@ module Spark.Core.InternalStd.Column(
   eqCBuilder,
   plusCBuilder,
   minusCBuilder,
-  timesCBuilder,
+  multiplyCBuilder,
   divideCBuilder,
   lowerCBuilder,
   greaterCBuilder
@@ -63,8 +63,8 @@ plusCBuilder = _mathOp "plus"
 minusCBuilder :: ColumnSQLBuilder
 minusCBuilder = _mathOp "minus"
 
-timesCBuilder :: ColumnSQLBuilder
-timesCBuilder = _mathOp "times"
+multiplyCBuilder :: ColumnSQLBuilder
+multiplyCBuilder = _mathOp "multiply"
 
 divideCBuilder :: ColumnSQLBuilder
 divideCBuilder = colBuilder2Homo "divide" $ \dt -> do

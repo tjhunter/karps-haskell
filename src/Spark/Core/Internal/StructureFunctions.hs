@@ -65,23 +65,31 @@ shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (s @ Shuffle{}) ->
 
 Users should use the functional one instead.
 -}
-transformBuilder :: StructuredBuilderRegistry -> NodeBuilder
+transformBuilder :: (HasCallStack) => StructuredBuilderRegistry -> NodeBuilder
 transformBuilder reg = buildOpDExtra nameStructuredTransform $ \dt (s @ StructuredTransform {}) -> do
   col <- extractMaybe s PS.maybe'colOp "col_op"
   co <- fromProto col
-  resDt <- colTypeStructured reg co dt
-  return $ coreNodeInfo resDt Distributed (NodeStructuredTransform co)
+  (co', resDt) <- colTypeStructured reg co (Just dt) [] -- TODO add the node shapes of the extra nodes too.
+  return $ coreNodeInfo resDt Distributed (NodeStructuredTransform co')
 
 {-| The low-level observable -> observable structured transform builder.
 
 Users should use the functional one instead.
 -}
-localTransformBuilder :: StructuredBuilderRegistry -> NodeBuilder
-localTransformBuilder reg = buildOpLExtra nameLocalStructuredTransform $ \dt (s @ StructuredTransform {}) -> do
+localTransformBuilder :: (HasCallStack) => StructuredBuilderRegistry -> NodeBuilder
+localTransformBuilder reg = buildOpVariableExtra nameLocalStructuredTransform $ \nss (s @ StructuredTransform {}) -> do
   col <- extractMaybe s PS.maybe'colOp "col_op"
   co <- fromProto col
-  resDt <- colTypeStructured reg co dt
-  return $ coreNodeInfo resDt Local (NodeLocalStructuredTransform co)
+  -- Take the node shapes and check that they are all local.
+  dts <- _checkLocal nss
+  (co', resDt) <- colTypeStructured reg co Nothing dts
+  return $ coreNodeInfo resDt Local (NodeLocalStructuredTransform co')
+
+_checkLocal :: (HasCallStack) => [NodeShape] -> Try [DataType]
+_checkLocal l = sequence $ f <$> l where
+    f ns | nsLocality ns == Distributed =
+          tryError "localTransformBuilder: parent node should be local"
+    f ns = pure $ nsType ns
 
 {-| The low-level dataset -> observable structured transform builder.
 

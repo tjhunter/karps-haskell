@@ -553,6 +553,7 @@ data CompilingPhase = INITIAL
                     | MERGE_AGGREGATIONS
                     | MERGE_TRANSFORMS
                     | MERGE_AGGREGATIONS_2
+                    | REMOVE_OBSERVABLE_BROADCASTS
                     | FINAL
                     deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
@@ -573,6 +574,7 @@ instance Data.ProtoLens.MessageEnum CompilingPhase where
         maybeToEnum 7 = Prelude.Just MERGE_AGGREGATIONS
         maybeToEnum 8 = Prelude.Just MERGE_TRANSFORMS
         maybeToEnum 9 = Prelude.Just MERGE_AGGREGATIONS_2
+        maybeToEnum 10 = Prelude.Just REMOVE_OBSERVABLE_BROADCASTS
         maybeToEnum 1000 = Prelude.Just FINAL
         maybeToEnum _ = Prelude.Nothing
         showEnum INITIAL = "INITIAL"
@@ -585,6 +587,8 @@ instance Data.ProtoLens.MessageEnum CompilingPhase where
         showEnum MERGE_AGGREGATIONS = "MERGE_AGGREGATIONS"
         showEnum MERGE_TRANSFORMS = "MERGE_TRANSFORMS"
         showEnum MERGE_AGGREGATIONS_2 = "MERGE_AGGREGATIONS_2"
+        showEnum REMOVE_OBSERVABLE_BROADCASTS
+          = "REMOVE_OBSERVABLE_BROADCASTS"
         showEnum FINAL = "FINAL"
         readEnum "INITIAL" = Prelude.Just INITIAL
         readEnum "REMOVE_UNREACHABLE" = Prelude.Just REMOVE_UNREACHABLE
@@ -598,6 +602,8 @@ instance Data.ProtoLens.MessageEnum CompilingPhase where
         readEnum "MERGE_AGGREGATIONS" = Prelude.Just MERGE_AGGREGATIONS
         readEnum "MERGE_TRANSFORMS" = Prelude.Just MERGE_TRANSFORMS
         readEnum "MERGE_AGGREGATIONS_2" = Prelude.Just MERGE_AGGREGATIONS_2
+        readEnum "REMOVE_OBSERVABLE_BROADCASTS"
+          = Prelude.Just REMOVE_OBSERVABLE_BROADCASTS
         readEnum "FINAL" = Prelude.Just FINAL
         readEnum _ = Prelude.Nothing
 
@@ -619,6 +625,7 @@ instance Prelude.Enum CompilingPhase where
         fromEnum MERGE_AGGREGATIONS = 7
         fromEnum MERGE_TRANSFORMS = 8
         fromEnum MERGE_AGGREGATIONS_2 = 9
+        fromEnum REMOVE_OBSERVABLE_BROADCASTS = 10
         fromEnum FINAL = 1000
         succ FINAL
           = Prelude.error
@@ -632,7 +639,8 @@ instance Prelude.Enum CompilingPhase where
         succ CACHE_CHECK = MERGE_AGGREGATIONS
         succ MERGE_AGGREGATIONS = MERGE_TRANSFORMS
         succ MERGE_TRANSFORMS = MERGE_AGGREGATIONS_2
-        succ MERGE_AGGREGATIONS_2 = FINAL
+        succ MERGE_AGGREGATIONS_2 = REMOVE_OBSERVABLE_BROADCASTS
+        succ REMOVE_OBSERVABLE_BROADCASTS = FINAL
         pred INITIAL
           = Prelude.error
               "CompilingPhase.pred: bad argument INITIAL. This value would be out of bounds."
@@ -645,7 +653,8 @@ instance Prelude.Enum CompilingPhase where
         pred MERGE_AGGREGATIONS = CACHE_CHECK
         pred MERGE_TRANSFORMS = MERGE_AGGREGATIONS
         pred MERGE_AGGREGATIONS_2 = MERGE_TRANSFORMS
-        pred FINAL = MERGE_AGGREGATIONS_2
+        pred REMOVE_OBSERVABLE_BROADCASTS = MERGE_AGGREGATIONS_2
+        pred FINAL = REMOVE_OBSERVABLE_BROADCASTS
         enumFrom = Data.ProtoLens.Message.Enum.messageEnumFrom
         enumFromTo = Data.ProtoLens.Message.Enum.messageEnumFromTo
         enumFromThen = Data.ProtoLens.Message.Enum.messageEnumFromThen

@@ -21,6 +21,8 @@ module Spark.Core.Internal.DAGFunctions(
   -- Transforms
   graphMapVertices,
   graphMapVertices',
+  graphMapVerticesI,
+  graphAdd,
   vertexMap,
   graphFlatMapEdges,
   graphMapEdges,
@@ -28,7 +30,8 @@ module Spark.Core.Internal.DAGFunctions(
   verticesAndEdges,
   graphFilterVertices,
   pruneLexicographic,
-  completeVertices
+  completeVertices,
+  graphFilterEdges
 ) where
 
 import qualified Data.Set as S
@@ -46,6 +49,7 @@ import Control.Monad.Identity
 
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.Utilities
+import Spark.Core.Try
 
 -- | Separate type of error to make it more general and easier
 -- to test.
@@ -293,6 +297,66 @@ graphMapVertices g f =
       conv (VertexEdge vx1 e1) = VertexEdge (trans vx1) e1
       adj2 = M.map (conv <$>) (gEdges g)
     return Graph { gEdges = adj2, gVertices = V.fromList verts2 }
+
+{-| Maps the graph, taking the edges into account.
+
+This is the non-monadic version of graphMapVertices.
+-}
+graphMapVerticesI :: forall v e v2. (HasCallStack, Show v2) =>
+  Graph v e -> -- The start graph
+  (v -> [(v2,e)] -> v2) -> -- The transform
+  Graph v2 e
+graphMapVerticesI g f = runIdentity (graphMapVertices g f') where
+  f' x l = pure (f x l)
+
+{-| Attempts to add some extra edges and vertices to the graph.
+
+Here are the rules:
+ - new edges on existing nodes: new ones are appended to the list of parents.
+
+No cycle are allowed.
+-}
+graphAdd :: forall v e. (HasCallStack, Show v) =>
+  Graph v e -> -- The start graph
+  [Vertex v] -> -- The vertices to add
+  [Edge e] -> -- The edges to add
+  DagTry (Graph v e)
+graphAdd g vs es =
+  do
+    checkVs <- sequence $ check <$> vs
+    buildGraphFromList (oldVs ++ checkVs) (oldEs ++ es)
+  where
+    oldVs = V.toList (gVertices g)
+    usedVertexIds = S.fromList $ vertexId <$> oldVs
+    check v | vertexId v `S.member` usedVertexIds =
+      throwError $ "graphAdd: Vertex " <> show' v <> " already used in the graph"
+    check v = pure v
+    oldEs = veEdge <$> concat (V.toList <$> M.elems (gEdges g))
+
+{-| Filters the edges, taking into account the values of the origin and
+destination vertices too.
+
+-}
+graphFilterEdges :: forall v e. (HasCallStack, Show v) =>
+  Graph v e -> -- The start DAG
+  (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
+  Graph v e
+-- This transform should always work.
+graphFilterEdges g f = forceTry . tryEither $ buildGraphFromList vs es where
+  -- The vertices are the same.
+  vs = V.toList (gVertices g)
+  indexed = M.fromList $ f' <$> vs where
+    f' v = (vertexId v, vertexData v)
+  tuples :: [(v, Edge e, v)]
+  tuples = concat $ f' <$> M.toList (gEdges g) where
+    f' :: (VertexId, V.Vector (VertexEdge e v)) -> [(v, Edge e, v)]
+    f' (vid, ves) = V.toList $ g' <$> ves where
+       vFrom = indexed M.! vid
+       g' ve = (vFrom, veEdge ve, vertexData . veEndVertex $ ve)
+  es = concatMap f' tuples where
+    f' (vFrom, e, vTo) | f vFrom (edgeData e) vTo = [e]
+    f' _ = []
+
 
 -- | (internal) Maps the edges
 graphMapEdges :: Graph v e -> (e -> e') -> Graph v e'

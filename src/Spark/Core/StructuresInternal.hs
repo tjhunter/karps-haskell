@@ -23,6 +23,7 @@ module Spark.Core.StructuresInternal(
   prettyNodePath,
   fieldPathToProto,
   fieldPathFromProto,
+  nodePathAppendSuffix
 ) where
 
 import qualified Data.Text as T
@@ -98,6 +99,15 @@ headFieldPath (FieldPath v) = Just $ V.head v
 
 fieldPath' :: [FieldName] -> FieldPath
 fieldPath' = FieldPath . V.fromList
+
+{-| Appends a suffix to the last element of the nodepath.
+
+This does not make the path deeper.
+-}
+nodePathAppendSuffix :: NodePath -> T.Text -> NodePath
+nodePathAppendSuffix (NodePath v) t = NodePath $ V.snoc (V.init v) x' where
+    x = unNodeName (V.last v)
+    x' = NodeName (x <> t)
 
 -- | The concatenated path. This is the inverse function of fieldPath.
 -- | TODO: this one should be hidden?

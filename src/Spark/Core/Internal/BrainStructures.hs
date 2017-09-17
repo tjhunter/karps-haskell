@@ -18,9 +18,13 @@ module Spark.Core.Internal.BrainStructures(
   ComputeGraph,
   resourcePath,
   unResourcePath,
-  makeSessionId
+  makeSessionId,
+  parseNodeId,
+  nodeAsVertex
 ) where
 
+import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as C8
 import Data.Map.Strict(Map)
 import Data.Text(Text, pack, unpack)
 import Data.String(IsString(..))
@@ -30,9 +34,11 @@ import Lens.Family2 ((^.), (&), (.~))
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ComputeDag(ComputeDag)
-import Spark.Core.Internal.DatasetStructures(StructureEdge, OperatorNode)
+import Spark.Core.Internal.DAGStructures(Vertex(..), VertexId(..))
+import Spark.Core.Internal.DatasetStructures(StructureEdge, OperatorNode, onPath)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
 import Spark.Core.Try(NodeError, Try, nodeError, eMessage)
+import Spark.Core.StructuresInternal(prettyNodePath)
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 import qualified Proto.Karps.Proto.Io as PI
@@ -77,6 +83,12 @@ resourcePath = pure . ResourcePath
 
 unResourcePath :: ResourcePath -> Text
 unResourcePath (ResourcePath txt) = txt
+
+parseNodeId :: NodePath -> VertexId
+parseNodeId = VertexId . C8.pack . T.unpack . prettyNodePath
+
+nodeAsVertex :: OperatorNode -> Vertex OperatorNode
+nodeAsVertex on = Vertex (parseNodeId (onPath on)) on
 
 data ResourceStamp = ResourceStamp Text deriving (Eq, Show)
 

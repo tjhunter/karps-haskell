@@ -57,7 +57,8 @@ module Spark.Core.Internal.DatasetFunctions(
   -- Operator node functions
   updateOpNode,
   updateOpNodeOp,
-  buildOpNode
+  buildOpNode,
+  buildOpNode'
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
@@ -246,6 +247,16 @@ buildOpNode cni np nc = updateOpNode on nc id where
     onPath = np,
     onNodeInfo = cni
   }
+
+buildOpNode' :: NodeBuilder -> OpExtra -> NodePath -> [(OperatorNode, StructureEdge)] -> Try OperatorNode
+buildOpNode' nb extra np l = do
+  let shapes = fmap (onShape . fst) . filter ((ParentEdge==) . snd) $ l
+  cni <- nbBuilder nb extra shapes
+  let c = NodeContext {
+        ncParents = f ParentEdge,
+        ncLogicalDeps = f LogicalEdge
+      } where f et = fmap fst . filter ((et==) . snd) $ l
+  return $ buildOpNode cni np c
 
 -- (internal)
 -- This operation should always be used to make sure that the

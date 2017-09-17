@@ -20,7 +20,6 @@ module Spark.Core.Internal.ContextInternal(
   insertSourceInfo,
   updateCache,
   convertToTiedGraph,
-  parseNodeId,
   currentCacheNodes,
   compileComputation
 ) where
@@ -177,10 +176,6 @@ performGraphTransforms session cg = do
            g'' = _convertToUntiedGraph g'
     _ -> tryError $ sformat ("Found some caching errors: "%sh) failures
   -- TODO: we could add an extra pruning pass here
-
-{-| Wraps the path of a node as a vertex id. -}
-parseNodeId :: NodePath -> VertexId
-parseNodeId = VertexId . C8.pack . T.unpack . prettyNodePath
 
 convertToTiedGraph :: ComputeGraph -> TiedComputeGraph
 convertToTiedGraph cg =

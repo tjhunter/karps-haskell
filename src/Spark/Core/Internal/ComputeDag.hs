@@ -18,7 +18,10 @@ module Spark.Core.Internal.ComputeDag(
   buildCGraph,
   graphDataLexico,
   buildCGraphFromList,
-  computeGraphMapVertices
+  computeGraphMapVertices,
+  computeGraphMapVerticesI,
+  graphAdd,
+  graphFilterEdges
 ) where
 
 import Data.Foldable(toList)
@@ -28,13 +31,12 @@ import qualified Data.Text as T
 import Data.Vector(Vector)
 import Control.Arrow((&&&))
 import Control.Monad.Except
+import Control.Monad.Identity
 import Formatting
 
+import qualified Spark.Core.Internal.DAGFunctions as DAG
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.Utilities
-
-
-import Spark.Core.Internal.DAGFunctions
 
 {-| A DAG of computation nodes.
 
@@ -75,8 +77,8 @@ graphToComputeGraph g =
     cdVertices = gVertices g,
     -- We work on the graph of dependencies (not flows)
     -- The sources correspond to the outputs.
-    cdInputs = V.fromList $ graphSinks g,
-    cdOutputs = V.fromList $ graphSources g
+    cdInputs = V.fromList $ DAG.graphSinks g,
+    cdOutputs = V.fromList $ DAG.graphSources g
   }
 
 mapVertices :: (Vertex v -> v') -> ComputeDag v e -> ComputeDag v' e
@@ -93,11 +95,35 @@ mapVertexData :: (v -> v') -> ComputeDag v e -> ComputeDag v' e
 mapVertexData f = mapVertices (f . vertexData)
 
 buildCGraph :: (GraphOperations v e, Show v) =>
-  v -> DagTry (ComputeDag v e)
-buildCGraph n = graphToComputeGraph <$> buildGraph n
+  v -> DAG.DagTry (ComputeDag v e)
+buildCGraph n = graphToComputeGraph <$> DAG.buildGraph n
 
 graphVertexData :: ComputeDag v e -> [v]
 graphVertexData cg = vertexData <$> V.toList (cdVertices cg)
+
+graphAdd :: forall v e. (HasCallStack, Show v) =>
+  ComputeDag v e -> -- The start graph
+  [Vertex v] -> -- The vertices to add
+  [Edge e] -> -- The edges to add
+  DAG.DagTry (ComputeDag v e)
+graphAdd cg vxs eds = do
+  g' <- DAG.graphAdd (computeGraphToGraph cg) vxs eds
+  -- Do not change the sinks and the sources, they should stay the same.
+  return cg {
+      cdEdges = gEdges g',
+      cdVertices = gVertices g'
+    }
+
+
+graphFilterEdges :: (HasCallStack, Show v) =>
+  ComputeDag v e -> -- The start DAG
+  (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
+  ComputeDag v e
+graphFilterEdges cg f = cg {
+    cdEdges = gEdges g',
+    cdVertices = gVertices g'
+  } where
+    g' = DAG.graphFilterEdges (computeGraphToGraph cg) f
 
 {-| Builds a compute graph from a list of vertex and edge informations.
 
@@ -108,12 +134,12 @@ buildCGraphFromList :: forall v e. (Show v) =>
   [Edge e] -> -- The edges
   [VertexId] -> -- The ids of the inputs
   [VertexId] -> -- The ids of the outputs
-  DagTry (ComputeDag v e)
+  DAG.DagTry (ComputeDag v e)
 buildCGraphFromList vxs eds inputs outputs = do
-  g <- buildGraphFromList vxs eds
+  g <- DAG.buildGraphFromList vxs eds
   -- Try to tie the inputs and outputs to nodes.
   let vertexById = myGroupBy $ (vertexId &&& id) <$> vxs
-  let f :: VertexId -> DagTry (Vertex v)
+  let f :: VertexId -> DAG.DagTry (Vertex v)
       f vid = case M.lookup vid vertexById of
         Just (vx :| _) -> pure vx
         _ -> throwError $ sformat ("buildCGraphFromList: a vertex id:"%sh%" is not part of the graph.") vid
@@ -138,7 +164,7 @@ computeGraphMapVertices :: forall m v e v2. (HasCallStack, Show v2, Monad m) =>
   m (ComputeDag v2 e)
 computeGraphMapVertices cd fun = do
   let g = computeGraphToGraph cd
-  g' <- graphMapVertices g fun
+  g' <- DAG.graphMapVertices g fun
   let vxs = gVertices g'
   inputs <- _getSubsetVertex vxs (vertexId <$> cdInputs cd)
   outputs <- _getSubsetVertex vxs (vertexId <$> cdOutputs cd)
@@ -148,6 +174,13 @@ computeGraphMapVertices cd fun = do
     cdInputs = inputs,
     cdOutputs = outputs
   }
+
+computeGraphMapVerticesI :: forall v e v2. (HasCallStack, Show v2) =>
+  ComputeDag v e ->
+  (v -> [(v2, e)] -> v2) ->
+  ComputeDag v2 e
+computeGraphMapVerticesI cd f = runIdentity $ computeGraphMapVertices cd f' where
+  f' v l = pure (f v l)
 
 -- Tries to get a subset of the vertices (by vertex id), and fails if
 -- one is missing.

@@ -182,8 +182,9 @@ applyCol1 f dc = column' $ do
 -- ******** Operations on column operations ********
 
 genColOp :: ColOp -> GeneralizedColOp
+genColOp (ColBroadcast _) = missing "genColOp ColBroadcast"
 genColOp (ColExtraction fp) = GenColExtraction fp
-genColOp (ColFunction n v) = GenColFunction n (genColOp <$> v)
+genColOp (ColFunction n v _) = GenColFunction n (genColOp <$> v)
 -- TODO: replace in the ColOp by Cell instead of JSON.
 genColOp (ColLit dt _) = GenColLit dt (missing "genColOp (ColLit dt c)")
 genColOp (ColStruct v) = GenColStruct (f <$> v) where

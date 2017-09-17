@@ -25,6 +25,7 @@ import qualified Data.ProtoLens.Reexport.Data.ByteString
        as Data.ByteString
 import qualified Data.ProtoLens.Reexport.Lens.Labels as Lens.Labels
 import qualified Proto.Karps.Proto.Types
+import qualified Proto.Tensorflow.Core.Framework.Graph
 
 data CompilationPhaseGraph = CompilationPhaseGraph{_CompilationPhaseGraph'phaseName
                                                    :: !Data.Text.Text,
@@ -33,7 +34,10 @@ data CompilationPhaseGraph = CompilationPhaseGraph{_CompilationPhaseGraph'phaseN
                                                    _CompilationPhaseGraph'graphTensorboardRepr ::
                                                    !Data.Text.Text,
                                                    _CompilationPhaseGraph'errorMessage ::
-                                                   !Data.Text.Text}
+                                                   !Data.Text.Text,
+                                                   _CompilationPhaseGraph'graphDef ::
+                                                   !(Prelude.Maybe
+                                                       Proto.Tensorflow.Core.Framework.Graph.GraphDef)}
                            deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
@@ -87,6 +91,29 @@ instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
                  (\ x__ y__ -> x__{_CompilationPhaseGraph'errorMessage = y__}))
               Prelude.id
 
+instance (a ~ Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          b ~ Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "graphDef" f CompilationPhaseGraph
+         CompilationPhaseGraph a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilationPhaseGraph'graphDef
+                 (\ x__ y__ -> x__{_CompilationPhaseGraph'graphDef = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~
+            Prelude.Maybe Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          b ~ Prelude.Maybe Proto.Tensorflow.Core.Framework.Graph.GraphDef,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'graphDef" f CompilationPhaseGraph
+         CompilationPhaseGraph a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _CompilationPhaseGraph'graphDef
+                 (\ x__ y__ -> x__{_CompilationPhaseGraph'graphDef = y__}))
+              Prelude.id
+
 instance Data.Default.Class.Default CompilationPhaseGraph where
         def
           = CompilationPhaseGraph{_CompilationPhaseGraph'phaseName =
@@ -94,7 +121,8 @@ instance Data.Default.Class.Default CompilationPhaseGraph where
                                   _CompilationPhaseGraph'graph = Prelude.Nothing,
                                   _CompilationPhaseGraph'graphTensorboardRepr =
                                     Data.ProtoLens.fieldDefault,
-                                  _CompilationPhaseGraph'errorMessage = Data.ProtoLens.fieldDefault}
+                                  _CompilationPhaseGraph'errorMessage = Data.ProtoLens.fieldDefault,
+                                  _CompilationPhaseGraph'graphDef = Prelude.Nothing}
 
 instance Data.ProtoLens.Message CompilationPhaseGraph where
         descriptor
@@ -123,6 +151,13 @@ instance Data.ProtoLens.Message CompilationPhaseGraph where
                          Data.ProtoLens.FieldTypeDescriptor Data.Text.Text)
                       (Data.ProtoLens.PlainField Data.ProtoLens.Optional errorMessage)
                       :: Data.ProtoLens.FieldDescriptor CompilationPhaseGraph
+                graphDef__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "graph_def"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Tensorflow.Core.Framework.Graph.GraphDef)
+                      (Data.ProtoLens.OptionalField maybe'graphDef)
+                      :: Data.ProtoLens.FieldDescriptor CompilationPhaseGraph
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.CompilationPhaseGraph")
@@ -130,12 +165,14 @@ instance Data.ProtoLens.Message CompilationPhaseGraph where
                    [(Data.ProtoLens.Tag 1, phaseName__field_descriptor),
                     (Data.ProtoLens.Tag 2, graph__field_descriptor),
                     (Data.ProtoLens.Tag 3, graphTensorboardRepr__field_descriptor),
-                    (Data.ProtoLens.Tag 4, errorMessage__field_descriptor)])
+                    (Data.ProtoLens.Tag 4, errorMessage__field_descriptor),
+                    (Data.ProtoLens.Tag 5, graphDef__field_descriptor)])
                 (Data.Map.fromList
                    [("phase_name", phaseName__field_descriptor),
                     ("graph", graph__field_descriptor),
                     ("graph_tensorboard_repr", graphTensorboardRepr__field_descriptor),
-                    ("error_message", errorMessage__field_descriptor)])
+                    ("error_message", errorMessage__field_descriptor),
+                    ("graph_def", graphDef__field_descriptor)])
 
 data Graph = Graph{_Graph'nodes :: ![Node]}
            deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
@@ -516,6 +553,13 @@ graph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "graph")
 
+graphDef ::
+         forall f s t a b . Lens.Labels.HasLens "graphDef" f s t a b =>
+           Lens.Family2.LensLike f s t a b
+graphDef
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "graphDef")
+
 graphTensorboardRepr ::
                      forall f s t a b .
                        Lens.Labels.HasLens "graphTensorboardRepr" f s t a b =>
@@ -554,6 +598,14 @@ maybe'graph ::
 maybe'graph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'graph")
+
+maybe'graphDef ::
+               forall f s t a b .
+                 Lens.Labels.HasLens "maybe'graphDef" f s t a b =>
+                 Lens.Family2.LensLike f s t a b
+maybe'graphDef
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'graphDef")
 
 maybe'inferedType ::
                   forall f s t a b .

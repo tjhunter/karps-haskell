@@ -29,6 +29,9 @@ module Spark.Core.Internal.NodeBuilder(
   buildOpDL,
   -- Three parents
   buildOp3,
+  -- Multiple parents
+  buildOpVariable,
+  buildOpVariableExtra,
   -- Registry functions
   registryNode,
   buildNodeRegistry
@@ -171,6 +174,16 @@ buildOpLExtra opName f =buildOp1Extra opName f' where
   f' (NodeShape dt Distributed) = fail $ "buildOpLExtra: " ++ show opName ++ ": expected local node, but got a distributed node of type " ++ show dt ++ " instead."
   f' (NodeShape dt Local) = f dt
 
+{-| Takes a variable number of parents and some extra.
+
+This should be used in special occasions, use the specialized ones instead.
+-}
+buildOpVariableExtra :: Message a => Text -> ([NodeShape] -> a -> Try CoreNodeInfo) -> NodeBuilder
+buildOpVariableExtra opName f = untypedBuilder $ TypedNodeBuilder opName (flip f)
+
+buildOpVariable :: Text -> ([NodeShape] -> Try CoreNodeInfo) -> NodeBuilder
+buildOpVariable opName f = NodeBuilder opName f' where
+  f' _ l = f l
 
 {-| Converts a typed builder to an untyped builder.
 -}

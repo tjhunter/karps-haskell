@@ -22,7 +22,8 @@ module Spark.Core.Internal.Utilities(
   SF.sh,
   (<&>),
   (<>),
-  NonEmpty( (:|) )
+  -- NonEmpty( (:|) ),
+  NonEmpty(..)
 ) where
 
 import qualified Data.Text as T

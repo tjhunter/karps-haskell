@@ -203,16 +203,18 @@ data ComputationStreamResponse = ComputationStreamResponse{_ComputationStreamRes
                                                            _ComputationStreamResponse'computation ::
                                                            !(Prelude.Maybe
                                                                Proto.Karps.Proto.Computation.ComputationId),
-                                                           _ComputationStreamResponse'updates ::
+                                                           _ComputationStreamResponse'startGraph ::
                                                            !(Prelude.Maybe
-                                                               ComputationStreamResponse'Updates)}
+                                                               Proto.Karps.Proto.Graph.Graph),
+                                                           _ComputationStreamResponse'pinnedGraph ::
+                                                           !(Prelude.Maybe
+                                                               Proto.Karps.Proto.Graph.Graph),
+                                                           _ComputationStreamResponse'results ::
+                                                           !(Prelude.Maybe
+                                                               Proto.Karps.Proto.Computation.BatchComputationResult),
+                                                           _ComputationStreamResponse'compilationResult
+                                                           :: !(Prelude.Maybe CompilationResult)}
                                deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
-
-data ComputationStreamResponse'Updates = ComputationStreamResponse'StartGraph !Proto.Karps.Proto.Graph.Graph
-                                       | ComputationStreamResponse'PinnedGraph !Proto.Karps.Proto.Graph.Graph
-                                       | ComputationStreamResponse'Results !Proto.Karps.Proto.Computation.BatchComputationResult
-                                       | ComputationStreamResponse'CompilationResult !CompilationResult
-                                       deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Proto.Karps.Proto.Computation.SessionId,
           b ~ Proto.Karps.Proto.Computation.SessionId, Prelude.Functor f) =>
@@ -259,16 +261,15 @@ instance (a ~
                  (\ x__ y__ -> x__{_ComputationStreamResponse'computation = y__}))
               Prelude.id
 
-instance (a ~ Prelude.Maybe ComputationStreamResponse'Updates,
-          b ~ Prelude.Maybe ComputationStreamResponse'Updates,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "maybe'updates" f ComputationStreamResponse
+instance (a ~ Proto.Karps.Proto.Graph.Graph,
+          b ~ Proto.Karps.Proto.Graph.Graph, Prelude.Functor f) =>
+         Lens.Labels.HasLens "startGraph" f ComputationStreamResponse
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              Prelude.id
+              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'startGraph
+                 (\ x__ y__ -> x__{_ComputationStreamResponse'startGraph = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
 
 instance (a ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
           b ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
@@ -277,35 +278,19 @@ instance (a ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              (Lens.Family2.Unchecked.lens
-                 (\ x__ ->
-                    case x__ of
-                        Prelude.Just
-                          (ComputationStreamResponse'StartGraph x__val) -> Prelude.Just
-                                                                             x__val
-                        _otherwise -> Prelude.Nothing)
-                 (\ _ y__ -> Prelude.fmap ComputationStreamResponse'StartGraph y__))
+              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'startGraph
+                 (\ x__ y__ -> x__{_ComputationStreamResponse'startGraph = y__}))
+              Prelude.id
 
 instance (a ~ Proto.Karps.Proto.Graph.Graph,
           b ~ Proto.Karps.Proto.Graph.Graph, Prelude.Functor f) =>
-         Lens.Labels.HasLens "startGraph" f ComputationStreamResponse
+         Lens.Labels.HasLens "pinnedGraph" f ComputationStreamResponse
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              ((Prelude..)
-                 (Lens.Family2.Unchecked.lens
-                    (\ x__ ->
-                       case x__ of
-                           Prelude.Just
-                             (ComputationStreamResponse'StartGraph x__val) -> Prelude.Just
-                                                                                x__val
-                           _otherwise -> Prelude.Nothing)
-                    (\ _ y__ -> Prelude.fmap ComputationStreamResponse'StartGraph y__))
-                 (Data.ProtoLens.maybeLens Data.Default.Class.def))
+              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'pinnedGraph
+                 (\ x__ y__ -> x__{_ComputationStreamResponse'pinnedGraph = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
 
 instance (a ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
           b ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
@@ -314,37 +299,20 @@ instance (a ~ Prelude.Maybe Proto.Karps.Proto.Graph.Graph,
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              (Lens.Family2.Unchecked.lens
-                 (\ x__ ->
-                    case x__ of
-                        Prelude.Just
-                          (ComputationStreamResponse'PinnedGraph x__val) -> Prelude.Just
-                                                                              x__val
-                        _otherwise -> Prelude.Nothing)
-                 (\ _ y__ ->
-                    Prelude.fmap ComputationStreamResponse'PinnedGraph y__))
+              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'pinnedGraph
+                 (\ x__ y__ -> x__{_ComputationStreamResponse'pinnedGraph = y__}))
+              Prelude.id
 
-instance (a ~ Proto.Karps.Proto.Graph.Graph,
-          b ~ Proto.Karps.Proto.Graph.Graph, Prelude.Functor f) =>
-         Lens.Labels.HasLens "pinnedGraph" f ComputationStreamResponse
+instance (a ~ Proto.Karps.Proto.Computation.BatchComputationResult,
+          b ~ Proto.Karps.Proto.Computation.BatchComputationResult,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "results" f ComputationStreamResponse
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              ((Prelude..)
-                 (Lens.Family2.Unchecked.lens
-                    (\ x__ ->
-                       case x__ of
-                           Prelude.Just
-                             (ComputationStreamResponse'PinnedGraph x__val) -> Prelude.Just
-                                                                                 x__val
-                           _otherwise -> Prelude.Nothing)
-                    (\ _ y__ ->
-                       Prelude.fmap ComputationStreamResponse'PinnedGraph y__))
-                 (Data.ProtoLens.maybeLens Data.Default.Class.def))
+              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'results
+                 (\ x__ y__ -> x__{_ComputationStreamResponse'results = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
 
 instance (a ~
             Prelude.Maybe Proto.Karps.Proto.Computation.BatchComputationResult,
@@ -355,52 +323,9 @@ instance (a ~
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              (Lens.Family2.Unchecked.lens
-                 (\ x__ ->
-                    case x__ of
-                        Prelude.Just
-                          (ComputationStreamResponse'Results x__val) -> Prelude.Just x__val
-                        _otherwise -> Prelude.Nothing)
-                 (\ _ y__ -> Prelude.fmap ComputationStreamResponse'Results y__))
-
-instance (a ~ Proto.Karps.Proto.Computation.BatchComputationResult,
-          b ~ Proto.Karps.Proto.Computation.BatchComputationResult,
-          Prelude.Functor f) =>
-         Lens.Labels.HasLens "results" f ComputationStreamResponse
-         ComputationStreamResponse a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              ((Prelude..)
-                 (Lens.Family2.Unchecked.lens
-                    (\ x__ ->
-                       case x__ of
-                           Prelude.Just
-                             (ComputationStreamResponse'Results x__val) -> Prelude.Just x__val
-                           _otherwise -> Prelude.Nothing)
-                    (\ _ y__ -> Prelude.fmap ComputationStreamResponse'Results y__))
-                 (Data.ProtoLens.maybeLens Data.Default.Class.def))
-
-instance (a ~ Prelude.Maybe CompilationResult,
-          b ~ Prelude.Maybe CompilationResult, Prelude.Functor f) =>
-         Lens.Labels.HasLens "maybe'compilationResult" f
-         ComputationStreamResponse ComputationStreamResponse a b where
-        lensOf _
-          = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              (Lens.Family2.Unchecked.lens
-                 (\ x__ ->
-                    case x__ of
-                        Prelude.Just
-                          (ComputationStreamResponse'CompilationResult
-                             x__val) -> Prelude.Just x__val
-                        _otherwise -> Prelude.Nothing)
-                 (\ _ y__ ->
-                    Prelude.fmap ComputationStreamResponse'CompilationResult y__))
+              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'results
+                 (\ x__ y__ -> x__{_ComputationStreamResponse'results = y__}))
+              Prelude.id
 
 instance (a ~ CompilationResult, b ~ CompilationResult,
           Prelude.Functor f) =>
@@ -408,26 +333,34 @@ instance (a ~ CompilationResult, b ~ CompilationResult,
          ComputationStreamResponse a b where
         lensOf _
           = (Prelude..)
-              (Lens.Family2.Unchecked.lens _ComputationStreamResponse'updates
-                 (\ x__ y__ -> x__{_ComputationStreamResponse'updates = y__}))
-              ((Prelude..)
-                 (Lens.Family2.Unchecked.lens
-                    (\ x__ ->
-                       case x__ of
-                           Prelude.Just
-                             (ComputationStreamResponse'CompilationResult
-                                x__val) -> Prelude.Just x__val
-                           _otherwise -> Prelude.Nothing)
-                    (\ _ y__ ->
-                       Prelude.fmap ComputationStreamResponse'CompilationResult y__))
-                 (Data.ProtoLens.maybeLens Data.Default.Class.def))
+              (Lens.Family2.Unchecked.lens
+                 _ComputationStreamResponse'compilationResult
+                 (\ x__ y__ ->
+                    x__{_ComputationStreamResponse'compilationResult = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe CompilationResult,
+          b ~ Prelude.Maybe CompilationResult, Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'compilationResult" f
+         ComputationStreamResponse ComputationStreamResponse a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens
+                 _ComputationStreamResponse'compilationResult
+                 (\ x__ y__ ->
+                    x__{_ComputationStreamResponse'compilationResult = y__}))
+              Prelude.id
 
 instance Data.Default.Class.Default ComputationStreamResponse where
         def
           = ComputationStreamResponse{_ComputationStreamResponse'session =
                                         Prelude.Nothing,
                                       _ComputationStreamResponse'computation = Prelude.Nothing,
-                                      _ComputationStreamResponse'updates = Prelude.Nothing}
+                                      _ComputationStreamResponse'startGraph = Prelude.Nothing,
+                                      _ComputationStreamResponse'pinnedGraph = Prelude.Nothing,
+                                      _ComputationStreamResponse'results = Prelude.Nothing,
+                                      _ComputationStreamResponse'compilationResult =
+                                        Prelude.Nothing}
 
 instance Data.ProtoLens.Message ComputationStreamResponse where
         descriptor
@@ -822,13 +755,6 @@ maybe'startGraph ::
 maybe'startGraph
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'startGraph")
-
-maybe'updates ::
-              forall f s t a b . Lens.Labels.HasLens "maybe'updates" f s t a b =>
-                Lens.Family2.LensLike f s t a b
-maybe'updates
-  = Lens.Labels.lensOf
-      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'updates")
 
 pinnedGraph ::
             forall f s t a b . Lens.Labels.HasLens "pinnedGraph" f s t a b =>

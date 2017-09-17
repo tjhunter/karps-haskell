@@ -266,9 +266,10 @@ _transformCol co ucd = ucd { _cOp = genColOp co }
 
 -- Takes a column operation and chain it with another column operation.
 _combineColOp :: ColOp -> ColOp -> Try ColOp
+_combineColOp _ (ColBroadcast _) = missing "_combineColOp: ColBroadcast"
 _combineColOp _ (x @ (ColLit _ _)) = pure x
-_combineColOp x (ColFunction fn v) =
-  ColFunction fn <$> sequence (_combineColOp x <$> v)
+_combineColOp x (ColFunction fn v _) =
+  (\x' -> ColFunction fn x' Nothing) <$> sequence (_combineColOp x <$> v)
 _combineColOp x (ColExtraction fp) = _extractColOp x (V.toList (unFieldPath fp))
 _combineColOp x (ColStruct v) =
   ColStruct <$> sequence (f <$> v) where

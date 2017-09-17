@@ -19,6 +19,7 @@ import Data.Map.Strict(Map)
 import Data.Text(Text)
 import Data.Maybe(catMaybes)
 import Data.Default
+import Formatting
 import GHC.Stack(prettyCallStack)
 import Lens.Family2((&), (.~))
 import Data.Functor.Identity(runIdentity, Identity)
@@ -26,12 +27,17 @@ import Data.Functor.Identity(runIdentity, Identity)
 import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
-import Spark.Core.Internal.ComputeDag(ComputeDag, computeGraphMapVertices, graphVertexData)
+import Spark.Core.Internal.ComputeDag(ComputeDag, computeGraphMapVerticesI, graphVertexData, graphAdd)
 import Spark.Core.Internal.DatasetStd(localityToProto)
+import Spark.Core.Internal.DAGStructures(Edge(..))
+import Spark.Core.Internal.DatasetFunctions(buildOpNode')
 import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
-import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(onPath), onLocality, onType, onOp)
+import Spark.Core.Internal.OpStructures
+import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(..), onLocality, onType, onOp)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
 import Spark.Core.Internal.Display(displayGraph)
+import Spark.Core.InternalStd.Observable(localPackBuilder)
+import Spark.Core.StructuresInternal(nodePathAppendSuffix, emptyFieldPath, fieldPath', unsafeFieldName)
 import Spark.Core.Try
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Graph as PG
@@ -57,6 +63,7 @@ performTransform conf cache resources = _transform phases where
   _m f x = if f conf then Just x else Nothing
   phases = catMaybes [
     _m ccUseNodePruning (PAI.REMOVE_UNREACHABLE, transPruneGraph),
+    pure (PAI.REMOVE_OBSERVABLE_BROADCASTS, removeObservableBroadcasts),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
     pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache),
@@ -90,6 +97,86 @@ transPruneGraph = pure
 
 transFillAutoCache :: ComputeGraph -> Try ComputeGraph
 transFillAutoCache = pure
+
+mergeStructuredAggregators :: ComputeGraph -> Try ComputeGraph
+mergeStructuredAggregators = pure
+
+{-| For local transforms, removes the broadcasting references by either
+directly pointing to the single input, or packing the inputs and then
+refering to the packed inputs.
+-}
+removeObservableBroadcasts :: ComputeGraph -> Try ComputeGraph
+removeObservableBroadcasts cg = do
+    -- Look at nodes that contain observable broadcast and make a map of the
+    -- input.
+    cg2 <- tryEither $ graphAdd cgUpdated extraVertices extraEdges
+    -- TODO prune the edges that we have not removed.
+    return cg2
+  where
+    -- Replaces broadcast indices by reference to a tuple field.
+    replaceIndices :: Bool -> ColOp -> ColOp
+    replaceIndices _ (ce @ ColExtraction {}) = ce
+    replaceIndices b (ColFunction sqln v t) = ColFunction sqln v' t where
+      v' = replaceIndices b <$> v
+    replaceIndices _ (cl @ ColLit {}) = cl
+    replaceIndices b (ColStruct v) = ColStruct (f <$> v) where
+      f (TransformField n val) = TransformField n (replaceIndices b val)
+    replaceIndices True (ColBroadcast _) =
+      -- TODO: check idx == 0
+      ColExtraction emptyFieldPath
+    replaceIndices False (ColBroadcast idx) = ColExtraction (fieldPath' [fn]) where
+      -- TODO: off by one?
+      fn = unsafeFieldName $ sformat ("_"%sh) idx
+    origNode :: LocalPackTrans -> OperatorNode
+    origNode (ThroughNode on) = on
+    origNode (AddPack on _ _) = on
+    cg' :: ComputeDag LocalPackTrans StructureEdge
+    cg' = computeGraphMapVerticesI cg f where
+      f on l = case onOp on of
+        NodeLocalStructuredTransform co -> res where
+          singleIndex = length l == 1
+          no' = NodeLocalStructuredTransform (replaceIndices singleIndex co)
+          cni' = (onNodeInfo on) { cniOp = no' }
+          on' = on { onNodeInfo = cni' }
+          res = case l of
+            -- Just one parent -> no need to insert a pack
+            [_] -> ThroughNode on'
+            -- Multiple inputs -> need to insert a pack
+            _ -> AddPack on' packOn ps where
+              ps = onPath . origNode . fst <$> l
+              parentOps = f' <$> l where
+                f' (lpt, e) = (origNode lpt, e)
+              npath = nodePathAppendSuffix (onPath on) "_karps_localpack"
+              packOn' = buildOpNode' localPackBuilder emptyExtra npath parentOps
+              packOn = forceRight packOn'
+        -- Normal node -> let it through
+        _ -> ThroughNode on
+    -- The graph with the updated structured transforms.
+    cgUpdated :: ComputeGraph
+    cgUpdated = computeGraphMapVerticesI cg' f where
+      f lpt _ = origNode lpt
+    extraVertices = concat $ f' <$> graphVertexData cg' where
+      f' (ThroughNode _) = []
+      f' (AddPack _ packOn _) = [nodeAsVertex packOn]
+    -- The edges coming flowing from parents -> local pack
+    extraEdges1 = concat $ f' <$> graphVertexData cg' where
+      f' (ThroughNode _) = []
+      f' (AddPack _ packOn parents) = f'' <$> parents where
+        f'' np = _makeParentEdge np (onPath packOn)
+    -- The edges flowing from pack -> local structure
+    extraEdges2 = concatMap f' (graphVertexData cg') where
+      f' (ThroughNode _) = []
+      f' (AddPack on packOn _) = [_makeParentEdge (onPath packOn) (onPath on)]
+    extraEdges = extraEdges1 ++ extraEdges2
+
+-- WATCH OUT: the flow is fromEdge -> toEdge
+-- It is NOT in dependency
+-- TODO: maybe this should be changed?
+_makeParentEdge :: NodePath -> NodePath -> Edge StructureEdge
+-- IMPORTANT: the edges in the graph are expected to represent dependency ordering, not flow.
+_makeParentEdge npFrom npTo = Edge (parseNodeId npTo) (parseNodeId npFrom) ParentEdge
+
+data LocalPackTrans = ThroughNode OperatorNode | AddPack OperatorNode OperatorNode [NodePath] deriving (Eq, Show)
 
 -- {-| Exposed for debugging -}
 -- updateSourceInfo :: ComputeGraph -> SparkState (Try ComputeGraph)
@@ -156,17 +243,17 @@ instance ToProto PAI.GraphTransformResponse GraphTransformFailure where
 
 instance ToProto PG.Graph ComputeGraph where
   toProto cg = (def :: PG.Graph) & PG.nodes .~ l where
-    f :: OperatorNode -> [((OperatorNode, PG.Node), StructureEdge)] -> Identity (OperatorNode, PG.Node)
-    f on l' = pure (on, (def :: PG.Node)
-              & PG.locality .~ localityToProto (onLocality on)
-              & PG.path .~ toProto (onPath on)
-              & PG.opName .~ simpleShowOp (onOp on)
-              & PG.opExtra .~ toProto (extraNodeOpData (onOp on))
-              & PG.parents .~ lparents
-              & PG.logicalDependencies .~ ldeps
-              & PG.inferedType .~ toProto (onType on)) where
-                f' edgeType = toProto . onPath . fst . fst <$> filter ((edgeType ==) . snd) l'
-                lparents = f' ParentEdge
-                ldeps = f' LogicalEdge
-    nodes = runIdentity $ computeGraphMapVertices cg f
+    f :: OperatorNode -> [((OperatorNode, PG.Node), StructureEdge)] -> (OperatorNode, PG.Node)
+    f on l' = (on, (def :: PG.Node)
+                & PG.locality .~ localityToProto (onLocality on)
+                & PG.path .~ toProto (onPath on)
+                & PG.opName .~ simpleShowOp (onOp on)
+                & PG.opExtra .~ toProto (extraNodeOpData (onOp on))
+                & PG.parents .~ lparents
+                & PG.logicalDependencies .~ ldeps
+                & PG.inferedType .~ toProto (onType on)) where
+                  f' edgeType = toProto . onPath . fst . fst <$> filter ((edgeType ==) . snd) l'
+                  lparents = f' ParentEdge
+                  ldeps = f' LogicalEdge
+    nodes = computeGraphMapVerticesI cg f
     l = snd <$> graphVertexData nodes

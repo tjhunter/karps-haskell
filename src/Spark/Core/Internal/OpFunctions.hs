@@ -68,7 +68,7 @@ nameLocalLiteral :: T.Text
 nameLocalLiteral = "org.spark.LocalLiteral"
 
 nameStructuredTransform :: T.Text
-nameStructuredTransform = "org.spark.Select"
+nameStructuredTransform = "org.spark.StructuredTransform"
 
 nameLocalStructuredTransform :: T.Text
 nameLocalStructuredTransform = "org.spark.LocalStructuredTransform"
@@ -122,8 +122,9 @@ prettyShowOp = simpleShowOp
 
 -- A human-readable string that represents column operations.
 prettyShowColOp :: ColOp -> T.Text
+prettyShowColOp (ColBroadcast idx) = T.pack $ "BROADCAST(" ++ show idx ++ ")"
 prettyShowColOp (ColExtraction fpath) = T.pack (show fpath)
-prettyShowColOp (ColFunction txt cols) =
+prettyShowColOp (ColFunction txt cols _) =
   prettyShowColFun txt (V.toList (prettyShowColOp <$> cols))
 prettyShowColOp (ColLit _ cell) = show' cell
 prettyShowColOp (ColStruct s) =
