@@ -153,19 +153,31 @@ colTypeStructured reg (ColStruct v) dt l = do
 
 {-| Given the datatype of a column, infers the type of the output Observable through
 a structured aggregation. -}
-aggTypeStructured :: StructuredBuilderRegistry -> AggOp -> DataType -> Try DataType
-aggTypeStructured _ AggUdaf {} _ =
+aggTypeStructured ::
+  StructuredBuilderRegistry -> -- The registry
+  DataType -> -- The datatype of the input
+  AggOp -> -- The operation to perform
+  Try (AggOp, DataType) -- The updated operation and the datatype of the aggregate.
+aggTypeStructured _ _ AggUdaf {} =
   tryError $ sformat "aggTypeStructured: UDAF not implemented"
-aggTypeStructured reg (AggFunction fname fp) dt = do
+aggTypeStructured reg dt (AggFunction fname fp _) = do
   dt' <- _extraction' fp dt
   fun <- case reg `registrySqlAgg` fname of
     Just fun' -> pure fun'
     Nothing -> tryError $ sformat ("Cannot find SQL aggregation function "%sh%" in registry") fname
   -- TODO: it currently drops the semi group information
-  fst <$> fun dt'
-aggTypeStructured reg (AggStruct v) dt = StrictType . Struct . StructType <$> l where
-  f (AggField n val) = StructField n <$> aggTypeStructured reg val dt
-  l = sequence (f <$> v)
+  resDt <- fst <$> fun dt'
+  return (AggFunction fname fp (Just resDt), resDt)
+aggTypeStructured reg dt (AggStruct v) =
+  do
+    l <- sequence (convertFields <$> v)
+    return (aggStruct l, typeStruct l)
+  where
+     convertFields (AggField n val) = (n, ) <$> aggTypeStructured reg dt val
+     aggStruct l = AggStruct $ f <$> l where
+       f (n, (ao, _)) = AggField n ao
+     typeStruct l = StrictType . Struct . StructType $ f <$> l where
+       f (n, (_, dt')) = StructField n dt'
 
 checkNumber :: DataType -> Try ()
 checkNumber dt =

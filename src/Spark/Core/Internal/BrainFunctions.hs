@@ -111,6 +111,7 @@ removeObservableBroadcasts cg = do
     -- input.
     cg2 <- tryEither $ graphAdd cgUpdated extraVertices extraEdges
     -- TODO prune the edges that we have not removed.
+    -- FIXME somehow there is no need to remove these edges??? must be a bug.
     return cg2
   where
     -- Replaces broadcast indices by reference to a tuple field.
@@ -125,8 +126,8 @@ removeObservableBroadcasts cg = do
       -- TODO: check idx == 0
       ColExtraction emptyFieldPath
     replaceIndices False (ColBroadcast idx) = ColExtraction (fieldPath' [fn]) where
-      -- TODO: off by one?
-      fn = unsafeFieldName $ sformat ("_"%sh) idx
+      -- Do not forget that indexing for tuples and spark starts at 1.
+      fn = unsafeFieldName $ sformat ("_"%sh) (idx + 1)
     origNode :: LocalPackTrans -> OperatorNode
     origNode (ThroughNode on) = on
     origNode (AddPack on _ _) = on

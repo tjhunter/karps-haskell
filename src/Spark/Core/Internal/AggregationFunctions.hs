@@ -94,5 +94,5 @@ _applyAgg b ds = do
   let f = asbBuilder b
   (dt', _) <- f (unSQLType . nodeType $ ds)
   let no = NodeReduction ao where
-        ao = AggFunction (asbName b) emptyFieldPath
+        ao = AggFunction (asbName b) emptyFieldPath (Just dt')
   return $ emptyLocalData no (SQLType dt') `parents` [untyped ds]

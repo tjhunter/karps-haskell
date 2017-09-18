@@ -57,9 +57,9 @@ shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (s @ Shuffle{}) ->
   -- Get the type after the grouping.
   agg <- extractMaybe s PS.maybe'aggOp "agg_op"
   ao <- fromProto agg
-  aggDt <- aggTypeStructured reg ao dt'
+  (ao', aggDt) <- aggTypeStructured reg dt' ao
   resDt <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("group", aggDt)]
-  return $ coreNodeInfo resDt Distributed (NodeGroupedReduction ao)
+  return $ coreNodeInfo resDt Distributed (NodeGroupedReduction ao')
 
 {-| The low-level dataset -> dataset structured transform builder.
 
@@ -99,8 +99,8 @@ reduceBuilder :: StructuredBuilderRegistry -> NodeBuilder
 reduceBuilder reg = buildOpDExtra nameReduction $ \dt (src @ StructuredReduce {}) -> do
   agg <- extractMaybe src PS.maybe'aggOp "agg_op"
   ao <- fromProto agg
-  resDt <- aggTypeStructured reg ao dt
-  return $ coreNodeInfo resDt Local (NodeReduction ao)
+  (ao', resDt) <- aggTypeStructured reg dt ao
+  return $ coreNodeInfo resDt Local (NodeReduction ao')
 
 {-| The functional shuffle builder.
 

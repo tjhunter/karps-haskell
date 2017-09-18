@@ -224,8 +224,11 @@ data AggOp =
     -- The name of the UDAF and the field path to apply it onto.
     AggUdaf !UdafApplication !UdafClassName !FieldPath
     -- A column function that can be applied (sum, max, etc.)
-    -- TODO add the expected return type, it helps a lot on the spark side.
-  | AggFunction !SqlFunctionName !FieldPath
+    -- It also contains the return type that should be expected by the runtime.
+    -- Spark has a tendency to forget about nullability. Also, this is convenient
+    -- for types that are not supported and need to be coerced such as Long or
+    -- big decimal.
+  | AggFunction !SqlFunctionName !FieldPath !(Maybe DataType)
   | AggStruct !(Vector AggField)
   deriving (Eq, Show)
 
@@ -337,18 +340,20 @@ data NodeOp =
   | NodeBroadcastJoin
     -- | Some aggregator that does not respect any particular invariant.
   | NodeOpaqueAggregator StandardOperator
+    -- The shuffle, or keyed reduction.
     -- It implicicty expects a dataframe with 2 fields:
     --  - the first field is used as a key
     --  - the second field is passed to the reducer
   | NodeGroupedReduction !AggOp
+    -- The structured reduction.
   | NodeReduction !AggOp
     -- TODO: remove these
     -- | A universal aggregator.
   -- | NodeAggregatorReduction UniversalAggregatorOp
   | NodeAggregatorLocalReduction UniversalAggregatorOp
-    -- | A structured transform, performed either on a local node or a
-    -- distributed node.
+    -- | A structured transform, performed on a distributed node.
   | NodeStructuredTransform !ColOp
+    -- A structured transform, performed on an observable.
   | NodeLocalStructuredTransform !ColOp
     -- | A distributed dataset (with no partition information)
   | NodeDistributedLit !DataType !(Vector Cell)
@@ -414,11 +419,14 @@ instance FromProto PST.Aggregation AggOp where
 
 instance ToProto PST.Aggregation AggOp where
   toProto AggUdaf{} = error "_aggOpToProto: not implemented: AggUdaf"
-  toProto (AggFunction sfn v) =
-    (def :: PST.Aggregation) & PST.op .~ x where
+  toProto (AggFunction sfn v tp) =
+    (def :: PST.Aggregation) & PST.op .~ x' where
       x = (def :: PST.AggregationFunction)
           & PST.functionName .~ sfn
           & PST.inputs .~ [fieldPathToProto v]
+      x' = case tp of
+        Just dt -> x & PST.expectedType .~ toProto dt
+        Nothing -> x
   toProto (AggStruct v) =
     (def :: PST.Aggregation) & PST.struct .~ x where
       f :: AggField -> PST.Aggregation
@@ -473,7 +481,7 @@ _aggOpFromProto a =  (f, y) where
 _aggFunFromProto :: PST.AggregationFunction -> Try AggOp
 -- We drop the expected type provided by the proto, this is recomputed internally.
 _aggFunFromProto (PST.AggregationFunction sfn [fpp] _) =
-  pure $ AggFunction sfn (fieldPathFromProto fpp)
+  pure $ AggFunction sfn (fieldPathFromProto fpp) Nothing
 _aggFunFromProto x = tryError $ sformat ("_aggFunFromProto: deserialization failed on "%sh) x
 
 _aggStructFromProto :: PST.AggregationStructure -> Try AggOp

@@ -143,7 +143,7 @@ _jsonShowSGO (ColumnSemiGroupLaw sfn) = sfn
 
 _prettyShowAggOp :: AggOp -> T.Text
 _prettyShowAggOp (AggUdaf _ ucn fp) = ucn <> "(" <> show' fp <> ")"
-_prettyShowAggOp (AggFunction sfn v) = prettyShowColFun sfn r where
+_prettyShowAggOp (AggFunction sfn v _) = prettyShowColFun sfn r where
   r = [show' v]
 _prettyShowAggOp (AggStruct v) =
   "struct(" <> T.intercalate "," (_prettyShowAggOp . afValue <$> V.toList v) <> ")"
@@ -168,15 +168,14 @@ extraNodeOpData (NodeLocalLit dt cell) = convertToExtra . forceRight $ cellWithT
 extraNodeOpData (NodeStructuredTransform st) =
   convertToExtra (PS.StructuredTransform (Just (toProto st)))
 extraNodeOpData (NodeLocalStructuredTransform st) =
-  -- TODO: there should be a separate proto for the local structure
-  convertToExtra (PS.StructuredTransform (Just (toProto st)))
+  convertToExtra (PS.LocalStructuredTransform (Just (toProto st)))
 extraNodeOpData (NodeDistributedLit dt v) =
   convertToExtra . forceRight $ cellWithTypeToProto dt' l' where
     dt' = arrayType' dt
     l' = rowArray (V.toList v)
 extraNodeOpData (NodeDistributedOp so) = soExtra so
 extraNodeOpData (NodeGroupedReduction ao) =
-  convertToExtra (PS.StructuredReduce (Just (toProto ao)))
+  convertToExtra (PS.Shuffle (Just (toProto ao)))
 extraNodeOpData (NodeOpaqueAggregator so) = soExtra so
 extraNodeOpData (NodeLocalOp so) = soExtra so
 extraNodeOpData NodeBroadcastJoin = emptyExtra
