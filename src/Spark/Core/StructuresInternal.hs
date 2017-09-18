@@ -23,7 +23,8 @@ module Spark.Core.StructuresInternal(
   prettyNodePath,
   fieldPathToProto,
   fieldPathFromProto,
-  nodePathAppendSuffix
+  nodePathAppendSuffix,
+  emptyNodeId
 ) where
 
 import qualified Data.Text as T
@@ -70,6 +71,8 @@ data ComputationID = ComputationID {
   unComputationID :: !T.Text
 } deriving (Eq, Show, Generic)
 
+emptyNodeId :: NodeId
+emptyNodeId = NodeId "NOID"
 
 -- | A safe constructor for field names that fixes all the issues relevant to
 -- SQL escaping
@@ -121,11 +124,12 @@ prettyNodePath :: NodePath -> T.Text
 prettyNodePath np = "/" <> catNodePath np
 
 instance Show NodeId where
-  show (NodeId bs) = let s = show bs in
-    if length s > 9 then
-      (drop 1 . take 6) s ++ ".."
-    else
-      s
+  show (NodeId bs) = s' where
+    s = show bs
+    n = 10
+    s' = if length s > n
+      then (drop 1 . take (n - 3)) s ++ ".."
+      else s
 
 instance Show NodeName where
   show (NodeName nn) = T.unpack nn

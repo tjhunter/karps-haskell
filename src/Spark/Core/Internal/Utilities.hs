@@ -37,7 +37,7 @@ import Data.Text(Text)
 import Data.Maybe(mapMaybe)
 import Formatting
 import Debug.Trace(trace)
-import Data.Monoid((<>))
+import Data.Semigroup((<>))
 import  Data.List.NonEmpty( NonEmpty( (:|) ) )
 import GHC.Stack(HasCallStack)
 
@@ -62,11 +62,12 @@ myGroupBy' f l = l4 where
   l4 = sortBy (compare `on` fst) l3
 
 -- | group by
--- TODO: have a non-empty list instead
+-- This implementation is not great, but it should respect the general contract.
 myGroupBy :: (Ord a) => [(a, b)] -> M.Map a (NonEmpty b)
-myGroupBy l = let
-  l2 = myGroupBy' fst l in
-  M.map (snd <$>) $ M.fromList l2
+myGroupBy l = foldl' f M.empty l' where
+  f = M.unionWith (<>)
+  l' = g <$> l where
+    g (a, b) = M.singleton a (b :| [])
 
 
 error' :: (HasCallStack) => Text -> a

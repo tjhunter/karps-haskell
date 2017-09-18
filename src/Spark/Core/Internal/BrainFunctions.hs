@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-} -- not sure if this is a good idea.
 
@@ -15,8 +16,10 @@ module Spark.Core.Internal.BrainFunctions(
 import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
 import qualified Data.Text as T
+import qualified Data.Vector as V
 import Data.Map.Strict(Map)
 import Data.Text(Text)
+import Data.List(elemIndex)
 import Data.Maybe(catMaybes)
 import Data.Default
 import Formatting
@@ -27,9 +30,9 @@ import Data.Functor.Identity(runIdentity, Identity)
 import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
-import Spark.Core.Internal.ComputeDag(ComputeDag, computeGraphMapVerticesI, graphVertexData, graphAdd)
+import Spark.Core.Internal.ComputeDag(ComputeDag(..), computeGraphMapVerticesI, computeGraphMapVertices, graphVertexData, graphAdd, reverseGraph)
 import Spark.Core.Internal.DatasetStd(localityToProto)
-import Spark.Core.Internal.DAGStructures(Edge(..))
+import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions(buildOpNode')
 import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
 import Spark.Core.Internal.OpStructures
@@ -37,7 +40,8 @@ import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(..)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
 import Spark.Core.Internal.Display(displayGraph)
 import Spark.Core.InternalStd.Observable(localPackBuilder)
-import Spark.Core.StructuresInternal(nodePathAppendSuffix, emptyFieldPath, fieldPath', unsafeFieldName)
+import Spark.Core.Internal.TypesFunctions(structTypeTuple')
+import Spark.Core.StructuresInternal(nodePathAppendSuffix, emptyFieldPath, fieldPath', unsafeFieldName, emptyNodeId)
 import Spark.Core.Try
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Graph as PG
@@ -63,7 +67,8 @@ performTransform conf cache resources = _transform phases where
   _m f x = if f conf then Just x else Nothing
   phases = catMaybes [
     _m ccUseNodePruning (PAI.REMOVE_UNREACHABLE, transPruneGraph),
-    pure (PAI.REMOVE_OBSERVABLE_BROADCASTS, removeObservableBroadcasts),
+    pure (PAI.MERGE_AGGREGATIONS, mergeStructuredAggregators),
+    -- pure (PAI.REMOVE_OBSERVABLE_BROADCASTS, removeObservableBroadcasts),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
     pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache),
@@ -99,7 +104,82 @@ transFillAutoCache :: ComputeGraph -> Try ComputeGraph
 transFillAutoCache = pure
 
 mergeStructuredAggregators :: ComputeGraph -> Try ComputeGraph
-mergeStructuredAggregators = pure
+mergeStructuredAggregators cg = do
+    cg1 <- cg1t
+    let cg2 = computeGraphMapVerticesI cg1 $ \mat _ -> opNode mat
+    cg3 <- tryEither $ graphAdd cg2 (extraVxs cg1) (extraEdges1 cg1 ++ extraEdges2 cg1)
+    return cg3
+  where
+    -- The reverse graph
+    rcg = _traceGraph ("mergeStructuredAggregators rcg=\n") $ reverseGraph (_traceGraph ("mergeStructuredAggregators cg=\n") cg)
+    -- From the descendants, the list of nodes that are aggregators.
+    childAggs :: [(MergeAggTrans, StructureEdge)] -> [(OperatorNode, AggOp)]
+    childAggs [] = []
+    childAggs ((MATAgg on ao, ParentEdge):t) = (on, ao) : childAggs t
+    childAggs (_:t) = childAggs t
+    -- This graph indicates which nodes are merging material.
+    rcg0 = computeGraphMapVerticesI rcg f where
+      f on l = case (onOp on, traceHint ("childAggs: \non="<>show' on<>" \nl="<>show' l<>" \nres=") $ childAggs l) of
+        (NodeReduction ao, _) -> MATAgg on ao
+        (_, []) -> MATNormal on -- A regular node, no special aggregation
+        (_, [_]) -> MATNormal on -- A node that get aggregated by a single op, nothing to do.
+        (_, x : t) -> -- A node that gets aggregated more than once -> transform.
+          MATMulti on aggOn childPaths where
+            aggs = x : t
+            aggs' = x :| t
+            childPaths = onPath . fst <$> aggs
+            childDts = onType . fst <$> aggs'
+            -- Build the combined structured aggregate.
+            aos = snd <$> aggs
+            fnames = f' <$> zip [(1::Int)..] aos where
+              f' (idx, _) = unsafeFieldName (sformat ("_"%sh) idx)
+            ao = AggStruct . V.fromList $ uncurry AggField <$> zip fnames aos
+            dt = structTypeTuple' childDts
+            npath = nodePathAppendSuffix (onPath on) "_karps_merged_agg"
+            cni = coreNodeInfo dt Local (NodeReduction ao)
+            aggOn = OperatorNode emptyNodeId npath cni
+    -- Reverse the graph again and this time replace the mergeable aggregators
+    -- by the identity nodes.
+    g1 = traceHint ("mergeStructuredAggregators: g1=") $ reverseGraph rcg0
+    opNode :: MergeAggTrans -> OperatorNode
+    opNode (MATNormal on) = on
+    opNode (MATAgg on _) = on
+    opNode (MATMulti on _ _) = on
+    -- This will be a compute graph. This is the base graph before adding
+    -- the extra nodes and vertices.
+    cg1t = computeGraphMapVertices g1 f' where
+      f' (x @ MATNormal {}) _ = pure x
+      f' (x @ MATMulti {}) _ = pure x
+      f' (MATAgg on aggOn) l = case _parentNodes l of
+        [MATMulti _ _ paths] -> do
+            -- Find the index of this node into the paths.
+            idx <- tryMaybe (elemIndex (onPath on) paths) "mergeStructuredAggregators: Could not find element"
+            -- Account for the 1-based indexing for the fields.
+            let co = _extractFromTuple (idx + 1)
+            let cni' = coreNodeInfo (onType on) Local (NodeLocalStructuredTransform co)
+            let on' = on { onNodeInfo = cni' }
+            return $ MATAgg on' aggOn
+        l' ->
+          -- This is a programming error
+          tryError $ sformat ("Expected a single MATMulti node but got "%sh%". This happend whil processing node MatAGG"%sh) (l', l) (on, aggOn)
+    -- The extra vertices.
+    extraVxs cg' = concatMap f' (graphVertexData cg') where
+      f' (MATMulti _ aggOn _) = [nodeAsVertex aggOn]
+      f' _ = []
+    -- The new edges between the dataset and the composite aggregator
+    extraEdges1 cg' = concatMap f' (graphVertexData cg') where
+      f' (MATMulti on aggOn _) = [_makeParentEdge (onPath on) (onPath aggOn)]
+      f' _ = []
+    extraEdges2 cg' = concatMap f' (graphVertexData cg') where
+      f' (MATMulti _ aggOn ps) = _makeParentEdge (onPath aggOn) <$> ps
+      f' _ = []
+
+
+data MergeAggTrans =
+    MATNormal OperatorNode -- A normal node
+  | MATAgg OperatorNode AggOp -- A node that contains a structured aggregation.
+  | MATMulti OperatorNode OperatorNode [NodePath] -- A node that fans out in multiple aggregations
+  deriving (Show)
 
 {-| For local transforms, removes the broadcasting references by either
 directly pointing to the single input, or packing the inputs and then
@@ -125,9 +205,7 @@ removeObservableBroadcasts cg = do
     replaceIndices True (ColBroadcast _) =
       -- TODO: check idx == 0
       ColExtraction emptyFieldPath
-    replaceIndices False (ColBroadcast idx) = ColExtraction (fieldPath' [fn]) where
-      -- Do not forget that indexing for tuples and spark starts at 1.
-      fn = unsafeFieldName $ sformat ("_"%sh) (idx + 1)
+    replaceIndices False (ColBroadcast idx) = _extractFromTuple (idx + 1)
     origNode :: LocalPackTrans -> OperatorNode
     origNode (ThroughNode on) = on
     origNode (AddPack on _ _) = on
@@ -177,7 +255,28 @@ _makeParentEdge :: NodePath -> NodePath -> Edge StructureEdge
 -- IMPORTANT: the edges in the graph are expected to represent dependency ordering, not flow.
 _makeParentEdge npFrom npTo = Edge (parseNodeId npTo) (parseNodeId npFrom) ParentEdge
 
+_parentNodes :: [(v, StructureEdge)] -> [v]
+_parentNodes [] = []
+_parentNodes ((v, ParentEdge):t) = v : _parentNodes t
+_parentNodes (_ : t) = _parentNodes t
+
 data LocalPackTrans = ThroughNode OperatorNode | AddPack OperatorNode OperatorNode [NodePath] deriving (Eq, Show)
+
+{-| Builds an extractor from a tuple, given the index of the field of the tuple.
+Does NOT do off-by-1 corrections. -}
+_extractFromTuple :: Int -> ColOp
+_extractFromTuple idx = ColExtraction . fieldPath' . (:[]) . unsafeFieldName $ sformat ("_"%sh) idx
+
+_traceGraph :: forall v e. (Show v, Show e) => T.Text -> ComputeDag v e -> ComputeDag v e
+_traceGraph txt cg = traceHint (txt <> txt') cg where
+  txt1 = V.foldl (<>) "" $ f <$> cdVertices cg where
+    f v = "vertex: " <> show' v <> "\n"
+  txt2 = foldl (<>) "" $ f <$> (M.toList (cdEdges cg)) where
+    f :: (VertexId, (V.Vector (VertexEdge e v))) -> T.Text
+    f (k, v) = "edge group: " <> show' k <> " -> " <> V.foldl (<>) "" (f' <$> v) <> "\n" where
+        f' :: VertexEdge e v -> T.Text
+        f' (VertexEdge (Vertex vid _) (Edge fromId toId x)) = "(" <> show' fromId <> "->"<>show' x<>"->"<>show' toId<>":"<>show' vid<>"), "
+  txt' = txt1 <> txt2
 
 -- {-| Exposed for debugging -}
 -- updateSourceInfo :: ComputeGraph -> SparkState (Try ComputeGraph)

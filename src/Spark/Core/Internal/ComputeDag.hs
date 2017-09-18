@@ -21,7 +21,8 @@ module Spark.Core.Internal.ComputeDag(
   computeGraphMapVertices,
   computeGraphMapVerticesI,
   graphAdd,
-  graphFilterEdges
+  graphFilterEdges,
+  reverseGraph
 ) where
 
 import Data.Foldable(toList)
@@ -69,6 +70,15 @@ computeGraphToGraph :: ComputeDag v e -> Graph v e
 computeGraphToGraph cg =
   Graph (cdEdges cg) (cdVertices cg)
 
+reverseGraph :: (Show e, Show v) => ComputeDag v e -> ComputeDag v e
+reverseGraph cg =
+  cg {
+    cdEdges = gEdges g',
+    cdVertices = gVertices g',
+    cdInputs = cdOutputs cg,
+    cdOutputs = cdInputs cg
+  } where g' = DAG.reverseGraph (computeGraphToGraph cg)
+
 -- | Conversion
 graphToComputeGraph :: Graph v e -> ComputeDag v e
 graphToComputeGraph g =
@@ -101,7 +111,7 @@ buildCGraph n = graphToComputeGraph <$> DAG.buildGraph n
 graphVertexData :: ComputeDag v e -> [v]
 graphVertexData cg = vertexData <$> V.toList (cdVertices cg)
 
-graphAdd :: forall v e. (HasCallStack, Show v) =>
+graphAdd :: forall v e. (HasCallStack, Show e, Show v) =>
   ComputeDag v e -> -- The start graph
   [Vertex v] -> -- The vertices to add
   [Edge e] -> -- The edges to add
@@ -115,7 +125,7 @@ graphAdd cg vxs eds = do
     }
 
 
-graphFilterEdges :: (HasCallStack, Show v) =>
+graphFilterEdges :: (HasCallStack, Show e, Show v) =>
   ComputeDag v e -> -- The start DAG
   (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
   ComputeDag v e
@@ -129,7 +139,7 @@ graphFilterEdges cg f = cg {
 
 If it succeeds, the graph is correct.
 -}
-buildCGraphFromList :: forall v e. (Show v) =>
+buildCGraphFromList :: forall v e. (Show e, Show v) =>
   [Vertex v] -> -- The vertices
   [Edge e] -> -- The edges
   [VertexId] -> -- The ids of the inputs

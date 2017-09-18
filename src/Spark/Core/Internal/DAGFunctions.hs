@@ -114,9 +114,50 @@ be in topological order.
 
 All the vertices referred by edges must be present in the list of vertices.
 -}
-buildGraphFromList :: forall v e. (Show v) =>
+buildGraphFromList :: forall v e. (Show e, Show v) =>
   [Vertex v] -> [Edge e] -> DagTry (Graph v e)
-buildGraphFromList vxs eds = do
+-- TODO: there is a bug in this function
+buildGraphFromList vxs eds' = do
+  let eds = traceHint ("\nbuildGraphFromList: eds=") <$> eds'
+  -- 1. Group the edges by start point
+  -- 2. Find the lexicgraphic order (if possible)
+  vxById <- _vertexById vxs
+  -- The topological information
+  let edTopo' = M.map N.toList $ myGroupBy $ (edgeFrom &&& edgeTo) <$> eds
+  let edTopo = traceHint ("\nbuildGraphFromList: edTopo=") edTopo'
+  let vertexById :: VertexId -> DagTry (Vertex v)
+      vertexById vid = case M.lookup vid vxById of
+        Nothing -> throwError $ sformat ("buildGraphFromList: vertex id found in edge but not in vertices: "%sh) vid
+        Just vx -> pure vx
+  let f :: Vertex v -> DagTry (Vertex v, [Vertex v])
+      f vx =
+        let links = M.findWithDefault [] (vertexId vx) edTopo
+        in sequence (vertexById <$> links) <&> \l -> (vx, l)
+  verticesWithEnds <- sequence $ f <$> vxs
+  let indexedVertices' = zip [1..] verticesWithEnds <&> \(idx, (vx, l)) -> (idx, vx, l)
+  let indexedVertices = traceHint "\nnbuildGraphFromList: indexedVertices=" <$> indexedVertices'
+  -- The nodes in lexicographic order.
+  lexico' <- _lexicographic vertexId indexedVertices
+  let lexico = traceHint ("\nbuildGraphFromList: lexico=") <$> lexico'
+  -- Build the edge map:
+  -- vertexFromId -> vertexEdge
+  let vertexEdge :: Edge e -> DagTry (VertexId, VertexEdge e v)
+      vertexEdge e = do
+        vxTo <- vertexById (edgeTo e)
+        -- Used to confirm that the start vertex is here
+        _ <- vertexById (edgeFrom e)
+        return (edgeFrom e, VertexEdge vxTo e)
+  vEdges' <- sequence $ vertexEdge <$> eds
+  let vEdges = _t1 <$> vEdges'
+  let edgeMap = M.map (V.fromList . N.toList) (myGroupBy vEdges)
+  return $ Graph edgeMap (V.fromList lexico)
+
+_t1 (x @ (_, VertexEdge _ (Edge fromId toId _))) = traceHint ("buildGraphFromList: vEdge=" <> show' fromId <> " -> " <> show' toId <> "\n") x
+
+buildGraphFromList0 :: forall v e. (Show v) =>
+  [Vertex v] -> [Edge e] -> DagTry (Graph v e)
+-- TODO: there is a bug in this function
+buildGraphFromList0 vxs eds = do
   -- 1. Group the edges by start point
   -- 2. Find the lexicgraphic order (if possible)
   vxById <- _vertexById vxs
@@ -234,25 +275,13 @@ graphSinks g =
   in filter f (toList (gVertices g))
 
 -- | Flips the edges of this graph (it is also a DAG)
-reverseGraph :: forall v e. Graph v e -> Graph v e
-reverseGraph g =
-  let
-    vxMap = M.fromList ((vertexId &&& id) <$> toList (gVertices g))
-    flipVEdge :: (VertexId, V.Vector (VertexEdge e v)) -> [(VertexId, VertexEdge e v)]
-    flipVEdge (fromNid, vec) = case M.lookup fromNid vxMap of
-      Nothing -> [] -- Should be a programming error
-      Just endVx ->
-        toList vec <&> \ve ->
-          let ed = veEdge ve
-              oldEndVx = veEndVertex ve
-              oldEndVid = vertexId oldEndVx
-              ed' = Edge {
-                edgeFrom = oldEndVid,
-                edgeTo = fromNid,
-                edgeData = edgeData ed }
-          in (oldEndVid, VertexEdge { veEdge = ed', veEndVertex = endVx })
-    edges = M.map N.toList $ myGroupBy $ concat $ flipVEdge <$> M.toList (gEdges g)
-  in Graph (V.fromList <$> edges) (V.reverse (gVertices g))
+reverseGraph :: forall v e. (Show e, Show v) => Graph v e -> Graph v e
+-- For safety, fully rebuild the graph from scratch.
+reverseGraph g = forceRight . tryEither $ buildGraphFromList vxs eds where
+  vxs = V.toList (gVertices g)
+  ves = concat $ V.toList <$> M.elems (gEdges g)
+  eds = f . veEdge <$> ves where
+    f (Edge from to x) = Edge to from x
 
 -- | A generic transform over the graph that may account for potential failures
 -- in the process.
@@ -316,7 +345,7 @@ Here are the rules:
 
 No cycle are allowed.
 -}
-graphAdd :: forall v e. (HasCallStack, Show v) =>
+graphAdd :: forall v e. (HasCallStack, Show e, Show v) =>
   Graph v e -> -- The start graph
   [Vertex v] -> -- The vertices to add
   [Edge e] -> -- The edges to add
@@ -337,7 +366,7 @@ graphAdd g vs es =
 destination vertices too.
 
 -}
-graphFilterEdges :: forall v e. (HasCallStack, Show v) =>
+graphFilterEdges :: forall v e. (HasCallStack, Show e, Show v) =>
   Graph v e -> -- The start DAG
   (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
   Graph v e
