@@ -9,7 +9,9 @@ The difference with a generic DAG lies in the tables of inputs and outputs
 of the graph, which express the idea of inputs and outputs.
 -}
 module Spark.Core.Internal.ComputeDag(
-  ComputeDag(..),
+  ComputeDag(cdInputs, cdOutputs),
+  cdEdges,
+  cdVertices,
   computeGraphToGraph,
   graphToComputeGraph,
   graphVertexData,
@@ -51,11 +53,12 @@ graph.
 -}
 -- TODO: hide the constructor
 data ComputeDag v e = ComputeDag {
-  -- The edges that make up the DAG
-  cdEdges :: !(AdjacencyMap v e),
-  -- All the vertices of the graph
-  -- Sorted by lexicographic order + node id for uniqueness
-  cdVertices :: !(Vector (Vertex v)),
+  _cdGraph :: !(Graph v e),
+  -- -- The edges that make up the DAG
+  -- cdEdges :: !(AdjacencyMap v e),
+  -- -- All the vertices of the graph
+  -- -- Sorted by lexicographic order + node id for uniqueness
+  -- cdVertices :: !(Vector (Vertex v)),
   -- The inputs of the computation graph. These correspond to the
   -- sinks of the dependency graph.
   cdInputs :: !(Vector (Vertex v)),
@@ -64,75 +67,75 @@ data ComputeDag v e = ComputeDag {
   cdOutputs :: !(Vector (Vertex v))
 } deriving (Show)
 
+cdEdges :: ComputeDag v e -> AdjacencyMap v e
+cdEdges = gEdges . _cdGraph
+
+cdVertices :: ComputeDag v e -> (Vector (Vertex v))
+cdVertices = gVertices . _cdGraph
 
 -- | Conversion
 computeGraphToGraph :: ComputeDag v e -> Graph v e
-computeGraphToGraph cg =
-  Graph (cdEdges cg) (cdVertices cg)
+computeGraphToGraph = _cdGraph
 
 reverseGraph :: (Show e, Show v) => ComputeDag v e -> ComputeDag v e
 reverseGraph cg =
   cg {
-    cdEdges = gEdges g',
-    cdVertices = gVertices g',
+    _cdGraph = DAG.reverseGraph (computeGraphToGraph cg),
     cdInputs = cdOutputs cg,
     cdOutputs = cdInputs cg
-  } where g' = DAG.reverseGraph (computeGraphToGraph cg)
+  }
 
 -- | Conversion
 graphToComputeGraph :: Graph v e -> ComputeDag v e
 graphToComputeGraph g =
   ComputeDag {
-    cdEdges = gEdges g,
-    cdVertices = gVertices g,
+    _cdGraph = g,
     -- We work on the graph of dependencies (not flows)
     -- The sources correspond to the outputs.
     cdInputs = V.fromList $ DAG.graphSinks g,
     cdOutputs = V.fromList $ DAG.graphSources g
   }
 
-mapVertices :: (Vertex v -> v') -> ComputeDag v e -> ComputeDag v' e
-mapVertices f cd =
-  let f' vx = vx { vertexData = f vx }
-  in ComputeDag {
-      cdEdges = _mapVerticesAdj f (cdEdges cd),
-      cdVertices = f' <$> cdVertices cd,
-      cdInputs = f' <$> cdInputs cd,
-      cdOutputs = f' <$> cdOutputs cd
-    }
+mapVertices :: (Show v', Show v, Show e) => (Vertex v -> v') -> ComputeDag v e -> ComputeDag v' e
+mapVertices f cd = ComputeDag {
+    _cdGraph = g',
+    cdInputs = f' <$> cdInputs cd,
+    cdOutputs = f' <$> cdOutputs cd
+  } where
+    f' vx = vx { vertexData = f vx }
+    g' = DAG.graphMapVertices' f (DAG.completeVertices (_cdGraph cd))
+  -- let
+  -- in ComputeDag {
+  --     cdEdges = _mapVerticesAdj f (cdEdges cd),
+  --     cdVertices = f' <$> cdVertices cd,
+  --   }
 
-mapVertexData :: (v -> v') -> ComputeDag v e -> ComputeDag v' e
+mapVertexData :: (Show v, Show v', Show e) => (v -> v') -> ComputeDag v e -> ComputeDag v' e
 mapVertexData f = mapVertices (f . vertexData)
 
 buildCGraph :: (GraphOperations v e, Show v) =>
-  v -> DAG.DagTry (ComputeDag v e)
+  v -> DagTry (ComputeDag v e)
 buildCGraph n = graphToComputeGraph <$> DAG.buildGraph n
 
 graphVertexData :: ComputeDag v e -> [v]
 graphVertexData cg = vertexData <$> V.toList (cdVertices cg)
 
-graphAdd :: forall v e. (HasCallStack, Show e, Show v) =>
+graphAdd :: forall v e. (Show e, Show v) =>
   ComputeDag v e -> -- The start graph
   [Vertex v] -> -- The vertices to add
   [Edge e] -> -- The edges to add
-  DAG.DagTry (ComputeDag v e)
+  DagTry (ComputeDag v e)
 graphAdd cg vxs eds = do
   g' <- DAG.graphAdd (computeGraphToGraph cg) vxs eds
   -- Do not change the sinks and the sources, they should stay the same.
-  return cg {
-      cdEdges = gEdges g',
-      cdVertices = gVertices g'
-    }
+  return cg { _cdGraph = g' }
 
 
 graphFilterEdges :: (HasCallStack, Show e, Show v) =>
   ComputeDag v e -> -- The start DAG
   (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
   ComputeDag v e
-graphFilterEdges cg f = cg {
-    cdEdges = gEdges g',
-    cdVertices = gVertices g'
-  } where
+graphFilterEdges cg f = cg { _cdGraph = g' } where
     g' = DAG.graphFilterEdges (computeGraphToGraph cg) f
 
 {-| Builds a compute graph from a list of vertex and edge informations.
@@ -144,20 +147,19 @@ buildCGraphFromList :: forall v e. (Show e, Show v) =>
   [Edge e] -> -- The edges
   [VertexId] -> -- The ids of the inputs
   [VertexId] -> -- The ids of the outputs
-  DAG.DagTry (ComputeDag v e)
+  DagTry (ComputeDag v e)
 buildCGraphFromList vxs eds inputs outputs = do
   g <- DAG.buildGraphFromList vxs eds
   -- Try to tie the inputs and outputs to nodes.
   let vertexById = myGroupBy $ (vertexId &&& id) <$> vxs
-  let f :: VertexId -> DAG.DagTry (Vertex v)
+  let f :: VertexId -> DagTry (Vertex v)
       f vid = case M.lookup vid vertexById of
         Just (vx :| _) -> pure vx
         _ -> throwError $ sformat ("buildCGraphFromList: a vertex id:"%sh%" is not part of the graph.") vid
   inputs' <- sequence $ f <$> V.fromList inputs
   outputs' <- sequence $ f <$> V.fromList outputs
   return ComputeDag {
-      cdEdges = gEdges g,
-      cdVertices = gVertices g,
+      _cdGraph = g,
       cdInputs = inputs',
       cdOutputs = outputs'
     }
@@ -179,8 +181,7 @@ computeGraphMapVertices cd fun = do
   inputs <- _getSubsetVertex vxs (vertexId <$> cdInputs cd)
   outputs <- _getSubsetVertex vxs (vertexId <$> cdOutputs cd)
   return ComputeDag {
-    cdEdges = gEdges g',
-    cdVertices = gVertices g',
+    _cdGraph = g',
     cdInputs = inputs,
     cdOutputs = outputs
   }

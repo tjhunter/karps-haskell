@@ -24,7 +24,7 @@ import qualified Proto.Tensorflow.Core.Framework.Graph as PG
 import qualified Proto.Tensorflow.Core.Framework.NodeDef as PN
 import qualified Proto.Tensorflow.Core.Framework.AttrValue as PAV
 import Spark.Core.Internal.ContextStructures(ComputeGraph)
-import Spark.Core.Internal.ComputeDag(computeGraphMapVertices, ComputeDag(cdVertices))
+import Spark.Core.Internal.ComputeDag(computeGraphMapVertices, ComputeDag, cdVertices)
 import Spark.Core.Internal.DAGStructures(Vertex(vertexData))
 import Spark.Core.Internal.OpStructures(OpExtra(opContentDebug))
 import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)

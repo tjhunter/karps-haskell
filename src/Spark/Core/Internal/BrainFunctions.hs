@@ -125,7 +125,7 @@ mergeStructuredAggregators cg = do
       f on l = case (onOp on, traceHint ("childAggs: \non="<>show' on<>" \nl="<>show' l<>" \nres=") $ childAggs l) of
         (NodeReduction ao, _) -> MATAgg on ao
         (_, []) -> MATNormal on -- A regular node, no special aggregation
-        (_, [_]) -> MATNormal on -- A node that get aggregated by a single op, nothing to do.
+        (_, [_]) -> MATSingle on -- A node that get aggregated by a single op, nothing to do.
         (_, x : t) -> -- A node that gets aggregated more than once -> transform.
           MATMulti on aggOn childPaths where
             aggs = x : t
@@ -145,15 +145,20 @@ mergeStructuredAggregators cg = do
     -- by the identity nodes.
     g1 = reverseGraph rcg0
     opNode :: MergeAggTrans -> OperatorNode
+    opNode (MATSingle on) = on
     opNode (MATNormal on) = on
     opNode (MATAgg on _) = on
     opNode (MATMulti on _ _) = on
     -- This will be a compute graph. This is the base graph before adding
     -- the extra nodes and vertices.
     cg1t = computeGraphMapVertices g1 f' where
+      f' (x @ MATSingle {}) _ = pure x
       f' (x @ MATNormal {}) _ = pure x
       f' (x @ MATMulti {}) _ = pure x
-      f' (MATAgg on aggOn) l = case _parentNodes l of
+      f' (x @ (MATAgg on aggOn)) l = case _parentNodes l of
+        -- This node is the unique aggregation, nothing to do.
+        [MATSingle _] -> pure x
+        -- This node is one of multiple other aggregations.
         [MATMulti _ _ paths] -> do
             -- Find the index of this node into the paths.
             idx <- tryMaybe (elemIndex (onPath on) paths) "mergeStructuredAggregators: Could not find element"
@@ -185,6 +190,7 @@ mergeStructuredAggregators cg = do
 data MergeAggTrans =
     MATNormal OperatorNode -- A normal node
   | MATAgg OperatorNode AggOp -- A node that contains a structured aggregation.
+  | MATSingle OperatorNode -- A node that leads to a single aggregation
   | MATMulti OperatorNode OperatorNode [NodePath] -- A node that fans out in multiple aggregations
   deriving (Show)
 

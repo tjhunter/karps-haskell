@@ -207,7 +207,7 @@ _usePathsForIds d =
     l0 <- l
     let m2 = M.fromList l0 :: AdjacencyMap UntypedNode StructureEdge
     vertices <- sequence (replaceVertex <$> gVertices g)
-    let g2 = Graph { gEdges = m2, gVertices = vertices }
+    let g2 = undefined -- Graph { _gEdges = m2, _gVertices = vertices } TODO
     let cg2 = graphToComputeGraph g2
     let cg' = mapVertexData nodeOpNode cg2
     return cg'

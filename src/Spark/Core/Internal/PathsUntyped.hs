@@ -19,8 +19,9 @@ import Control.Arrow((&&&))
 import Formatting
 import Control.Monad.Identity
 
+import qualified Spark.Core.Internal.DAGFunctions as DAG
 import Spark.Core.Internal.DAGStructures
-import Spark.Core.Internal.DAGFunctions
+-- import Spark.Core.Internal.DAGFunctions
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.DatasetFunctions
@@ -82,7 +83,7 @@ tieNodes cd =
                   _cnLogicalDeps = logDeps,
                   _cnLogicalParents = Nothing }
         in return res
-      g2 = runIdentity $ graphMapVertices g f
+      g2 = runIdentity $ DAG.graphMapVertices g f
   in graphToComputeGraph g2
 
 -- Assigns the paths, and drops the scoping edges.
@@ -92,10 +93,11 @@ assignPathsUntyped cd = do
   let pathCGraph = _getPathCDag cd
   paths <- computePaths pathCGraph
   let g = computeGraphToGraph $ assignPaths' paths cd
-  let f ScopeEdge = []
-      f (DataStructureEdge x) = [x]
-  let g' = graphFlatMapEdges g  f
-  return $ graphToComputeGraph g'
+  let f _ ScopeEdge _ = False
+      f _ (DataStructureEdge x) _ = True
+  let g' = DAG.graphFilterEdges g  f
+  undefined -- TODO: should use graphFlatMapEdges with Maybe x
+  -- return $ graphToComputeGraph g'
 
 
 -- transforms node edges into path edges
@@ -124,6 +126,6 @@ _cleanEdges (h : t) =
 
 
 _getPathCDag :: (HasCallStack) => ComputeDag v NodeEdge -> ComputeDag v PathEdge
-_getPathCDag cd =
-  let adj' = M.map (V.fromList . _cleanEdges . toList) (cdEdges cd)
-  in cd { cdEdges = adj' }
+_getPathCDag cd = undefined -- TODO
+  -- let adj' = M.map (V.fromList . _cleanEdges . toList) (cdEdges cd)
+  -- in cd { cdEdges = adj' }
