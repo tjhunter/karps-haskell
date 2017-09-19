@@ -2,6 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-} -- not sure if this is a good idea.
 
 {-| This file is the major entry point for the Karps compiler.
@@ -17,6 +18,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Set as S
 import Data.Map.Strict(Map)
 import Data.Text(Text)
 import Data.List(elemIndex)
@@ -30,7 +32,7 @@ import Data.Functor.Identity(runIdentity, Identity)
 import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
-import Spark.Core.Internal.ComputeDag(ComputeDag(..), computeGraphMapVerticesI, computeGraphMapVertices, graphVertexData, graphAdd, reverseGraph)
+import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DatasetStd(localityToProto)
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions(buildOpNode')
@@ -67,8 +69,8 @@ performTransform conf cache resources = _transform phases where
   _m f x = if f conf then Just x else Nothing
   phases = catMaybes [
     _m ccUseNodePruning (PAI.REMOVE_UNREACHABLE, transPruneGraph),
+    pure (PAI.REMOVE_OBSERVABLE_BROADCASTS, removeObservableBroadcasts),
     pure (PAI.MERGE_AGGREGATIONS, mergeStructuredAggregators),
-    -- pure (PAI.REMOVE_OBSERVABLE_BROADCASTS, removeObservableBroadcasts),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
     pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache),
@@ -108,7 +110,8 @@ mergeStructuredAggregators cg = do
     cg1 <- cg1t
     let cg2 = computeGraphMapVerticesI cg1 $ \mat _ -> opNode mat
     cg3 <- tryEither $ graphAdd cg2 (extraVxs cg1) (extraEdges1 cg1 ++ extraEdges2 cg1)
-    return cg3
+    let cg4 = graphFilterEdges cg3 (edgeFilter cg1)
+    return cg4
   where
     -- The reverse graph
     rcg = _traceGraph ("mergeStructuredAggregators rcg=\n") $ reverseGraph (_traceGraph ("mergeStructuredAggregators cg=\n") cg)
@@ -140,7 +143,7 @@ mergeStructuredAggregators cg = do
             aggOn = OperatorNode emptyNodeId npath cni
     -- Reverse the graph again and this time replace the mergeable aggregators
     -- by the identity nodes.
-    g1 = traceHint ("mergeStructuredAggregators: g1=") $ reverseGraph rcg0
+    g1 = reverseGraph rcg0
     opNode :: MergeAggTrans -> OperatorNode
     opNode (MATNormal on) = on
     opNode (MATAgg on _) = on
@@ -173,7 +176,11 @@ mergeStructuredAggregators cg = do
     extraEdges2 cg' = concatMap f' (graphVertexData cg') where
       f' (MATMulti _ aggOn ps) = _makeParentEdge (onPath aggOn) <$> ps
       f' _ = []
-
+    deletedEdges cg' = S.fromList $ concatMap f' (graphVertexData cg') where
+      f' (MATMulti on _ ps) = (,onPath on) <$> ps
+      f' _ = []
+    edgeFilter cg' onFrom _ onTo =
+      not $ S.member (onPath onFrom, onPath onTo) (deletedEdges cg')
 
 data MergeAggTrans =
     MATNormal OperatorNode -- A normal node
@@ -190,9 +197,8 @@ removeObservableBroadcasts cg = do
     -- Look at nodes that contain observable broadcast and make a map of the
     -- input.
     cg2 <- tryEither $ graphAdd cgUpdated extraVertices extraEdges
-    -- TODO prune the edges that we have not removed.
-    -- FIXME somehow there is no need to remove these edges??? must be a bug.
-    return cg2
+    let cg3 = graphFilterEdges cg2 edgeFilter
+    return cg3
   where
     -- Replaces broadcast indices by reference to a tuple field.
     replaceIndices :: Bool -> ColOp -> ColOp
@@ -247,6 +253,16 @@ removeObservableBroadcasts cg = do
       f' (ThroughNode _) = []
       f' (AddPack on packOn _) = [_makeParentEdge (onPath packOn) (onPath on)]
     extraEdges = extraEdges1 ++ extraEdges2
+    deletedEdges = S.fromList $ concatMap f' (graphVertexData cg') where
+      f' (AddPack on _ ps) = (onPath on,) <$> ps
+      f' _ = []
+    edgeFilter onFrom _ onTo =
+      not $ S.member (onPath onFrom, onPath onTo) deletedEdges
+
+data LocalPackTrans =
+    ThroughNode OperatorNode
+    -- node, local pack node, nodes that get merged.
+  | AddPack OperatorNode OperatorNode [NodePath] deriving (Eq, Show)
 
 -- WATCH OUT: the flow is fromEdge -> toEdge
 -- It is NOT in dependency
@@ -260,7 +276,6 @@ _parentNodes [] = []
 _parentNodes ((v, ParentEdge):t) = v : _parentNodes t
 _parentNodes (_ : t) = _parentNodes t
 
-data LocalPackTrans = ThroughNode OperatorNode | AddPack OperatorNode OperatorNode [NodePath] deriving (Eq, Show)
 
 {-| Builds an extractor from a tuple, given the index of the field of the tuple.
 Does NOT do off-by-1 corrections. -}
