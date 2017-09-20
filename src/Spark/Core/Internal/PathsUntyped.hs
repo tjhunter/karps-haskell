@@ -93,11 +93,10 @@ assignPathsUntyped cd = do
   let pathCGraph = _getPathCDag cd
   paths <- computePaths pathCGraph
   let g = computeGraphToGraph $ assignPaths' paths cd
-  let f _ ScopeEdge _ = False
-      f _ (DataStructureEdge x) _ = True
+  let f _ ScopeEdge _ = Nothing
+      f _ (DataStructureEdge x) _ = Just x
   let g' = DAG.graphFilterEdges g  f
-  undefined -- TODO: should use graphFlatMapEdges with Maybe x
-  -- return $ graphToComputeGraph g'
+  return $ graphToComputeGraph g'
 
 
 -- transforms node edges into path edges
@@ -124,8 +123,33 @@ _cleanEdges (h : t) =
         Nothing -> rest
     in res
 
+-- transforms node edges into path edges
+_cleanEdges' :: (HasCallStack) => [IndexedEdge NodeEdge] -> [IndexedEdge PathEdge]
+_cleanEdges' [] = []
+_cleanEdges' (h : t) =
+  let vid = iedgeTo h
+      others = [ie | ie <- t, (iedgeTo $ ie) /= vid]
+      sames = [ie | ie <- t, (iedgeTo $ ie) == vid]
+      rest = _cleanEdges' others
+      -- If there multiple edges between nodes, they are dropped.
+      -- This distinction is not required for names.
+      eData = nub $ iedgeData <$> (h : sames)
+      eData' = case eData of
+        [DataStructureEdge ParentEdge] -> Just InnerEdge
+        [DataStructureEdge ParentEdge, ScopeEdge] -> Just SameLevelEdge
+        [ScopeEdge, DataStructureEdge ParentEdge] -> Just SameLevelEdge
+        [ScopeEdge] -> Just SameLevelEdge
+        [DataStructureEdge LogicalEdge] -> Nothing
+        l -> failure (sformat ("Could not understand combination "%shown) l)
+      res = case eData' of
+        Just v -> h {iedgeData = v} : rest
+        Nothing -> rest
+    in res
 
-_getPathCDag :: (HasCallStack) => ComputeDag v NodeEdge -> ComputeDag v PathEdge
-_getPathCDag cd = undefined -- TODO
+_getPathCDag :: (HasCallStack, Show v) => ComputeDag v NodeEdge -> ComputeDag v PathEdge
+_getPathCDag cd = forceRight . tryEither $ updateGraph (const g) cd where
+  vxs = V.toList . cdVertices $ cd
+  ies = _cleanEdges' (gIndexedEdges (computeGraphToGraph cd))
+  g =  DAG.buildGraphFromList' vxs ies
   -- let adj' = M.map (V.fromList . _cleanEdges . toList) (cdEdges cd)
   -- in cd { cdEdges = adj' }

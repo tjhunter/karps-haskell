@@ -110,7 +110,7 @@ mergeStructuredAggregators cg = do
     cg1 <- cg1t
     let cg2 = computeGraphMapVerticesI cg1 $ \mat _ -> opNode mat
     cg3 <- tryEither $ graphAdd cg2 (extraVxs cg1) (extraEdges1 cg1 ++ extraEdges2 cg1)
-    let cg4 = graphFilterEdges cg3 (edgeFilter cg1)
+    let cg4 = graphFilterEdges' cg3 (edgeFilter cg1)
     return cg4
   where
     -- The reverse graph
@@ -203,7 +203,7 @@ removeObservableBroadcasts cg = do
     -- Look at nodes that contain observable broadcast and make a map of the
     -- input.
     cg2 <- tryEither $ graphAdd cgUpdated extraVertices extraEdges
-    let cg3 = graphFilterEdges cg2 edgeFilter
+    let cg3 = graphFilterEdges' cg2 edgeFilter
     return cg3
   where
     -- Replaces broadcast indices by reference to a tuple field.

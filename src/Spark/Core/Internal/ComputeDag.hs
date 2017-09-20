@@ -9,9 +9,12 @@ The difference with a generic DAG lies in the tables of inputs and outputs
 of the graph, which express the idea of inputs and outputs.
 -}
 module Spark.Core.Internal.ComputeDag(
+  -- TODO: hide the constructor.
   ComputeDag(cdInputs, cdOutputs),
   cdEdges,
   cdVertices,
+  updateGraph,
+  buildGraphFromList',
   computeGraphToGraph,
   graphToComputeGraph,
   graphVertexData,
@@ -24,6 +27,7 @@ module Spark.Core.Internal.ComputeDag(
   computeGraphMapVerticesI,
   graphAdd,
   graphFilterEdges,
+  graphFilterEdges',
   reverseGraph
 ) where
 
@@ -113,7 +117,15 @@ mapVertices f cd = ComputeDag {
 mapVertexData :: (Show v, Show v', Show e) => (v -> v') -> ComputeDag v e -> ComputeDag v' e
 mapVertexData f = mapVertices (f . vertexData)
 
-buildCGraph :: (GraphOperations v e, Show v) =>
+{-| Updates the inner graph of a compute graph.
+-}
+updateGraph :: (Graph v e -> DagTry (Graph v e')) -> ComputeDag v e -> DagTry (ComputeDag v e')
+updateGraph f cg = do
+  g' <- f (computeGraphToGraph cg)
+  -- TODO: check that the inputs and outputs still make sense.
+  return $ cg { _cdGraph = g' }
+
+buildCGraph :: (GraphOperations v e, Show v, Show e) =>
   v -> DagTry (ComputeDag v e)
 buildCGraph n = graphToComputeGraph <$> DAG.buildGraph n
 
@@ -131,12 +143,43 @@ graphAdd cg vxs eds = do
   return cg { _cdGraph = g' }
 
 
-graphFilterEdges :: (HasCallStack, Show e, Show v) =>
+graphFilterEdges :: (HasCallStack, Show v, Show e') =>
+  ComputeDag v e -> -- The start DAG
+  (v -> e -> v -> Maybe e') -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
+  ComputeDag v e'
+graphFilterEdges cg f = cg { _cdGraph = g' } where
+    g' = DAG.graphFilterEdges (computeGraphToGraph cg) f
+
+graphFilterEdges' :: (HasCallStack, Show v, Show e) =>
   ComputeDag v e -> -- The start DAG
   (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
   ComputeDag v e
-graphFilterEdges cg f = cg { _cdGraph = g' } where
-    g' = DAG.graphFilterEdges (computeGraphToGraph cg) f
+graphFilterEdges' cg f = cg { _cdGraph = g' } where
+    g' = DAG.graphFilterEdges (computeGraphToGraph cg) f' where
+      f' v1 e v2 = if f v1 e v2 then Just e else Nothing
+
+buildGraphFromList' :: forall v e. (Show e, Show v) =>
+  [Vertex v] -> -- The vertices
+  [IndexedEdge e] -> -- The indexed edges
+  [VertexId] -> -- The ids of the inputs
+  [VertexId] -> -- The ids of the outputs
+  DagTry (ComputeDag v e)
+buildGraphFromList' vxs eds inputs outputs = do
+    g <- DAG.buildGraphFromList' vxs eds
+    inputs' <- sequence $ f <$> V.fromList inputs
+    outputs' <- sequence $ f <$> V.fromList outputs
+    return ComputeDag {
+        _cdGraph = g,
+        cdInputs = inputs',
+        cdOutputs = outputs'
+      }
+  where
+    vertexById = myGroupBy $ (vertexId &&& id) <$> vxs
+    f :: VertexId -> DagTry (Vertex v)
+    f vid = case M.lookup vid vertexById of
+      Just (vx :| _) -> pure vx
+      _ -> throwError $ sformat ("buildCGraphFromList': a vertex id:"%sh%" is not part of the graph.") vid
+
 
 {-| Builds a compute graph from a list of vertex and edge informations.
 
@@ -148,21 +191,16 @@ buildCGraphFromList :: forall v e. (Show e, Show v) =>
   [VertexId] -> -- The ids of the inputs
   [VertexId] -> -- The ids of the outputs
   DagTry (ComputeDag v e)
-buildCGraphFromList vxs eds inputs outputs = do
-  g <- DAG.buildGraphFromList vxs eds
-  -- Try to tie the inputs and outputs to nodes.
-  let vertexById = myGroupBy $ (vertexId &&& id) <$> vxs
-  let f :: VertexId -> DagTry (Vertex v)
-      f vid = case M.lookup vid vertexById of
-        Just (vx :| _) -> pure vx
-        _ -> throwError $ sformat ("buildCGraphFromList: a vertex id:"%sh%" is not part of the graph.") vid
-  inputs' <- sequence $ f <$> V.fromList inputs
-  outputs' <- sequence $ f <$> V.fromList outputs
-  return ComputeDag {
-      _cdGraph = g,
-      cdInputs = inputs',
-      cdOutputs = outputs'
-    }
+buildCGraphFromList vxs eds =
+  buildGraphFromList' vxs eds' where
+    f (idx, e) = IndexedEdge {
+          iedgeFromIndex = idx,
+          iedgeFrom = edgeFrom e,
+          iedgeToIndex = idx,
+          iedgeTo = edgeTo e,
+          iedgeData = edgeData e
+        }
+    eds' = f <$> zip [0..] eds
 
 {-| The content of a compute graph, returned in lexicograph order.
 -}

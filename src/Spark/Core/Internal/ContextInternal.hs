@@ -24,6 +24,7 @@ module Spark.Core.Internal.ContextInternal(
   compileComputation
 ) where
 
+import qualified Data.List.NonEmpty as N
 import Control.Monad.State(get, put)
 import Control.Monad(when)
 import Data.Functor.Identity(runIdentity)
@@ -188,29 +189,55 @@ convertToTiedGraph cg =
 {-| Switches the IDs of the graph from node ids to paths (which should be available and computed at that point) -}
 -- TODO: it should be able to do all that with just graph traversals.
 _usePathsForIds :: ComputeDag UntypedNode StructureEdge -> Try ComputeGraph
-_usePathsForIds d =
-  let g = computeGraphToGraph d
-      -- Collect the ids and the corresponding paths
-      vertexPairs = f <$> V.toList (gVertices g) where
-          f (Vertex vid n) = (vid, parseNodeId (nodePath n))
-      m = myGroupBy vertexPairs
-      replaceVid vid = case M.lookup vid m of
-          Just (vid' :| _) -> return vid'
-          _ -> fail $ "_usePathsForIds: programming error: cannot find id " ++ show vid ++ " in map " ++ show m
-      replaceVertex (Vertex vid v) = Vertex <$> (replaceVid vid) <*> (pure v)
-      replaceEdge (Edge vid1 vid2 e) = Edge <$> (replaceVid vid1) <*> (replaceVid vid2) <*> (pure e)
-      replaceVE (VertexEdge v e) = VertexEdge <$> (replaceVertex v) <*> (replaceEdge e)
-      l :: Try ([(VertexId, V.Vector (VertexEdge StructureEdge UntypedNode))])
-      l = sequence (f' <$> (M.toList . gEdges $ g)) where
-          f' (vid, v) = (,) <$> replaceVid vid <*> sequence (replaceVE <$> v)
-  in do
-    l0 <- l
-    let m2 = M.fromList l0 :: AdjacencyMap UntypedNode StructureEdge
-    vertices <- sequence (replaceVertex <$> gVertices g)
-    let g2 = undefined -- Graph { _gEdges = m2, _gVertices = vertices } TODO
-    let cg2 = graphToComputeGraph g2
-    let cg' = mapVertexData nodeOpNode cg2
-    return cg'
+_usePathsForIds d = tryEither $
+    buildGraphFromList' vxs ieds inputs outputs
+  where
+    g = computeGraphToGraph d
+    -- Collect the ids and the corresponding paths
+    m :: M.Map VertexId VertexId
+    m = M.map N.head . myGroupBy $ f <$> V.toList (gVertices g) where
+        f (Vertex vid n) = (vid, parseNodeId (nodePath n))
+    -- This function uses unsafe functions because it should always succeed.
+    replaceVid vid = case M.lookup vid m of
+        Just vid' -> vid'
+        _ -> error' $ "_usePathsForIds: programming error: cannot find id " <> show' vid <> " in map " <> show' m
+    changeVertex :: Vertex UntypedNode -> Vertex OperatorNode
+    changeVertex vx = Vertex {
+          vertexId = parseNodeId . nodePath . vertexData $ vx,
+          vertexData = nodeOpNode (vertexData vx)
+        }
+    vxs = changeVertex <$> V.toList (cdVertices d)
+    ieds = f <$> gIndexedEdges g where
+      f ie = ie {
+        iedgeFrom = replaceVid (iedgeFrom ie),
+        iedgeTo = replaceVid (iedgeTo ie)
+      }
+    inputs :: [VertexId]
+    inputs = replaceVid . vertexId <$> V.toList (cdInputs d)
+    outputs :: [VertexId]
+    outputs = replaceVid . vertexId <$> V.toList (cdOutputs d)
+  -- let g = computeGraphToGraph d
+  --     -- Collect the ids and the corresponding paths
+  --     vertexPairs = f <$> V.toList (gVertices g) where
+  --         f (Vertex vid n) = (vid, parseNodeId (nodePath n))
+  --     m = myGroupBy vertexPairs
+  --     replaceVid vid = case M.lookup vid m of
+  --         Just (vid' :| _) -> return vid'
+  --         _ -> fail $ "_usePathsForIds: programming error: cannot find id " ++ show vid ++ " in map " ++ show m
+  --     replaceVertex (Vertex vid v) = Vertex <$> (replaceVid vid) <*> (pure v)
+  --     replaceEdge (Edge vid1 vid2 e) = Edge <$> (replaceVid vid1) <*> (replaceVid vid2) <*> (pure e)
+  --     replaceVE (VertexEdge v e) = VertexEdge <$> (replaceVertex v) <*> (replaceEdge e)
+  --     l :: Try ([(VertexId, V.Vector (VertexEdge StructureEdge UntypedNode))])
+  --     l = sequence (f' <$> (M.toList . gEdges $ g)) where
+  --         f' (vid, v) = (,) <$> replaceVid vid <*> sequence (replaceVE <$> v)
+  -- in do
+  --   l0 <- l
+  --   let m2 = M.fromList l0 :: AdjacencyMap UntypedNode StructureEdge
+  --   vertices <- sequence (replaceVertex <$> gVertices g)
+  --   let g2 = undefined -- Graph { _gEdges = m2, _gVertices = vertices } TODO
+  --   let cg2 = graphToComputeGraph g2
+  --   let cg' = mapVertexData nodeOpNode cg2
+  --   return cg'
 
 _convertToUntiedGraph :: TiedComputeGraph -> ComputeGraph
 _convertToUntiedGraph tcg =

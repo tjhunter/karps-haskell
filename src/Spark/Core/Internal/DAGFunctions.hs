@@ -14,6 +14,7 @@ module Spark.Core.Internal.DAGFunctions(
   buildGraph,
   buildVertexList,
   buildGraphFromList,
+  buildGraphFromList',
   -- Queries
   graphSinks,
   graphSources,
@@ -65,30 +66,45 @@ All indices have to be distinct at each node, but they need not be consecutive.
 
 They are updated to be consecutive at the outcome.
 -}
-buildGraphFromList' :: forall v e. (Show v, Show e) =>
+buildGraphFromList' :: forall v e. (HasCallStack, Show v, Show e) =>
   [Vertex v] -> [IndexedEdge e] -> DagTry (Graph v e)
 buildGraphFromList' vxs ies = do
-    ies' <- _reindexEdges ies
+    -- Verify and compact the indices.
+    ies' <- _reindexEdges (traceHint "buildGraphFromList': ies=" ies)
+    -- Build the vertex map and check for duplicates.
     vxById <- _vertexById vxs
     -- Check that the edge vertex ids match the list of given vertices.
-    let iedTopo = M.map N.toList $ myGroupBy $ (iedgeFrom &&& iedgeTo) <$> ies
-    let indexedVertices = zip [1..] verticesWithEnds <&> \(idx, (vx, l)) -> (idx, vx, l)
-    -- Topology verification
-    lexico' <- _lexicographic vertexId indexedVertices
-    return undefined
+    edgeMap' <- sequence $ edgeMap vxById <$> ies'
+    let edgeMap0 = M.map N.toList (myGroupBy edgeMap')
+    -- Merge the edge information with the sequence of vertices.
+    -- This way, we keep the order of the vertices when building the graph.
+    let vxs' = mergeWithEdge edgeMap0 <$> vxs
+    let indexedVxs = [(idx, vx, l) | (idx, (vx, l)) <- _zipWithIndex vxs']
+    lexico' <- _lexicographic vertexId indexedVxs
+    return $ _buildGraphFromListUnsafe lexico' ies'
+  where
+    -- The id of the first vertex and then the second vertex.
+    edgeMap :: M.Map VertexId (Vertex v) -> IndexedEdge e -> DagTry (VertexId, Vertex v)
+    edgeMap m ie = case (M.lookup (iedgeFrom ie) m, M.lookup (iedgeTo ie) m) of
+      (Just v1, Just v2) -> pure (vertexId v1, v2)
+      _ -> throwError' $ "Edge has vertices not present in the list of vertices: " <> show' ()
+    mergeWithEdge :: M.Map VertexId [Vertex v] -> Vertex v -> (Vertex v, [Vertex v])
+    mergeWithEdge m v = case (M.lookup (vertexId v) m) of
+        Nothing -> (v, [])
+        Just l -> (v, l)
 
 {-| Reindexs the edges to make sure that the indexes of each element make
 a compact segment. Also checks that all the indices are distinct for each
 sink and output.
 -}
-_reindexEdges :: forall e. (Show e) => [IndexedEdge e] -> DagTry [IndexedEdge e]
+_reindexEdges :: forall e. (HasCallStack, Show e) => [IndexedEdge e] -> DagTry [IndexedEdge e]
 _reindexEdges l = do
   l1 <- _doPass iedgeFrom iedgeFromIndex (\ie idx -> ie {iedgeFromIndex = idx}) l
   l2 <- _doPass iedgeTo iedgeToIndex (\ie idx -> ie {iedgeToIndex = idx}) l1
   return l2
 
     -- Group edges by start vertex
-_doPass :: forall e. (Show e) =>
+_doPass :: forall e. (HasCallStack, Show e) =>
   (IndexedEdge e -> VertexId) -> -- The grouping vertex
   (IndexedEdge e -> Int) -> -- The slot to compact
   (IndexedEdge e -> Int -> IndexedEdge e) -> -- The update of the slot.
@@ -103,15 +119,16 @@ _doPass getVertexId getSlot updateSlot l = l2t where
         s = S.fromList (getIdx <$> l')
     in if length s == length l'
         then pure $ f2 <$> sortBy (compare `on` getIdx) l'
-        else throwError $ "_reindexEdges: Duplicate positions in " <> show' l'
+        else throwError' $ "_reindexEdges: Duplicate positions in " <> show' l' <> " with l=" <> show' l
   -- If we succeed, we need to return the edges in the same order.
   -- Associate them with an index.
   lIdx = _zipWithIndex l
+  -- First index is slot, second is pos.
   m1 :: [[(Int, Int, IndexedEdge e)]]
   m1 = fmap N.toList . M.elems . myGroupBy $ f <$> lIdx where
     f (pos, ie) = (getVertexId ie, (getSlot ie, pos, ie))
   m1t = sequence $ reorganize <$> m1
-  l1t = concat . (fmap f) <$> m1t where
+  l1t = concatMap f <$> m1t where
     f l0 = g <$> _zipWithIndex l0 where
       g (newFromIdx, (pos, ie)) = (pos, updateSlot ie newFromIdx)
   l2t = (fmap snd . sortBy (compare `on` fst)) <$> l1t
@@ -150,17 +167,19 @@ buildGraph start = do
     buildGraphFromList' (f <$> vxs) iedges
   where
     f v = Vertex (vertexToId v) v
-    edgeList1 :: (Int, v) -> [IndexedEdge e]
-    edgeList1 (idxFrom, vx) = g <$> _zipWithIndex (expandVertex vx) where
+    edgeList1 :: v -> [IndexedEdge e]
+    edgeList1 vx = g <$> expandVertex vx where
       vidFrom = vertexToId vx
-      g (idxTo, (e, vTo)) = IndexedEdge {
-              iedgeFromIndex = idxFrom,
+      g (e, vTo) = IndexedEdge {
+              iedgeFromIndex = -1,
               iedgeFrom = vidFrom,
-              iedgeToIndex = idxTo,
+              iedgeToIndex = -1,
               iedgeTo = vertexToId vTo,
               iedgeData = e
             }
-    edgeList vxs = pure . concat $ edgeList1 <$> _zipWithIndex vxs
+    -- Give a unique index for each slot at the end.
+    edgeList vxs = pure . fmap g . _zipWithIndex . concat $ edgeList1 <$> vxs where
+      g (idx, ie) = ie { iedgeFromIndex = idx, iedgeToIndex = idx }
   -- buildVertexList start <&> \vxData ->
   -- let vertices = [Vertex (vertexToId vx) vx | vx <- vxData]
   --     -- The edges and vertices are already in the right order, no need
@@ -428,10 +447,10 @@ graphAdd g vs es =
 destination vertices too.
 
 -}
-graphFilterEdges :: forall v e. (HasCallStack, Show e, Show v) =>
+graphFilterEdges :: forall v e e'. (HasCallStack, Show v, Show e') =>
   Graph v e -> -- The start DAG
-  (v -> e -> v -> Bool) -> -- The filtering function: vertex from -> edge -> vertex to -> should keep
-  Graph v e
+  (v -> e -> v -> Maybe e') -> -- The filtering function: vertex from -> edge -> vertex to -> maybe a new edge data
+  Graph v e'
 -- This transform should always work.
 graphFilterEdges g f = forceTry . tryEither $ buildGraphFromList vs es where
   -- The vertices are the same.
@@ -445,8 +464,9 @@ graphFilterEdges g f = forceTry . tryEither $ buildGraphFromList vs es where
        vFrom = indexed M.! vid
        g' ve = (vFrom, veEdge ve, vertexData . veEndVertex $ ve)
   es = concatMap f' tuples where
-    f' (vFrom, e, vTo) | f vFrom (edgeData e) vTo = [e]
-    f' _ = []
+    f' (vFrom, e, vTo) = case f vFrom (edgeData e) vTo of
+      Just e' -> [e { edgeData = e' }]
+      Nothing -> []
 
 
 -- | (internal) Maps the edges
