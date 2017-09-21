@@ -28,13 +28,16 @@ module Spark.Core.Internal.ComputeDag(
   graphAdd,
   graphFilterEdges,
   graphFilterEdges',
-  reverseGraph
+  reverseGraph,
+  pruneUnreachable
 ) where
 
 import Data.Foldable(toList)
+import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 import qualified Data.Text as T
+import Data.List(any)
 import Data.Vector(Vector)
 import Control.Arrow((&&&))
 import Control.Monad.Except
@@ -44,6 +47,7 @@ import Formatting
 import qualified Spark.Core.Internal.DAGFunctions as DAG
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.Utilities
+import Spark.Core.Try
 
 {-| A DAG of computation nodes.
 
@@ -230,6 +234,36 @@ computeGraphMapVerticesI :: forall v e v2. (HasCallStack, Show v2) =>
   ComputeDag v2 e
 computeGraphMapVerticesI cd f = runIdentity $ computeGraphMapVertices cd f' where
   f' v l = pure (f v l)
+
+{-| Removes all the nodes from the graph that do not link to the outputs of
+the graph. Keeps the inputs and the outputs in all circumstances.
+-}
+pruneUnreachable :: forall e v. (Show e, Show v) => ComputeDag v e -> ComputeDag v e
+pruneUnreachable cg = forceTry . tryEither $ updateGraph up cg where
+  up :: Graph v e -> DagTry (Graph v e)
+  up g' = DAG.buildGraphFromList' vxs ies where
+    rg' = DAG.reverseGraph (DAG.completeVertices g')
+    startSet :: S.Set VertexId -- The vertices to start from
+    startSet = S.fromList $ vertexId <$> (V.toList (cdOutputs cg))
+    isReachable (PUOutside _ _, _) = False
+    isReachable (PUReachable _ _, _) = True
+    annotated :: Graph (PUNode v) e
+    annotated = DAG.graphMapVerticesI rg' f where
+      f :: Vertex v -> [(PUNode v, e)] -> PUNode v
+      f (Vertex vid v) _ | vid `S.member` startSet = PUReachable vid v
+      f (Vertex vid v) l | any isReachable l = PUReachable vid v
+      f (Vertex vid v) _ = PUOutside vid v
+    vxs :: [Vertex v]
+    vxs = concatMap f (V.toList (gVertices annotated)) where
+      f (Vertex _ (PUReachable vid v)) = [Vertex vid v]
+      f _ = []
+    reachableSet = S.fromList $ vertexId <$> vxs
+    ies :: [IndexedEdge e]
+    ies = filter f (gIndexedEdges g') where
+      f ie = (iedgeFrom ie) `S.member` reachableSet && (iedgeTo ie) `S.member` reachableSet
+
+
+data PUNode v = PUReachable VertexId v | PUOutside VertexId v deriving (Show)
 
 -- Tries to get a subset of the vertices (by vertex id), and fails if
 -- one is missing.

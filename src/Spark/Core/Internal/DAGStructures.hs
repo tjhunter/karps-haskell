@@ -141,11 +141,9 @@ instance (Show v, Show e) => Show (Graph v e) where
   show g =
     let vxs = toList $ gVertices g <&> \(Vertex vid x) ->
           sformat (sh%":"%sh) vid x
-        vedges = foldMap toList (M.elems (gEdges g))
-        edges = (veEdge <$> vedges) <&> \(Edge efrom eto x) ->
-          sformat (sh%"->"%sh%"->"%sh) efrom x eto
-        -- eds = (M.elems (gEdges g)) `foldMap` \v ->
-        --   (toList v) <&>
+        edges = f <$> gIndexedEdges g where
+          f (IndexedEdge fromIdx fromVid toIdx toVid e) =
+            sformat (sh%":"%sh%"->"%sh%"->"%sh%":"%sh) fromVid fromIdx e toIdx toVid
         vxs' = T.intercalate "," vxs
         eds' = T.intercalate " " edges
         str = T.concat ["Graph{", vxs', ", ", eds', "}"]

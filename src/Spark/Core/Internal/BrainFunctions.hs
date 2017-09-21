@@ -38,7 +38,8 @@ import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions(buildOpNode')
 import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
 import Spark.Core.Internal.OpStructures
-import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(..), onLocality, onType, onOp)
+import Spark.Core.Internal.Caching(opnameAutocache)
+import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(..), onLocality, onType, onOp, onShape)
 import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
 import Spark.Core.Internal.Display(displayGraph)
 import Spark.Core.InternalStd.Observable(localPackBuilder)
@@ -73,7 +74,8 @@ performTransform conf cache resources = _transform phases where
     pure (PAI.MERGE_AGGREGATIONS, mergeStructuredAggregators),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
-    pure (PAI.AUTOCACHE_FULLFILL, transFillAutoCache),
+    -- TODO: this is another pass.
+    pure (PAI.AUTOCACHE_FULLFILL, removeAutocache),
     pure (PAI.FINAL, pure)
     ]
 
@@ -270,6 +272,79 @@ data LocalPackTrans =
     -- node, local pack node, nodes that get merged.
   | AddPack OperatorNode OperatorNode [NodePath] deriving (Eq, Show)
 
+
+{-| Identifies and removes the autocache nodes that are no-op given the current
+graph of computation.
+
+These are the nodes that only have one aggregation to follow.
+
+Should be run after MERGE_AGGREGATIONS, since that pass will merge aggregations
+together.
+-}
+removeAutocache :: ComputeGraph -> Try ComputeGraph
+removeAutocache cg = do
+    -- Look at nodes that contain observable broadcast and make a map of the
+    -- input.
+    cg2 <- tryEither $ graphAdd cg [] ac1Edges
+    let cg3 = graphFilterEdges' cg2 edgeFilter
+    let cg4 = pruneUnreachable cg3
+    return cg4
+  where
+    -- The reverse graph
+    rcg = reverseGraph cg
+    isAgg on = case onOp on of
+      NodeReduction _ -> True
+      NodeOpaqueAggregator _ -> True
+      -- TODO: how about shuffles? Not sure how the impact the cache.
+      _ -> False
+    isAutocache on = case onOp on of
+      NodeDistributedOp so | soName so == opnameAutocache -> True
+      _ -> False
+    rcg0 = computeGraphMapVerticesI rcg f where
+      f :: OperatorNode -> [(AutocacheRemove, StructureEdge)] -> AutocacheRemove
+      f on _ | isAgg on = ACRAggregation (onPath on)
+      f on _ | nsLocality (onShape on) == Local = ACRLocal
+      f on l | isAutocache on = case _parentNodes l of
+        [ACRAggregation childPath] -> ACRAutocache1 (onPath on) childPath
+        [ACRDistributed1 childPath] -> ACRAutocache1 (onPath on) childPath
+        _ -> ACRDistributed
+      -- If there is a unique parent info, keep it, otherwise it is just a
+      -- regular node.
+      f on l = case _parentNodes l of
+        [ACRAggregation _] -> ACRDistributed1 (onPath on)
+        [ACRDistributed1 _] -> ACRDistributed1 (onPath on)
+        [ACRAutocache1 acPath childPath] -> ACRAutoParent1 (onPath on) acPath childPath
+        _ -> ACRDistributed
+    -- All the node paths that need to be deleted.
+    ac1Paths = S.fromList $ concatMap f (graphVertexData rcg0) where
+      f (ACRAutoParent1 _ p _) = [p]
+      f _ = []
+    ac1Edges = concatMap f (graphVertexData rcg0) where
+      f (ACRAutoParent1 parentPath _ childPath) = [_makeParentEdge parentPath childPath]
+      f _ = []
+    -- Remove all the references to autocache nodes that we remove.
+    -- This should be enough to make it drop from the list of nodes.
+    edgeFilter onFrom _ onTo =
+      not $ (onPath onFrom `S.member` ac1Paths) || (onPath onTo `S.member` ac1Paths)
+
+
+
+
+data AutocacheRemove =
+    ACRLocal -- An observable, nothing to do here.
+  | ACRAggregation NodePath -- An aggregation, which would trigger an evaluation
+  | ACRDistributed1 NodePath -- A dataframe that is aggregated through 1 aggregator.
+  -- An autocache node which has only one descendant DF or aggregator
+  -- First path is the path of the current autocache node
+  -- Second path is the path of the direct child.
+  | ACRAutocache1 NodePath NodePath
+  -- The parent of an autocache node that is susceptible to be removed.
+  -- This parent should be distributed.
+  -- Content is: path of the parent, path of autocache, path of subsequent node.
+  | ACRAutoParent1 NodePath NodePath NodePath
+  | ACRDistributed -- Just a regular distributed node.
+  deriving (Show)
+
 -- WATCH OUT: the flow is fromEdge -> toEdge
 -- It is NOT in dependency
 -- TODO: maybe this should be changed?
@@ -325,7 +400,7 @@ _traceGraph txt cg = traceHint (txt <> txt') cg where
 
 instance ToProto PAI.AnalysisMessage NodeError where
   toProto ne = (def :: PAI.AnalysisMessage)
-      & PAI.content .~ (eMessage ne)
+      & PAI.content .~ eMessage ne
       & PAI.stackTracePretty .~ (T.pack . prettyCallStack . eCallStack $ ne)
 
 instance FromProto PAI.NodeMapItem (NodeId, GlobalPath) where

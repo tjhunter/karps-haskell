@@ -7,6 +7,7 @@ module Spark.Server.Registry(
 
 import Spark.Core.InternalStd.Aggregation
 import Spark.Core.InternalStd.Column
+import Spark.Core.InternalStd.Dataset
 import Spark.Core.InternalStd.Observable
 import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.NodeBuilder
@@ -33,6 +34,7 @@ structuredRegistry = buildStructuredRegistry sqls udfs aggs where
 
 nodeRegistry :: NodeBuilderRegistry
 nodeRegistry = buildNodeRegistry [
+  autocacheBuilder,
   broadcastPairBuilder,
   functionalShuffleBuilder,
   functionalTransformBuilder,
