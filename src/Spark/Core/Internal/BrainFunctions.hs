@@ -114,7 +114,7 @@ mergeStructuredAggregators cg = do
     return cg4
   where
     -- The reverse graph
-    rcg = _traceGraph ("mergeStructuredAggregators rcg=\n") $ reverseGraph (_traceGraph ("mergeStructuredAggregators cg=\n") cg)
+    rcg = reverseGraph cg
     -- From the descendants, the list of nodes that are aggregators.
     childAggs :: [(MergeAggTrans, StructureEdge)] -> [(OperatorNode, AggOp)]
     childAggs [] = []
@@ -122,7 +122,7 @@ mergeStructuredAggregators cg = do
     childAggs (_:t) = childAggs t
     -- This graph indicates which nodes are merging material.
     rcg0 = computeGraphMapVerticesI rcg f where
-      f on l = case (onOp on, traceHint ("childAggs: \non="<>show' on<>" \nl="<>show' l<>" \nres=") $ childAggs l) of
+      f on l = case (onOp on, childAggs l) of
         (NodeReduction ao, _) -> MATAgg on ao
         (_, []) -> MATNormal on -- A regular node, no special aggregation
         (_, [_]) -> MATSingle on -- A node that get aggregated by a single op, nothing to do.

@@ -144,7 +144,7 @@ TODO(kps) use the caching information to have a correct fringe
 buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
-  dagWithPaths <- traceHint "buildComputationGraph: res=" $ assignPathsUntyped (traceHint "buildComputationGraph: cg=" cg)
+  dagWithPaths <- assignPathsUntyped cg
   dagWithCorrectIds <- _usePathsForIds dagWithPaths
   -- let cg' = mapVertexData nodeOpNode dagWithCorrectIds
   return dagWithCorrectIds
@@ -216,28 +216,6 @@ _usePathsForIds d = tryEither $
     inputs = replaceVid . vertexId <$> V.toList (cdInputs d)
     outputs :: [VertexId]
     outputs = replaceVid . vertexId <$> V.toList (cdOutputs d)
-  -- let g = computeGraphToGraph d
-  --     -- Collect the ids and the corresponding paths
-  --     vertexPairs = f <$> V.toList (gVertices g) where
-  --         f (Vertex vid n) = (vid, parseNodeId (nodePath n))
-  --     m = myGroupBy vertexPairs
-  --     replaceVid vid = case M.lookup vid m of
-  --         Just (vid' :| _) -> return vid'
-  --         _ -> fail $ "_usePathsForIds: programming error: cannot find id " ++ show vid ++ " in map " ++ show m
-  --     replaceVertex (Vertex vid v) = Vertex <$> (replaceVid vid) <*> (pure v)
-  --     replaceEdge (Edge vid1 vid2 e) = Edge <$> (replaceVid vid1) <*> (replaceVid vid2) <*> (pure e)
-  --     replaceVE (VertexEdge v e) = VertexEdge <$> (replaceVertex v) <*> (replaceEdge e)
-  --     l :: Try ([(VertexId, V.Vector (VertexEdge StructureEdge UntypedNode))])
-  --     l = sequence (f' <$> (M.toList . gEdges $ g)) where
-  --         f' (vid, v) = (,) <$> replaceVid vid <*> sequence (replaceVE <$> v)
-  -- in do
-  --   l0 <- l
-  --   let m2 = M.fromList l0 :: AdjacencyMap UntypedNode StructureEdge
-  --   vertices <- sequence (replaceVertex <$> gVertices g)
-  --   let g2 = undefined -- Graph { _gEdges = m2, _gVertices = vertices } TODO
-  --   let cg2 = graphToComputeGraph g2
-  --   let cg' = mapVertexData nodeOpNode cg2
-  --   return cg'
 
 _convertToUntiedGraph :: TiedComputeGraph -> ComputeGraph
 _convertToUntiedGraph tcg =
