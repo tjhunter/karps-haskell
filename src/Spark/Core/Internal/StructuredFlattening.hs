@@ -14,13 +14,10 @@ module Spark.Core.Internal.StructuredFlattening(
 import Formatting
 import Spark.Core.Internal.Utilities
 import Data.List(nub)
-import Data.Maybe(catMaybes)
 import qualified Data.Vector as V
 import qualified Data.List.NonEmpty as N
-import Control.Monad.Identity
 import Data.List.NonEmpty(NonEmpty(..))
 
-import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.StructureFunctions
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.NodeBuilder(nbName)
@@ -28,12 +25,11 @@ import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.ContextStructures(ComputeGraph)
 import Spark.Core.Internal.BrainStructures(makeParentEdge)
 import Spark.Core.Internal.TypesStructures(DataType(..), StrictDataType(Struct), StructType(..), StructField(..))
-import Spark.Core.Internal.TypesFunctions(extractFields, structType', structField)
--- import Spark.Core.Internal.DAGFunctions(graphMapVertices, graphMapVertices', completeVertices)
-import Spark.Core.Internal.DAGStructures(VertexId, Graph(..), vertexData, gVertices)
+import Spark.Core.Internal.TypesFunctions(extractFields, structType', extractFields2)
 import Spark.Core.Internal.DatasetStructures(OperatorNode(..), StructureEdge(ParentEdge), onOp, onPath, onType, onLocality)
 import Spark.Core.Internal.DatasetFunctions(filterParentNodes)
-import Spark.Core.StructuresInternal(FieldName(..), FieldPath(..), NodePath, fieldPath', fieldName)
+import Spark.Core.InternalStd.Filter(filterBuilder)
+import Spark.Core.StructuresInternal(FieldName(..), FieldPath(..), NodePath)
 import Spark.Core.Try
 
 {-| Takes a graph that may contain some functional nodes, and attempts to
@@ -81,14 +77,8 @@ data StackMove =
   | StackExit1 -- We are dropping the last key from the stack.
   deriving (Eq, Show)
 
-type TypedColOp = (ColOp, DataType)
-
 -- Convenient shortcut
 type CDag v = ComputeDag v StructureEdge
-
-type FGraph = Graph FNode StructureEdge
-
-type GroupStack = [TypedColOp]
 
 {-| The type of function that is applied:
 -}
@@ -143,7 +133,7 @@ data FunctionalLabeling =
 _labelNodesInitial :: ComputeGraph -> Try (CDag FunctionalLabeling)
 _labelNodesInitial cg = do
     -- Forward pass: identify the parents.
-    cg1 <- computeGraphMapVertices cg f1
+    cg1 <- computeGraphMapVertices cg fun1
     let rcg1 = reverseGraph cg1
     -- Backward pass: identify the inputs of the functional nodes.
     let rcg2 = computeGraphMapVerticesI rcg1 f2
@@ -157,9 +147,9 @@ _labelNodesInitial cg = do
     p :: FunctionalParsing -> NodePath
     p (FConclusion on _ _ _ _) = onPath on
     p (FOther on) = onPath on
-    f1 on l = f1' (functionalType on) on (filterParentNodes l)
+    fun1 on l = f1' (functionalType on) on (filterParentNodes l)
     -- Just operates on the parents.
-    f1' :: (Maybe NodeFunctionalType) -> OperatorNode -> [FunctionalParsing] -> Try FunctionalParsing
+    f1' :: Maybe NodeFunctionalType -> OperatorNode -> [FunctionalParsing] -> Try FunctionalParsing
     f1' (Just nft) on [onInit, onPlaceholder, onSink] =
       -- TODO: could do more checks on the type of the placeholder too.
       pure $ FConclusion on nft (p onInit) (p onPlaceholder) (p onSink)
@@ -201,7 +191,7 @@ _labelConnectNodes cg = do
 
 -- Temporary while the function is not complete.
 _labelConvert :: CDag FunctionalLabeling -> ComputeGraph
-_labelConvert = mapVertexData (_onFunctionalLabel . traceHint "_labelConvert: x=") where
+_labelConvert = mapVertexData (_onFunctionalLabel . traceHint "_labelConvert: x=")
 
 _onFunctionalLabel :: FunctionalLabeling -> OperatorNode
 _onFunctionalLabel (FLFinal on _ _ _) = on
@@ -227,9 +217,9 @@ data FNodeType =
   | FEnter -- The placeholder that starts the functional shuffle.
   | FExit -- The sink node for functional operations. Nothing special happens on this node.
   | FUnknown -- Some unknown type of node (allowed at the top level)
+  | FFilter -- A filter operation.
   -- Unimplemented other operations for now
   -- | FLocalPack
-  -- | FFilter
   deriving (Eq, Show)
 
 {-| A node, once the functional analysis has been conducted.
@@ -257,6 +247,7 @@ _analyzeGraph cg = computeGraphMapVerticesI cg f' where
   f (NodeGroupedReduction ao) _ = FImperativeShuffle ao
   f (NodeStructuredTransform co) _ = FDistributedTransform co
   f (NodeLocalStructuredTransform co) _ = FLocalTransform co
+  f (NodeDistributedOp so) _ | soName so == nbName filterBuilder = FFilter
   -- We do not know about any other node for now.
   f _ _ = FUnknown
 
@@ -286,6 +277,7 @@ data FPNodeType =
   | FPLocalTransform ColOp
   | FPImperativeAggregate AggOp
   | FPImperativeShuffle AggOp
+  | FPFilter
   | FPUnknown
   deriving (Eq, Show)
 
@@ -301,7 +293,15 @@ This is important to know with respect to the unknown nodes.
 The operator node and the node type contain the final node operation and
 node type (with key information plugged in).
 -}
-data FPostNode = FPostNode OperatorNode FPNodeType FStack deriving (Eq, Show)
+data FPostNode = FPostNode {
+  fpnNode :: !OperatorNode,
+  _fpnType :: !FPNodeType,
+  fpnStack :: !FStack,
+  fpnPreNode :: !(Maybe OperatorNode)
+} deriving (Eq, Show)
+
+fpostNode :: OperatorNode -> FPNodeType -> FStack -> FPostNode
+fpostNode on fpnt fs = FPostNode on fpnt fs Nothing
 
 {-| The main transform.
 
@@ -323,10 +323,8 @@ _mainTransform cg = computeGraphMapVertices cg fun where
       f1 currentStack parentTypes fnt on
     where
       parents = filterParentNodes l
-      parentTypes = f <$> parents where
-        f (FPostNode on' _ _) = onType on'
-      parentsStacks = f <$> parents where
-        f (FPostNode _ _ s) = s
+      parentTypes = onType . fpnNode <$> parents
+      parentsStacks = fpnStack <$> parents
       currentStackt = _currentStackSame parentsStacks
       -- Checks that there is only parent for deeper nodes.
       check1Parent [] _ = pure ()
@@ -337,12 +335,15 @@ _mainTransform cg = computeGraphMapVertices cg fun where
     -- else tryError $ sformat ("Trying to use unrecognized node inside a keyed function:"%sh%" its parents are "%sh) on l
 
 _mainTransformReturn :: CDag FPostNode -> ComputeGraph
-_mainTransformReturn cg = mapVertexData f cg where
-  f (FPostNode on _ _) = on
+-- TODO: take into account the pre and post nodes.
+_mainTransformReturn = mapVertexData fpnNode
 
--- Given the current stack, transforms the current operation. This does not
--- add the extra key column, this is done separately.
--- Either we do not know about the node or we were able to transform it.
+-- Given the current stack, transforms the current operation.
+-- Most of the actual work is delegated to subfunctions.
+-- This function does not leave the graph in a proper state: some operations
+-- such as filter require structural transforms before and after the filter
+-- itself.
+-- TODO: rename to _flatteningMain
 f1 ::
   FStack -> -- The stack of the parents
   [DataType] -> -- The datatype of the parents (including the key)
@@ -352,21 +353,31 @@ f1 ::
 -- Enters: they should have only one parent.
 f1 [] [dt] FEnter on = _performEnter0 dt on
 f1 (h:t) _ FEnter on = _performEnter (h:|t) on
+f1 _ _ FEnter on = tryError $ "_flatteningMain: wrong FEnter on "<>show' on
 -- Exits: should have one parent and be inside a stack.
 f1 [] _ FExit on = tryError $ sformat ("Trying to exit a functional group, but there no group to exit from. node:"%sh) on
 f1 (h:t) [dt] FExit on = _performExit (h:|t) dt (onPath on) (onLocality on)
+f1 _ _ FExit on = tryError $ "_flatteningMain: wrong FExit on "<>show' on
 -- Any node at the top level -> go through
-f1 [] _ FUnknown on = pure $ FPostNode on FPUnknown []
-f1 [] _ (FDistributedTransform co) on = pure $ FPostNode on (FPDistributedTransform co) []
-f1 [] _ (FLocalTransform co) on = pure $ FPostNode on (FPLocalTransform co) []
-f1 [] _ (FImperativeAggregate ao) on = pure $ FPostNode on (FPImperativeAggregate ao) []
-f1 [] _ (FImperativeShuffle ao) on = pure $ FPostNode on (FPImperativeShuffle ao) []
+f1 [] _ FUnknown on = pure $ fpostNode on FPUnknown []
+f1 [] _ (FDistributedTransform co) on = pure $ fpostNode on (FPDistributedTransform co) []
+f1 [] _ (FLocalTransform co) on = pure $ fpostNode on (FPLocalTransform co) []
+f1 [] _ (FImperativeAggregate ao) on = pure $ fpostNode on (FPImperativeAggregate ao) []
+f1 [] _ (FImperativeShuffle ao) on = pure $ fpostNode on (FPImperativeShuffle ao) []
+f1 [] _ FFilter on = pure $ fpostNode on FPFilter []
 -- Unknown at a higher level -> error
 f1 l _ FUnknown on = tryError $ sformat ("Unknown node found inside stack "%sh%": node="%sh) l on
 -- Distribute transform within a group.
 f1 (h:t) [dt] (FDistributedTransform co) on = _performDistributedTrans (h:|t) dt (onPath on) (onType on) co
+f1 _ _ (FDistributedTransform _) on = tryError $ "_flatteningMain: wrong FDistributedTransform on "<>show' on
 f1 (h:t) [dt] (FImperativeAggregate ao) on = _performAggregate (h:|t) dt (onPath on) (onType on) ao
-f1 _ _ _ _ = undefined
+f1 _ _ (FImperativeAggregate _) on = tryError $ "_flatteningMain: wrong FImperativeAggregate on "<>show' on
+-- Filters
+f1 (h:t) [dt] FFilter on = _performFilter (h:|t) dt (onPath on)
+f1 _ _ FFilter on = tryError $ "_flatteningMain: wrong FFilter on "<>show' on
+-- Missing
+f1 _ _ (FLocalTransform _) on = missing $ "_flatteningMain: FLocalTransform"<>show' on
+f1 _ _ (FImperativeShuffle _) on = missing $ "_flatteningMain: FImperativeShuffle"<>show' on
 
 {-| Entering from the root. The input is expected to be
 -}
@@ -378,7 +389,7 @@ _performEnter0 dt on = do
     let dt' = _keyGroupType (keyDt:|[]) valueDt
     -- TODO: for now, just handling distributed nodes at the entrance.
     let on' = on {onNodeInfo = coreNodeInfo dt' Distributed no}
-    return $ FPostNode on' (FPDistributedTransform co) [p]
+    return $ fpostNode on' (FPDistributedTransform co) [p]
   where
     co = _colStruct [
         TransformField _key (_colStruct [
@@ -389,6 +400,7 @@ _performEnter0 dt on = do
     no = NodeStructuredTransform co
     p = onPath on
 
+{-| Entering within a stack. -}
 _performEnter :: FStack' -> OperatorNode -> Try FPostNode
 _performEnter = undefined
 
@@ -409,7 +421,7 @@ _performExit (_:|t) dt np loc = do
         let dt' = structType' (StructField _key (N.head keyDts) :| [StructField _group groupDt])
         let no = exitTrans co
         let on' = OperatorNode nid np $ coreNodeInfo dt' loc no
-        return $ FPostNode on' (exitFTrans co) t
+        return $ fpostNode on' (exitFTrans co) t
       (hdt:tdt) -> do
         -- We still have some keys that need to be kept around.
         -- Drop the last key from the key group.
@@ -419,7 +431,7 @@ _performExit (_:|t) dt np loc = do
         let no = exitTrans co
         let dt' = _keyGroupType (hdt:|tdt) groupDt
         let on' = OperatorNode nid np $ coreNodeInfo dt' loc no
-        return $ FPostNode on' (exitFTrans co) t
+        return $ fpostNode on' (exitFTrans co) t
   where
     (exitFTrans, exitTrans) = case loc of
       Distributed -> (FPDistributedTransform, NodeStructuredTransform)
@@ -440,7 +452,7 @@ _performDistributedTrans (h:|t) parentDt np dt co = do
     (keyDts, _) <- _getGroupedType parentDt
     let dt' = _keyGroupType keyDts dt
     let on' = makeOp dt'
-    return $ FPostNode on' (FPDistributedTransform co') (h:t)
+    return $ fpostNode on' (FPDistributedTransform co') (h:t)
   where
     -- Unlike aggregation, transforms must be wrapped to account for the groups:
     --  1. the extractors must peek inside the group
@@ -470,7 +482,7 @@ _performAggregate :: (HasCallStack) =>
 _performAggregate (h:|t) parentDt np dt ao = do
     (keysDt, _) <- _getGroupedType parentDt
     let dt' = _keyGroupType keysDt dt
-    return $ FPostNode (on' dt') (FPImperativeShuffle ao) (h:t)
+    return $ fpostNode (on' dt') (FPImperativeShuffle ao) (h:t)
   where
     -- Wrap the aggregation:
     --  1. the extractors need not be rewritten because they already expect
@@ -481,6 +493,47 @@ _performAggregate (h:|t) parentDt np dt ao = do
     no = NodeGroupedReduction ao
     nid = error "_performAggregate: id not computed"
     on' dt' = OperatorNode nid np $ coreNodeInfo dt' Distributed no
+
+{-|
+The filtering. It builds 3 nodes:
+ - a preprocessing node that moves the keys inside the value and exposes
+   the filter column
+ - the filter node
+There is no need for post processing since the outcome of the fister is
+already in the proper position.
+-}
+_performFilter ::
+  FStack' ->
+  -- The start data type. Must be a group data type of the following structure:
+  -- {key:{...}, value:{filter:bool, value:XX}}
+  DataType ->
+  NodePath -> -- The path of the current node
+  -- The result data type of the aggregation,
+  -- It is expected to be a structure {key:X, value:Y}
+  -- (this corresponds to the application of an aggregation outside a stack)
+  Try FPostNode
+_performFilter (h:|t) parentDt np = do
+    (keysDt, valueDt) <- _getGroupedType parentDt
+    (filtDt, valDt) <- extractFields2 "filter" "value" valueDt
+    let finalType = _keyGroupType keysDt valDt
+    let preType = structType' $ StructField "filter" filtDt :| [StructField "value" finalType]
+    return $ FPostNode (filtNode finalType) FPFilter (h:t) (Just (preNode preType))
+  where
+    co = _colStruct [
+            TransformField "filter" $ _extraction [_group, "filter"],
+            TransformField "value" $ _colStruct [
+              TransformField _key $ _extraction [_key],
+              TransformField _group $ _extraction ["value"]
+            ]
+          ]
+    no = NodeStructuredTransform co
+    nid = error "_performFilter: id not computed"
+    preNode dt' = OperatorNode nid np $ coreNodeInfo dt' Distributed no
+    filtNode dt' = OperatorNode nid np cni where
+      so = StandardOperator (nbName filterBuilder) dt' emptyExtra
+      no' = NodeDistributedOp so
+      cni = coreNodeInfo dt' Distributed no'
+
 
 _extraction :: [FieldName] -> ColOp
 _extraction = ColExtraction . FieldPath . V.fromList
@@ -595,184 +648,6 @@ _currentStack l = do
       [] -> tryError "_currentStack: empty"
       [x] -> pure x
       l'' -> tryError $ sformat ("_currentStack: one of the node paths is not a proper subset of the other: "%sh%" list of paths:"%sh) l'' l
---
--- _gatherCheckFunctionalOps :: Graph (CoreNodeInfo, VertexId) StructureEdge -> Try [FunctionalNodeAnalysis]
--- _gatherCheckFunctionalOps g = catMaybes <$> l' where
---   l = V.toList . (vertexData<$>) . gVertices <$> g'
---   f (_, _, x) = x
---   l' = (f <$>) <$> l
---   g' = undefined --graphMapVertices g _checkFunctional
---
--- _checkFunctional ::
---   (CoreNodeInfo, VertexId) ->
---   [((CoreNodeInfo, VertexId, Maybe FunctionalNodeAnalysis), StructureEdge)] ->
---   Try (CoreNodeInfo, VertexId, Maybe FunctionalNodeAnalysis)
--- _checkFunctional (cni, vid) l =
---   case cniOp cni of
---     -- Look at the standard operator to see if we know about it:
---     NodeLocalOp so ->
---       case soName so of
---         x | x == nbName functionalShuffleBuilder ->
---           (cni, vid, ) . Just <$> _checkFunctionalStructure l vid FunctionalShuffle
---         x | x == nbName functionalReduceBuilder ->
---           (cni, vid, ) . Just <$> _checkFunctionalStructure l vid FunctionalReduce
---         _ -> pure (cni, vid, Nothing)
---     _ -> pure (cni, vid, Nothing)
---
--- _checkFunctionalStructure :: [((CoreNodeInfo, VertexId, Maybe FunctionalNodeAnalysis), StructureEdge)] -> VertexId -> NodeParseType -> Try FunctionalNodeAnalysis
--- -- TODO: it does not check the rest of the edges for now, it should be checked that the rest is just logical dependencies.
--- _checkFunctionalStructure (((cni1, vid1, _), ParentEdge) : ((cni2, vid2, _), ParentEdge) : ((cni3, vid3, _), ParentEdge):_) vid npt =
---   -- The second argument should be a placeholder
---   -- The shape of the first and second argument should match
---   undefined
--- _checkFunctionalStructure l vid _ = tryError $ sformat ("_checkFunctionalStructure: expected 3 arguments"%sh) (vid, l)
---
--- {-| Converts back to a compute graph, and makes sure that the original
--- inputs and outputs are the same.
--- -}
--- _fgraphBack :: ComputeGraph -> FGraph -> Try ComputeGraph
--- _fgraphBack = undefined
---
--- {-| Flattens the nodes given the f-graph. -}
--- _performTrans :: FGraph -> Try FGraph
--- _performTrans fg = undefined --graphMapVertices' snd <$> z where
---   --z = graphMapVertices fg _innerTrans
-
--- -- This is the meat of the transform here.
--- -- It does not do type checking, this is assumed to have been done during the
--- -- construction of the graph itself.
--- _innerTrans :: FNode -> [((GroupStack, FNode), StructureEdge)] -> Try (GroupStack, FNode)
--- _innerTrans (FNode nt cni) l = do
---   (gs, cnis) <- _getInterestingParent l
---   (gs', cni') <- _innerTrans' nt cni gs cnis
---   -- TODO: there is no need to return a FNode??
---   -- TODO: it could be directly converted here to the final operator?
---   return (gs', FNode nt cni')
-
--- -- Unknown node: only accepted at the top level
--- _innerTrans (fn @ (FNode FUnknown on)) l =
---   if _inTopLevel l then pure ([], fn) else tryError $ sformat ("_innerTrans: cannot process node inside group: "%sh) on
--- -- Identity: accepted at any level if a single parent, or only at the top (for now)
--- _innerTrans (fn @ (FNode FIdentity _)) [((gs, _), ParentEdge)] = pure (gs, fn)
--- _innerTrans (fn @ (FNode FIdentity on)) l =
---   if _inTopLevel l then pure ([], fn)
---     else tryError $ sformat ("_innerTrans: identity node has too many parents for now:"%sh) on
--- _innerTrans (fn @ (FNode FShuffleEnter key value)) l =
-
--- -- For now, only accepts a single group stack at the top.
--- -- This should not be too much of a limitation as a start, as users can always
--- -- convert to a join manually.
--- -- Same thing for multiple arguments: only linear functions are accepted for now,
--- -- but nothing prevents adding joins automatically.
--- -- TODO: it does not check the number of parents, but this should be done
--- -- elsewhere already.
--- -- TODO: this algorithm will work best after the structure merging pass.
--- -- It works as follows: if there is a stack, then the dataframe has type
--- -- {key:{key0..keyN}, group:value}
--- -- Otherwise, it is just whatever the value is.
--- _innerTrans' :: FNodeType -> CoreNodeInfo -> GroupStack -> [CoreNodeInfo] -> Try (GroupStack, CoreNodeInfo)
---
--- _innerTrans' FUnknown cni [] _ = pure ([], cni)
--- _innerTrans' FUnknown cni gs _ = tryError $ sformat ("_innerTrans: cannot process node inside group: "%sh%" op:"%sh) gs cni
---
--- -- Identity gets converted to a structured transform if there is a stack.
--- _innerTrans' FIdentity cni [] _ = pure ([], cni)
--- -- We discard the shape.
--- _innerTrans' FIdentity (CoreNodeInfo sh' _) gs _ = pure (gs, cni) where
---     co = ColExtraction (FieldPath V.empty) -- This is equivalent to the identity.
---     (co', dt') = _extractTransform gs co (nsType sh')
---     cni = coreNodeInfo dt' Distributed (NodeStructuredTransform co')
---
--- -- Reduce operations: the aggregation is done as a shuffle over all the keys.
--- _innerTrans' (FImperativeAggregate _) cni [] _ = pure ([], cni)
--- _innerTrans' (FImperativeAggregate ao) cni (h:t) _ = pure ([], cni') where
---     (_, keyDt) = _groupType (h :| t)
---     groupDt = nsType . cniShape $ cni
---     dt = _keyGroupDt keyDt groupDt
---     cni' = coreNodeInfo dt Distributed (NodeGroupedReduction (_wrapAgg ao))
---
--- -- Mapping operations: it simply wraps the op to account for the group, no other change.
--- -- TODO: only single parents are currently allowed for simplification.
--- -- Anything more than that requires performing join, and this is harder to
--- -- implement as it requires adding multiple nodes. Nothing hard though.
--- _innerTrans' (FDistributedTransform _) cni [] _ = pure ([], cni)
--- -- One parent:
--- _innerTrans' (FDistributedTransform co) cni (h:t) [_] =
---   pure $ _doTransform (nsType . cniShape $ cni) co (h :| t)
--- -- Not enough parents:
--- _innerTrans' (FDistributedTransform _) cni _ [] =
---   tryError $ sformat ("_innerTrans: not enough parent for distributed transform:"%sh) (cni)
--- -- Too many parents:
--- _innerTrans' (FDistributedTransform _) cni (gh:gt) (h1:h2:t) =
---   tryError $ sformat ("_innerTrans: more than one parent is not currently supported for distributed transform:"%sh) (cni, (gh:gt), (h1:h2:t))
---
--- -- Local transform is very similar to distribute transform, except that
--- -- it stays local with no group.
--- _innerTrans' (FLocalTransform _) cni [] _ = pure ([], cni)
--- -- The result is distributed too here, nothing special to do.
--- _innerTrans' (FLocalTransform co) cni (h:t) [_] =
---   pure $ _doTransform (nsType . cniShape $ cni) co (h :| t)
--- -- Not enough parents:
--- _innerTrans' (FLocalTransform _) cni _ [] =
---   tryError $ sformat ("_innerTrans: not enough parent for local transform:"%sh) (cni)
--- -- Too many parents:
--- _innerTrans' (FLocalTransform _) cni (gh:gt) (h1:h2:t) =
---   tryError $ sformat ("_innerTrans: more than one parent is not currently supported for local transform:"%sh) (cni, (gh:gt), (h1:h2:t))
---
--- -- Entering a shuffle: adding to the carry and make a projection
--- -- for the value node.
--- _innerTrans' (FShuffle Enter) cni gs _ = do
---   (keyDt, valueDt) <- _extractGroupType (nsType . cniShape $ cni)
---   let keyOp = ColExtraction (fieldPath' [_key])
---   let valueOp = NodeStructuredTransform $ ColExtraction (fieldPath' [_value])
---   return ((keyOp, keyDt) : gs, coreNodeInfo valueDt Distributed valueOp)
--- -- Exiting the shuffle: the shuffling has already been performed, to it is
--- -- just a matter of popping the stack.
--- _innerTrans' (FShuffle Exit) cni gs _ = do
---   -- Try to merge the top keys and get the op/datatype for the group
---   (gs', co', dt') <- _mergeWithKey gs (nsType . cniShape $ cni)
---   let (co'', dt'') = _extractTransform gs' co' dt'
---   let cni' = coreNodeInfo dt'' Distributed (NodeStructuredTransform co'')
---   return (gs, cni')
---
--- -- Entering a reduce: nothing special to do
--- _innerTrans' (FReduce Enter) cni gs _ = pure (gs, cni)
--- -- Exiting a reduce: nothing special to do
--- _innerTrans' (FReduce Exit) cni gs _ = pure (gs, cni)
-
-{-| Takes a data type, assumed to be {key:{key1:..}, group:..}, and hoists
-both key1 and the content of group into the top-level.
--}
-_mergeWithKey :: GroupStack -> DataType -> Try (GroupStack, ColOp, DataType)
--- Empty stack, should not happen.
-_mergeWithKey [] dt = tryError $ sformat ("_mergeWithKey: empty stack "%sh) dt
--- No other keys, hoist everything to the top.
-_mergeWithKey ((_, key1Dt):t) dt = do
-  (_, groupDt) <- _extractGroupType dt
-  let dtG = _keyGroupDt key1Dt groupDt
-  return (gs, coG, dtG) where
-    f ((_, dt'), idx) = (_keyExtractor idx, dt')
-    gs = case t of
-      [] -> [] -- No other key to process, result will be hoisted.
-      _ -> f <$> (t `zip` [2..])
-    coG = ColStruct (V.fromList [f1, f2]) where
-          f1 = TransformField "key" (_keyExtractor 1)
-          f2 = TransformField "group" _groupExtractor
-
--- Does the transform in a distribute manner
-_doTransform :: DataType -> ColOp -> N.NonEmpty TypedColOp -> (GroupStack, CoreNodeInfo)
-_doTransform dt co (h :| t) = (gs', cni') where
-  (_, keyDt) = _groupType (h :| t)
-  groupDt = dt
-  dt' = _keyGroupDt keyDt groupDt
-  cni' = coreNodeInfo dt' Distributed (NodeStructuredTransform (_wrapGroup co))
-  gs' = h : t
-
-
-_keyGroupDt :: DataType -> DataType -> DataType
-_keyGroupDt keyDt groupDt = undefined --structType [df1, df2] where
-  -- df1 = structField "key" keyDt
-  -- df2 = structField "group" groupDt
 
 _extractGroupType :: DataType -> Try (DataType, DataType)
 _extractGroupType dt = do
@@ -781,28 +656,13 @@ _extractGroupType dt = do
     [keyDt, valueDt] -> pure (keyDt, valueDt)
     _ -> tryError $ sformat ("_extractGroupType: expected a structure with 2 field, but got "%sh) dt
 
-{-| Given a dataframe that already has some a group stack, wraps an existing
-structured transform over this dataframe into a new structure transform that
-carries over the group stack information.
--}
-_extractTransform :: GroupStack -> ColOp -> DataType -> (ColOp, DataType)
-_extractTransform [] co dt = (co, dt)
-_extractTransform (h:t) co dt = undefined
-  -- -- This is simply making sure the key is passed around, since it is already
-  -- -- in its structure.
-  -- (ColStruct (V.fromList [keyF, groupF]), structType [key, groupDt]) where
-  -- groupF = TransformField _value (_wrapGroup co)
-  -- groupDt = structField "group" dt
-  -- (_, keyDt) = _groupType (h :| t)
-  -- key = structField "key" keyDt
-  -- -- Directly refer to the key in the previous column.
-  -- keyF = TransformField _key (ColExtraction (fieldPath' [_key]))
-
 
 {-| Takes a col and makes sure that the extraction patterns are wrapped inside
 the group instead of directly accessing the field path.
 -}
 _wrapGroup :: ColOp -> ColOp
+-- TODO: make this function pure.
+_wrapGroup (ColBroadcast _) = error "_wrapGroup: ColBroadcast encountered. It should have been removed already"
 _wrapGroup (ColExtraction fp) = ColExtraction (_wrapFieldPath fp)
 _wrapGroup (ColFunction sn v t) = ColFunction sn (_wrapGroup <$> v) t
 _wrapGroup (x @ ColLit{}) = x
@@ -821,40 +681,3 @@ _wrapAgg (AggStruct v) = AggStruct (f <$> v) where
 _wrapFieldPath :: FieldPath -> FieldPath
 _wrapFieldPath (FieldPath v) = FieldPath v' where
   v' = V.fromList (_value : V.toList v)
-
-_groupType :: N.NonEmpty TypedColOp -> (ColOp, DataType)
-_groupType l = undefined-- (ColStruct (V.fromList (fst <$> l')), structType (snd <$> l')) where
-  -- f ((co', dt'), idx) = (TransformField fname co', StructField fname dt') where
-  --               fname = _keyIdx idx
-  -- l' = f <$> ((N.toList l) `zip` [(1 :: Int)..])
-
-
-_convertTransform :: GroupStack -> (ColOp, DataType) -> (ColOp, DataType)
-_convertTransform [] (co, dt) = (co, dt)
-_convertTransform l (co, dt) = undefined
-  -- (ColStruct (V.fromList [keyF, groupF]), structType [keyDt, groupDt]) where
-  -- groupF = TransformField _value co
-  -- groupDt = structField "group" dt
-  -- f ((co'', dt'), idx) = (TransformField fname co'', StructField fname dt') where fname = _keyIdx idx
-  -- l' = f <$> (l `zip` [(1 :: Int)..])
-  -- co' = ColStruct (V.fromList (fst <$> l'))
-  -- keyDt = structField "key" $ structType (snd <$> l')
-  -- keyF = TransformField _key co'
-
--- _getInterestingParent :: [((GroupStack, FNode), StructureEdge)] -> Try (GroupStack, [CoreNodeInfo])
--- _getInterestingParent l =
---   let parents = filter ((ParentEdge ==) . snd) l
---       stacks = nub (fst . fst <$> parents)
---       f (FNode _ cni) = cni
---       ops = f . snd . fst <$> parents
---   in case stacks of
---     [st] -> pure (st, ops)
---     [] -> pure ([], ops) -- No key, which also works.
---     _ -> tryError $ sformat ("_getInterestingParent: multiple parents have been found with different groups: "%sh) l
-
--- -- Checks if we are processing inside a group or in top level
--- -- This happens if any of the parent nodes is from a group.
--- _inTopLevel :: [((GroupStack, FNode), StructureEdge)] -> Bool
--- _inTopLevel [] = True
--- _inTopLevel (((_ : _, _), _) : _) = False
--- _inTopLevel ((([], _), _) : l) = _inTopLevel l

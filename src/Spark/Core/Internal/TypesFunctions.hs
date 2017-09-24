@@ -24,6 +24,7 @@ module Spark.Core.Internal.TypesFunctions(
   structName,
   iSingleField,
   extractFields,
+  extractFields2,
   isNumber,
   mapDataType
 ) where
@@ -102,6 +103,13 @@ extractFields fieldNames (StrictType (Struct (StructType v))) = do
   sequence $ f' <$> zip fieldNames (V.toList v)
 extractFields _ dt =
   tryError $ sformat ("extractFields: expected a strict structure, got"%sh) dt
+
+extractFields2 :: (HasCallStack) => FieldName -> FieldName -> DataType -> Try (DataType, DataType)
+extractFields2 f1 f2 dt = do
+  l <- extractFields [f1, f2] dt
+  case l of
+    [dt1, dt2] -> pure (dt1, dt2)
+    _ -> tryError "_extractFields2: programming error"
 
 compatibleTypes :: DataType -> DataType -> Bool
 compatibleTypes (StrictType sdt) (StrictType sdt') = _compatibleTypesStrict sdt sdt'

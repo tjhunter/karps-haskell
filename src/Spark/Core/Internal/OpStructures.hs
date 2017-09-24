@@ -46,12 +46,14 @@ import Lens.Family2 ((&), (.~), (^.))
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.ProtoUtils
+import Spark.Core.Internal.RowUtils()
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Try
 import Spark.Core.Internal.Utilities(sh)
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
 import qualified Proto.Karps.Proto.Graph as PG
 import qualified Proto.Karps.Proto.Std as PS
+import qualified Proto.Karps.Proto.Row as PR
 import qualified Proto.Karps.Proto.StructuredTransform as PST
 
 {-| The name of a SQL function.
@@ -398,12 +400,17 @@ instance FromProto PST.Column ColOp where
     _funFromProto (PST.ColumnFunction fname l _) = (\x' -> ColFunction fname x' Nothing) <$> x where
         l2 = _fromProto' <$> V.fromList l
         x = (snd <$>) <$> sequence l2
+    _litFromProto :: PST.ColumnLiteral -> Try ColOp
+    _litFromProto cl = do
+      (c', dt) <- extractMaybe' cl PST.maybe'content "cont"
+      return $ ColLit dt c'
     _fromProto :: PST.Column'Content -> Try ColOp
     _fromProto (PST.Column'Broadcast (PST.ColumnBroadcastObservable int')) = pure (ColBroadcast (fromIntegral int'))
     _fromProto (PST.Column'Struct cs) = _structFromProto cs
     _fromProto (PST.Column'Function f) = _funFromProto f
     _fromProto (PST.Column'Extraction ce) =
       pure . ColExtraction . fieldPathFromProto $ ce
+    _fromProto (PST.Column'Literal cl) = _litFromProto cl
     _fromProto' :: PST.Column -> Try (Maybe FieldName, ColOp)
     _fromProto' c' = do
       x <- case c' ^. PST.maybe'content of
@@ -445,7 +452,12 @@ _colOpToProto fn (ColBroadcast idx) =
   _colProto fn & PST.broadcast .~ b where
     b = (def :: PST.ColumnBroadcastObservable)
           & PST.observableIndex .~ fromIntegral idx
-_colOpToProto _ (ColLit _ _) = error "_colOpToProto: literal"
+_colOpToProto fn (ColLit dt c) = _colProto fn & PST.literal .~ cl where
+    cwt = (def :: PR.CellWithType)
+          & PR.cell .~ toProto c
+          & PR.cellType .~ toProto dt
+    cl = (def :: PST.ColumnLiteral)
+          & PST.content .~ cwt
 _colOpToProto fn (ColExtraction (FieldPath l)) =
   _colProto fn & PST.extraction .~ e where
     e = (def :: PST.ColumnExtraction) & PST.path .~ V.toList (unFieldName <$> l)

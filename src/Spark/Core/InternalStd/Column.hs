@@ -25,7 +25,9 @@ module Spark.Core.InternalStd.Column(
   multiplyCBuilder,
   divideCBuilder,
   lowerCBuilder,
-  greaterCBuilder
+  lowerEqCBuilder,
+  greaterCBuilder,
+  greaterEqCBuilder
 ) where
 
 import Data.Text(Text)
@@ -80,8 +82,14 @@ _compOp n = colBuilder2Homo n $ \dt ->
 eqCBuilder :: ColumnSQLBuilder
 eqCBuilder = _compOp "eq"
 
+lowerEqCBuilder :: ColumnSQLBuilder
+lowerEqCBuilder = _compOp "lower_equal"
+
 lowerCBuilder :: ColumnSQLBuilder
 lowerCBuilder = _compOp "lower"
+
+greaterEqCBuilder :: ColumnSQLBuilder
+greaterEqCBuilder = _compOp "greater_equal"
 
 greaterCBuilder :: ColumnSQLBuilder
 greaterCBuilder = _compOp "greater"

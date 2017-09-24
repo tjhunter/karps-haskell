@@ -68,6 +68,7 @@ library
                        Spark.Core.InternalStd.Aggregation,
                        Spark.Core.InternalStd.Column,
                        Spark.Core.InternalStd.Dataset,
+                       Spark.Core.InternalStd.Filter,
                        Spark.Core.InternalStd.Observable,
                        Spark.Core.Row,
                        Spark.Core.StructuresInternal,
