@@ -53,12 +53,12 @@ shuffleBuilder :: StructuredBuilderRegistry -> NodeBuilder
 shuffleBuilder reg = buildOpDExtra nameGroupedReduction $ \dt (s @ Shuffle{}) -> do
   -- Check first that the dataframe has two columns.
   (keyDt, groupDt) <- _splitGroupType dt
-  dt' <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("group", groupDt)]
+  dt' <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("value", groupDt)]
   -- Get the type after the grouping.
   agg <- extractMaybe s PS.maybe'aggOp "agg_op"
   ao <- fromProto agg
   (ao', aggDt) <- aggTypeStructured reg dt' ao
-  resDt <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("group", aggDt)]
+  resDt <- StrictType . Struct <$> structTypeFromFields [("key", keyDt), ("value", aggDt)]
   return $ coreNodeInfo resDt Distributed (NodeGroupedReduction ao')
 
 {-| The low-level dataset -> dataset structured transform builder.
@@ -113,12 +113,12 @@ and output characteristics.
 The 3 arguments are:
  - the parent (distributed), on which to operate the transform
  - a placeholder (distributed), of same type as the parent
- - a dataset, which should be linked to the placeholder (not checked)
+ - an observable (the output of the aggregation),
+   which should be linked to the placeholder (not checked)
 -}
 functionalShuffleBuilder :: NodeBuilder
 functionalShuffleBuilder = buildOp3 "org.spark.FunctionalShuffle" $ \ns1 ns2 ns3 -> do
-  -- Split the input type into the key type and value type.
-  dt <- _checkShuffle Distributed ns1 ns2 ns3
+  dt <- _checkShuffle Local ns1 ns2 ns3
   return $ cniStandardOp' Distributed "org.spark.FunctionalShuffle" dt
 
 {-| The functional transform builder.
@@ -156,7 +156,7 @@ functionalReduceBuilder = buildOp3 "org.spark.FunctionalReduce" $ \ns1 ns2 ns3 -
 
 _splitGroupType :: DataType -> Try (DataType, DataType)
 _splitGroupType dt = do
-  l <- extractFields ["key", "group"] dt
+  l <- extractFields ["key", "value"] dt
   case l of
     [keyDt, groupDt] -> pure (keyDt, groupDt)
     _ -> tryError $ sformat ("Expected 2 fields, got "%sh%" from "%sh) l dt
@@ -172,21 +172,21 @@ _checkShuffle loc ns1 ns2 ns3 = do
   when (nsLocality ns2 /= Distributed) $
     tryError $ sformat ("_checkShuffle: expected second input to be distributed: "%sh) ns2
   when (nsLocality ns3 /= loc) $
-    tryError $ sformat ("_checkShuffle: expected third input to be distributed: "%sh) ns3
+    tryError $ sformat ("_checkShuffle: expected third input to be :"%sh%" but got instead"%sh) loc ns3
   -- We cannot check if ns2 is a placeholder, it will be done during decomposition.
-  t <- structTypeFromFields [("key", keyDt), ("group", nsType ns3)]
+  t <- structTypeFromFields [("key", keyDt), ("value", nsType ns3)]
   return . StrictType . Struct $ t
 
 _check :: Locality -> NodeShape -> NodeShape -> NodeShape -> Try ()
 _check loc ns1 ns2 ns3 = do
   when (nsType ns1 /= nsType ns2) $
-    tryError $ sformat ("_checkShuffle: expected two nodes of the same shape, but the second input "%sh%" does not match the shape of first node:"%sh) ns2 ns1
+    tryError $ sformat ("_check: expected two nodes of the same shape, but the second input "%sh%" does not match the shape of first node:"%sh) ns2 ns1
   when (nsLocality ns1 /= loc) $
-    tryError $ sformat ("_checkShuffle: expected first input to be distributed: "%sh) ns1
+    tryError $ sformat ("_check: expected first input to be: "%sh%" but got instead"%sh) loc ns1
   when (nsLocality ns2 /= loc) $
-    tryError $ sformat ("_checkShuffle: expected second input to be distributed: "%sh) ns2
+    tryError $ sformat ("_check: expected second input to be: "%sh%" but got instead"%sh) loc ns2
   when (nsLocality ns3 /= loc) $
-    tryError $ sformat ("_checkShuffle: expected third input to be distributed: "%sh) ns3
+    tryError $ sformat ("_check: expected third input to be :"%sh%" but got instead"%sh) loc ns3
 
 _checkSameShape :: NodeShape -> NodeShape -> Try ()
 _checkSameShape ns1 ns2 =

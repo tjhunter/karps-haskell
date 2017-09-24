@@ -29,6 +29,7 @@ module Spark.Core.Internal.DatasetFunctions(
   fromBuilder1,
   fromBuilder2Extra,
   fromBuilder2,
+  filterParentNodes,
   -- builderDistributedLiteral,
   castLocality,
   emptyDataset,
@@ -286,6 +287,12 @@ updateOpNodeOp n nc no = updateOpNode n nc $ \n' ->
           cniOp = no
         }
       }
+
+filterParentNodes :: [(v, StructureEdge)] -> [v]
+filterParentNodes [] = []
+filterParentNodes ((v, ParentEdge):t) = v : filterParentNodes t
+filterParentNodes (_ : t) = filterParentNodes t
+
 
 -- (internal)
 -- The locality of the node

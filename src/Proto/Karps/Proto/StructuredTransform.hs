@@ -24,6 +24,7 @@ import qualified Data.ProtoLens.Reexport.Data.Map as Data.Map
 import qualified Data.ProtoLens.Reexport.Data.ByteString
        as Data.ByteString
 import qualified Data.ProtoLens.Reexport.Lens.Labels as Lens.Labels
+import qualified Proto.Karps.Proto.Row
 import qualified Proto.Karps.Proto.Types
 
 data Aggregation = Aggregation{_Aggregation'fieldName ::
@@ -279,6 +280,7 @@ data Column'Content = Column'Struct !ColumnStructure
                     | Column'Function !ColumnFunction
                     | Column'Extraction !ColumnExtraction
                     | Column'Broadcast !ColumnBroadcastObservable
+                    | Column'Literal !ColumnLiteral
                     deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
 
 instance (a ~ Data.Text.Text, b ~ Data.Text.Text,
@@ -419,6 +421,36 @@ instance (a ~ ColumnBroadcastObservable,
                     (\ _ y__ -> Prelude.fmap Column'Broadcast y__))
                  (Data.ProtoLens.maybeLens Data.Default.Class.def))
 
+instance (a ~ Prelude.Maybe ColumnLiteral,
+          b ~ Prelude.Maybe ColumnLiteral, Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'literal" f Column Column a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _Column'content
+                 (\ x__ y__ -> x__{_Column'content = y__}))
+              (Lens.Family2.Unchecked.lens
+                 (\ x__ ->
+                    case x__ of
+                        Prelude.Just (Column'Literal x__val) -> Prelude.Just x__val
+                        _otherwise -> Prelude.Nothing)
+                 (\ _ y__ -> Prelude.fmap Column'Literal y__))
+
+instance (a ~ ColumnLiteral, b ~ ColumnLiteral,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "literal" f Column Column a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _Column'content
+                 (\ x__ y__ -> x__{_Column'content = y__}))
+              ((Prelude..)
+                 (Lens.Family2.Unchecked.lens
+                    (\ x__ ->
+                       case x__ of
+                           Prelude.Just (Column'Literal x__val) -> Prelude.Just x__val
+                           _otherwise -> Prelude.Nothing)
+                    (\ _ y__ -> Prelude.fmap Column'Literal y__))
+                 (Data.ProtoLens.maybeLens Data.Default.Class.def))
+
 instance Data.Default.Class.Default Column where
         def
           = Column{_Column'fieldName = Data.ProtoLens.fieldDefault,
@@ -456,6 +488,12 @@ instance Data.ProtoLens.Message Column where
                          Data.ProtoLens.FieldTypeDescriptor ColumnBroadcastObservable)
                       (Data.ProtoLens.OptionalField maybe'broadcast)
                       :: Data.ProtoLens.FieldDescriptor Column
+                literal__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "literal"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor ColumnLiteral)
+                      (Data.ProtoLens.OptionalField maybe'literal)
+                      :: Data.ProtoLens.FieldDescriptor Column
               in
               Data.ProtoLens.MessageDescriptor
                 (Data.Text.pack "karps.core.Column")
@@ -464,13 +502,15 @@ instance Data.ProtoLens.Message Column where
                     (Data.ProtoLens.Tag 1, struct__field_descriptor),
                     (Data.ProtoLens.Tag 2, function__field_descriptor),
                     (Data.ProtoLens.Tag 3, extraction__field_descriptor),
-                    (Data.ProtoLens.Tag 4, broadcast__field_descriptor)])
+                    (Data.ProtoLens.Tag 4, broadcast__field_descriptor),
+                    (Data.ProtoLens.Tag 5, literal__field_descriptor)])
                 (Data.Map.fromList
                    [("field_name", fieldName__field_descriptor),
                     ("struct", struct__field_descriptor),
                     ("function", function__field_descriptor),
                     ("extraction", extraction__field_descriptor),
-                    ("broadcast", broadcast__field_descriptor)])
+                    ("broadcast", broadcast__field_descriptor),
+                    ("literal", literal__field_descriptor)])
 
 data ColumnBroadcastObservable = ColumnBroadcastObservable{_ColumnBroadcastObservable'observableIndex
                                                            :: !Data.Int.Int32}
@@ -627,6 +667,81 @@ instance Data.ProtoLens.Message ColumnFunction where
                     ("inputs", inputs__field_descriptor),
                     ("expected_type", expectedType__field_descriptor)])
 
+data ColumnLiteral = ColumnLiteral{_ColumnLiteral'cell ::
+                                   !(Prelude.Maybe Proto.Karps.Proto.Row.Cell),
+                                   _ColumnLiteral'cellType ::
+                                   !(Prelude.Maybe Proto.Karps.Proto.Types.SQLType)}
+                   deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ Proto.Karps.Proto.Row.Cell,
+          b ~ Proto.Karps.Proto.Row.Cell, Prelude.Functor f) =>
+         Lens.Labels.HasLens "cell" f ColumnLiteral ColumnLiteral a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ColumnLiteral'cell
+                 (\ x__ y__ -> x__{_ColumnLiteral'cell = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Row.Cell,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Row.Cell, Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'cell" f ColumnLiteral ColumnLiteral a b
+         where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ColumnLiteral'cell
+                 (\ x__ y__ -> x__{_ColumnLiteral'cell = y__}))
+              Prelude.id
+
+instance (a ~ Proto.Karps.Proto.Types.SQLType,
+          b ~ Proto.Karps.Proto.Types.SQLType, Prelude.Functor f) =>
+         Lens.Labels.HasLens "cellType" f ColumnLiteral ColumnLiteral a b
+         where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ColumnLiteral'cellType
+                 (\ x__ y__ -> x__{_ColumnLiteral'cellType = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~ Prelude.Maybe Proto.Karps.Proto.Types.SQLType,
+          b ~ Prelude.Maybe Proto.Karps.Proto.Types.SQLType,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'cellType" f ColumnLiteral ColumnLiteral
+         a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _ColumnLiteral'cellType
+                 (\ x__ y__ -> x__{_ColumnLiteral'cellType = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default ColumnLiteral where
+        def
+          = ColumnLiteral{_ColumnLiteral'cell = Prelude.Nothing,
+                          _ColumnLiteral'cellType = Prelude.Nothing}
+
+instance Data.ProtoLens.Message ColumnLiteral where
+        descriptor
+          = let cell__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "cell"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor Proto.Karps.Proto.Row.Cell)
+                      (Data.ProtoLens.OptionalField maybe'cell)
+                      :: Data.ProtoLens.FieldDescriptor ColumnLiteral
+                cellType__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "cell_type"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor Proto.Karps.Proto.Types.SQLType)
+                      (Data.ProtoLens.OptionalField maybe'cellType)
+                      :: Data.ProtoLens.FieldDescriptor ColumnLiteral
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.ColumnLiteral")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, cell__field_descriptor),
+                    (Data.ProtoLens.Tag 2, cellType__field_descriptor)])
+                (Data.Map.fromList
+                   [("cell", cell__field_descriptor),
+                    ("cell_type", cellType__field_descriptor)])
+
 data ColumnStructure = ColumnStructure{_ColumnStructure'fields ::
                                        ![Column]}
                      deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
@@ -664,6 +779,20 @@ broadcast ::
 broadcast
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "broadcast")
+
+cell ::
+     forall f s t a b . Lens.Labels.HasLens "cell" f s t a b =>
+       Lens.Family2.LensLike f s t a b
+cell
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "cell")
+
+cellType ::
+         forall f s t a b . Lens.Labels.HasLens "cellType" f s t a b =>
+           Lens.Family2.LensLike f s t a b
+cellType
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "cellType")
 
 expectedType ::
              forall f s t a b . Lens.Labels.HasLens "expectedType" f s t a b =>
@@ -714,6 +843,13 @@ inputs
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "inputs")
 
+literal ::
+        forall f s t a b . Lens.Labels.HasLens "literal" f s t a b =>
+          Lens.Family2.LensLike f s t a b
+literal
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "literal")
+
 maybe'aggOp ::
             forall f s t a b . Lens.Labels.HasLens "maybe'aggOp" f s t a b =>
               Lens.Family2.LensLike f s t a b
@@ -728,6 +864,21 @@ maybe'broadcast ::
 maybe'broadcast
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'broadcast")
+
+maybe'cell ::
+           forall f s t a b . Lens.Labels.HasLens "maybe'cell" f s t a b =>
+             Lens.Family2.LensLike f s t a b
+maybe'cell
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'cell")
+
+maybe'cellType ::
+               forall f s t a b .
+                 Lens.Labels.HasLens "maybe'cellType" f s t a b =>
+                 Lens.Family2.LensLike f s t a b
+maybe'cellType
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'cellType")
 
 maybe'content ::
               forall f s t a b . Lens.Labels.HasLens "maybe'content" f s t a b =>
@@ -759,6 +910,13 @@ maybe'function ::
 maybe'function
   = Lens.Labels.lensOf
       ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'function")
+
+maybe'literal ::
+              forall f s t a b . Lens.Labels.HasLens "maybe'literal" f s t a b =>
+                Lens.Family2.LensLike f s t a b
+maybe'literal
+  = Lens.Labels.lensOf
+      ((Lens.Labels.proxy#) :: (Lens.Labels.Proxy#) "maybe'literal")
 
 maybe'op ::
          forall f s t a b . Lens.Labels.HasLens "maybe'op" f s t a b =>

@@ -35,7 +35,7 @@ import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DatasetStd(localityToProto)
 import Spark.Core.Internal.DAGStructures
-import Spark.Core.Internal.DatasetFunctions(buildOpNode')
+import Spark.Core.Internal.DatasetFunctions(buildOpNode', filterParentNodes)
 import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Caching(opnameAutocache)
@@ -45,6 +45,7 @@ import Spark.Core.Internal.Display(displayGraph)
 import Spark.Core.InternalStd.Observable(localPackBuilder)
 import Spark.Core.Internal.TypesFunctions(structTypeTuple')
 import Spark.Core.StructuresInternal(nodePathAppendSuffix, emptyFieldPath, fieldPath', unsafeFieldName, emptyNodeId)
+import Spark.Core.Internal.StructuredFlattening
 import Spark.Core.Try
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Graph as PG
@@ -74,6 +75,15 @@ performTransform conf cache resources = _transform phases where
     pure (PAI.MERGE_AGGREGATIONS, mergeStructuredAggregators),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
+    -- TODO: the flattening should be split into smaller passes:
+    {- The following passes should be done:
+     - basic structural checks for the functions
+     - scoping analysis: all the functional units are self contained
+     - recursive optimization of the functional units (merge what can be merged)
+     - do the flattening.
+     - remove identity nodes.
+    -}
+    pure (PAI.FUNCTIONAL_FLATTENING, structuredFlatten),
     -- TODO: this is another pass.
     pure (PAI.AUTOCACHE_FULLFILL, removeAutocache),
     pure (PAI.FINAL, pure)
@@ -157,7 +167,7 @@ mergeStructuredAggregators cg = do
       f' (x @ MATSingle {}) _ = pure x
       f' (x @ MATNormal {}) _ = pure x
       f' (x @ MATMulti {}) _ = pure x
-      f' (x @ (MATAgg on aggOn)) l = case _parentNodes l of
+      f' (x @ (MATAgg on aggOn)) l = case filterParentNodes l of
         -- This node is the unique aggregation, nothing to do.
         [MATSingle _] -> pure x
         -- This node is one of multiple other aggregations.
@@ -178,10 +188,10 @@ mergeStructuredAggregators cg = do
       f' _ = []
     -- The new edges between the dataset and the composite aggregator
     extraEdges1 cg' = concatMap f' (graphVertexData cg') where
-      f' (MATMulti on aggOn _) = [_makeParentEdge (onPath on) (onPath aggOn)]
+      f' (MATMulti on aggOn _) = [makeParentEdge (onPath on) (onPath aggOn)]
       f' _ = []
     extraEdges2 cg' = concatMap f' (graphVertexData cg') where
-      f' (MATMulti _ aggOn ps) = _makeParentEdge (onPath aggOn) <$> ps
+      f' (MATMulti _ aggOn ps) = makeParentEdge (onPath aggOn) <$> ps
       f' _ = []
     deletedEdges cg' = S.fromList $ concatMap f' (graphVertexData cg') where
       f' (MATMulti on _ ps) = (,onPath on) <$> ps
@@ -255,11 +265,11 @@ removeObservableBroadcasts cg = do
     extraEdges1 = concat $ f' <$> graphVertexData cg' where
       f' (ThroughNode _) = []
       f' (AddPack _ packOn parents) = f'' <$> parents where
-        f'' np = _makeParentEdge np (onPath packOn)
+        f'' np = makeParentEdge np (onPath packOn)
     -- The edges flowing from pack -> local structure
     extraEdges2 = concatMap f' (graphVertexData cg') where
       f' (ThroughNode _) = []
-      f' (AddPack on packOn _) = [_makeParentEdge (onPath packOn) (onPath on)]
+      f' (AddPack on packOn _) = [makeParentEdge (onPath packOn) (onPath on)]
     extraEdges = extraEdges1 ++ extraEdges2
     deletedEdges = S.fromList $ concatMap f' (graphVertexData cg') where
       f' (AddPack on _ ps) = (onPath on,) <$> ps
@@ -304,13 +314,13 @@ removeAutocache cg = do
       f :: OperatorNode -> [(AutocacheRemove, StructureEdge)] -> AutocacheRemove
       f on _ | isAgg on = ACRAggregation (onPath on)
       f on _ | nsLocality (onShape on) == Local = ACRLocal
-      f on l | isAutocache on = case _parentNodes l of
+      f on l | isAutocache on = case filterParentNodes l of
         [ACRAggregation childPath] -> ACRAutocache1 (onPath on) childPath
         [ACRDistributed1 childPath] -> ACRAutocache1 (onPath on) childPath
         _ -> ACRDistributed
       -- If there is a unique parent info, keep it, otherwise it is just a
       -- regular node.
-      f on l = case _parentNodes l of
+      f on l = case filterParentNodes l of
         [ACRAggregation _] -> ACRDistributed1 (onPath on)
         [ACRDistributed1 _] -> ACRDistributed1 (onPath on)
         [ACRAutocache1 acPath childPath] -> ACRAutoParent1 (onPath on) acPath childPath
@@ -320,7 +330,7 @@ removeAutocache cg = do
       f (ACRAutoParent1 _ p _) = [p]
       f _ = []
     ac1Edges = concatMap f (graphVertexData rcg0) where
-      f (ACRAutoParent1 parentPath _ childPath) = [_makeParentEdge parentPath childPath]
+      f (ACRAutoParent1 parentPath _ childPath) = [makeParentEdge parentPath childPath]
       f _ = []
     -- Remove all the references to autocache nodes that we remove.
     -- This should be enough to make it drop from the list of nodes.
@@ -344,19 +354,6 @@ data AutocacheRemove =
   | ACRAutoParent1 NodePath NodePath NodePath
   | ACRDistributed -- Just a regular distributed node.
   deriving (Show)
-
--- WATCH OUT: the flow is fromEdge -> toEdge
--- It is NOT in dependency
--- TODO: maybe this should be changed?
-_makeParentEdge :: NodePath -> NodePath -> Edge StructureEdge
--- IMPORTANT: the edges in the graph are expected to represent dependency ordering, not flow.
-_makeParentEdge npFrom npTo = Edge (parseNodeId npTo) (parseNodeId npFrom) ParentEdge
-
-_parentNodes :: [(v, StructureEdge)] -> [v]
-_parentNodes [] = []
-_parentNodes ((v, ParentEdge):t) = v : _parentNodes t
-_parentNodes (_ : t) = _parentNodes t
-
 
 {-| Builds an extractor from a tuple, given the index of the field of the tuple.
 Does NOT do off-by-1 corrections. -}

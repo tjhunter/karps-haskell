@@ -15,6 +15,7 @@ module Spark.Core.Internal.TypesFunctions(
   canNull,
   structField,
   structType,
+  structType',
   structTypeFromFields,
   structTypeTuple,
   structTypeTuple',
@@ -90,7 +91,7 @@ colTypeFromFrame st @ (StructType fs) = case V.toList fs of
 
 {-| Attempts to extract the types of fields in a struct, given an expected
 list of field names. -}
-extractFields :: [FieldName] -> DataType -> Try [DataType]
+extractFields :: (HasCallStack) => [FieldName] -> DataType -> Try [DataType]
 extractFields fieldNames (StrictType (Struct (StructType v))) = do
   when (length fieldNames /= length v) $
     tryError $ sformat ("extractFields: the expected number of fields does not match the number in the structure expected:"%sh%", provided: "%sh) fieldNames v
@@ -211,6 +212,9 @@ structField txt = StructField (FieldName txt)
 -- TODO: use a non-empty list
 structType :: [StructField] -> DataType
 structType = StrictType . Struct . StructType . V.fromList
+
+structType' :: NonEmpty StructField -> DataType
+structType' (h:|t) = structType (h:t)
 
 -- The strict array type
 arrayType' :: DataType -> DataType

@@ -58,6 +58,7 @@ library
                        Spark.Core.Internal.Pruning,
                        Spark.Core.Internal.RowGenericsFrom,
                        Spark.Core.Internal.StructuredBuilder,
+                       Spark.Core.Internal.StructuredFlattening,
                        Spark.Core.Internal.StructureFunctions,
                        Spark.Core.Internal.TypesGenerics,
                        Spark.Core.Internal.TypesStructures,

@@ -20,7 +20,8 @@ module Spark.Core.Internal.BrainStructures(
   unResourcePath,
   makeSessionId,
   parseNodeId,
-  nodeAsVertex
+  nodeAsVertex,
+  makeParentEdge
 ) where
 
 import qualified Data.Text as T
@@ -34,11 +35,10 @@ import Lens.Family2 ((^.), (&), (.~))
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ComputeDag(ComputeDag)
-import Spark.Core.Internal.DAGStructures(Vertex(..), VertexId(..))
-import Spark.Core.Internal.DatasetStructures(StructureEdge, OperatorNode, onPath)
-import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
+import Spark.Core.Internal.DAGStructures(Vertex(..), VertexId(..), Edge(..))
+import Spark.Core.Internal.DatasetStructures(StructureEdge(ParentEdge), OperatorNode, onPath)
+import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath, prettyNodePath)
 import Spark.Core.Try(NodeError, Try, nodeError, eMessage)
-import Spark.Core.StructuresInternal(prettyNodePath)
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 import qualified Proto.Karps.Proto.Io as PI
@@ -137,6 +137,18 @@ Note sure if this is the right design here.
 type ComputeGraph = ComputeDag OperatorNode StructureEdge
 
 type ResourceList = [(ResourcePath, ResourceStamp)]
+
+{-| Makes a parent edge. The flow is fromEdge -> toEdge, which is usually
+what is desired.
+
+WATCH OUT: the flow is fromEdge -> toEdge
+-}
+-- It is NOT in dependency
+-- TODO: maybe this should be changed?
+makeParentEdge :: NodePath -> NodePath -> Edge StructureEdge
+-- IMPORTANT: the edges in the graph are expected to represent dependency ordering, not flow.
+makeParentEdge npFrom npTo = Edge (parseNodeId npTo) (parseNodeId npFrom) ParentEdge
+
 
 instance Show LocalSessionId where
   show = unpack . unLocalSession

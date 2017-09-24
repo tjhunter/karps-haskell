@@ -24,11 +24,11 @@ import qualified Proto.Tensorflow.Core.Framework.Graph as PG
 import qualified Proto.Tensorflow.Core.Framework.NodeDef as PN
 import qualified Proto.Tensorflow.Core.Framework.AttrValue as PAV
 import Spark.Core.Internal.ContextStructures(ComputeGraph)
-import Spark.Core.Internal.ComputeDag(computeGraphMapVertices, ComputeDag, cdVertices)
+import Spark.Core.Internal.ComputeDag(computeGraphMapVertices, cdVertices)
 import Spark.Core.Internal.DAGStructures(Vertex(vertexData))
 import Spark.Core.Internal.OpStructures(OpExtra(opContentDebug))
 import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
-import Spark.Core.Internal.DatasetStructures(OperatorNode(..), StructureEdge(..), onOp, onType)
+import Spark.Core.Internal.DatasetStructures(OperatorNode(..), StructureEdge(..), onOp, onType, onLocality)
 import Spark.Core.StructuresInternal(prettyNodePath)
 import Spark.Core.Internal.Utilities(show')
 
@@ -58,8 +58,13 @@ _displayNode on parents logical = (def :: PN.NodeDef)
       | otherwise = txt
 
 _attributes :: OperatorNode -> M.Map Text PAV.AttrValue
-_attributes on = M.fromList [("type", t), ("extra", e)] where
+_attributes on = M.fromList [("type", t), ("locality", l), ("zextra", e)] where
+  l' = encodeUtf8 . show' . onLocality $ on
   t' = encodeUtf8 . show' . onType $ on
-  e' = encodeUtf8 . opContentDebug . extraNodeOpData . onOp $ on
+  e' = encodeUtf8 . _clean . opContentDebug . extraNodeOpData . onOp $ on
+  l = (def :: PAV.AttrValue) & PAV.s .~ l'
   t = (def :: PAV.AttrValue) & PAV.s .~ t'
   e = (def :: PAV.AttrValue) & PAV.s .~ e'
+
+_clean :: Text -> Text
+_clean = T.replace "\"" "." . T.replace "\n" "" . T.replace "\\" ""
