@@ -19,15 +19,12 @@ import qualified Data.List.NonEmpty as N
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Set as S
-import Data.Map.Strict(Map)
-import Data.Text(Text)
 import Data.List(elemIndex)
 import Data.Maybe(catMaybes)
 import Data.Default
 import Formatting
 import GHC.Stack(prettyCallStack)
 import Lens.Family2((&), (.~))
-import Data.Functor.Identity(runIdentity, Identity)
 
 import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.Utilities
@@ -40,14 +37,12 @@ import Spark.Core.Internal.OpFunctions(simpleShowOp, extraNodeOpData)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Caching(opnameAutocache)
 import Spark.Core.Internal.DatasetStructures(StructureEdge(..), OperatorNode(..), onLocality, onType, onOp, onShape)
-import Spark.Core.StructuresInternal(NodeId, ComputationID, NodePath)
 import Spark.Core.Internal.Display(displayGraph)
 import Spark.Core.InternalStd.Observable(localPackBuilder)
 import Spark.Core.Internal.TypesFunctions(structTypeTuple')
-import Spark.Core.StructuresInternal(nodePathAppendSuffix, emptyFieldPath, fieldPath', unsafeFieldName, emptyNodeId)
+import Spark.Core.StructuresInternal(NodeId, NodePath, FieldName(..), FieldPath(..), nodePathAppendSuffix, emptyFieldPath, fieldPath', unsafeFieldName, emptyNodeId)
 import Spark.Core.Internal.StructuredFlattening
 import Spark.Core.Try
-import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Graph as PG
 import qualified Proto.Karps.Proto.ApiInternal as PAI
 
@@ -72,6 +67,7 @@ performTransform conf cache resources = _transform phases where
   phases = catMaybes [
     _m ccUseNodePruning (PAI.REMOVE_UNREACHABLE, transPruneGraph),
     pure (PAI.REMOVE_OBSERVABLE_BROADCASTS, removeObservableBroadcasts),
+    pure (PAI.MERGE_PREAGG_AGGREGATIONS, mergePreStructuredAggregators),
     pure (PAI.MERGE_AGGREGATIONS, mergeStructuredAggregators),
     pure (PAI.DATA_SOURCE_INSERTION, transInsertResource resources),
     pure (PAI.POINTER_SWAP_1, transSwapCache cache),
@@ -106,17 +102,26 @@ _transform l cg = f l [(PAI.INITIAL, cg)] cg where
 
 
 transSwapCache :: NodeMap -> ComputeGraph -> Try ComputeGraph
-transSwapCache cache cg = pure cg
+transSwapCache _ = pure
 
 transInsertResource :: ResourceList -> ComputeGraph -> Try ComputeGraph
-transInsertResource resources cg = pure cg
+transInsertResource _ = pure
 
 transPruneGraph :: ComputeGraph -> Try ComputeGraph
 transPruneGraph = pure
 
-transFillAutoCache :: ComputeGraph -> Try ComputeGraph
-transFillAutoCache = pure
+-- transFillAutoCache :: ComputeGraph -> Try ComputeGraph
+-- transFillAutoCache = pure
 
+data MergeAggTrans =
+    MATNormal OperatorNode -- A normal node
+  | MATAgg OperatorNode AggOp -- A node that contains a structured aggregation.
+  | MATSingle OperatorNode -- A node that leads to a single aggregation
+  | MATMulti OperatorNode OperatorNode [NodePath] -- A node that fans out in multiple aggregations
+  deriving (Show)
+
+{-| Merges structured aggregators together.
+-}
 mergeStructuredAggregators :: ComputeGraph -> Try ComputeGraph
 mergeStructuredAggregators cg = do
     cg1 <- cg1t
@@ -199,12 +204,196 @@ mergeStructuredAggregators cg = do
     edgeFilter cg' onFrom _ onTo =
       not $ S.member (onPath onFrom, onPath onTo) (deletedEdges cg')
 
-data MergeAggTrans =
-    MATNormal OperatorNode -- A normal node
-  | MATAgg OperatorNode AggOp -- A node that contains a structured aggregation.
-  | MATSingle OperatorNode -- A node that leads to a single aggregation
-  | MATMulti OperatorNode OperatorNode [NodePath] -- A node that fans out in multiple aggregations
+{-| Identifies pre-transforms that are done prior to aggregations.
+
+These pretransforms are then merged together.
+-}
+data MergePreAggTrans =
+    MPTNormal OperatorNode -- A normal node
+    -- A node that contains a structured aggregation.
+    -- TODO: add aggregation, we need to transform it too.
+  | MPTAgg OperatorNode AggOp
+    -- A structured transform that is the direct parent of an agg.
+    -- Arguments:
+    --  - the node
+    --  - the path to the previous agg node
+    --  - the col op performed in this node
+    --  - the index of this operation in the fanning node (if any.)
+    --    This is filled during the forward pass.
+  | MPTPre OperatorNode NodePath ColOp (Maybe Int)
+    -- A node that fans out in multiple aggregations.
+    -- The paths are (maybe the structured trans, app node)
+    -- Some agg nodes may be directly connected to the fan.
+    -- First node is the original node, second node is the new combined node.
+    -- First list is the paths to the op structures that have been merged
+    -- Second list is the list of all the aggregations that are reached from
+    -- this fan.
+  | MPTFan OperatorNode OperatorNode [NodePath] [NodePath]
   deriving (Show)
+
+
+{-| Merges structured aggregators together.
+-}
+mergePreStructuredAggregators :: ComputeGraph -> Try ComputeGraph
+mergePreStructuredAggregators cg = do
+    cg1 <- cg1t
+    let cg2 = computeGraphMapVerticesI cg1 $ \mat _ -> opNode mat
+    cg3 <- tryEither $ graphAdd cg2 (extraVxs cg1) (extraEdges1 cg1 ++ extraEdges2 cg1)
+    let cg4 = graphFilterEdges' cg3 (edgeFilter cg1)
+    let cleaned = pruneUnreachable cg4
+    return cleaned
+  where
+    -- The reverse graph
+    rcg = reverseGraph cg
+    -- From the descendants, the list of nodes that are aggregation sources.
+    -- the node itself, the path to the actual aggregator, the optional column transform.
+    childAggs :: [(MergePreAggTrans, StructureEdge)] ->
+                 [(OperatorNode, NodePath, Maybe ColOp)]
+    childAggs = concatMap f where
+      f (MPTAgg on _, ParentEdge) = [(on, onPath on, Nothing)]
+      f (MPTPre on np co _, ParentEdge) = [(on, np, Just co)]
+      f _ = []
+    -- This graph indicates which nodes are merging material.
+    rcg0 = computeGraphMapVerticesI rcg f0 where
+      f0 on l = traceHint ("mergePreStructuredAggregators:rcg0:on="<>show' on<>" \nmergePreStructuredAggregators:rcg0:l="<>show' l<>"\nmergePreStructuredAggregators:rcg0:res=") (f on l)
+      f on l = case (onOp on, childAggs l) of
+        (NodeReduction ao, _) -> MPTAgg on ao
+        -- A regular node, no special aggregation
+        (_, []) -> MPTNormal on
+        -- A structured reduction that directly follows an aggregation.
+        (NodeStructuredTransform co, [(on', _, Nothing)]) ->
+            MPTPre on (onPath on') co Nothing
+        -- A node that gets aggregated by a single op, nothing to do.
+        (_, [_]) -> MPTNormal on
+        -- A node that gets aggregated more than once -> transform.
+        (_, x : t) ->
+          makeMPTFan on directAggs pres where
+            l' = x : t
+            directAggs = concatMap f' l' where
+              f' (_, aggPath, Nothing) = [aggPath]
+              f' _ = []
+            pres = concatMap f' l' where
+              f' (on', aggPath, Just co) = [(on', aggPath, co)]
+              f' _ = []
+      makeMPTFan :: OperatorNode -> [NodePath] -> [(OperatorNode, NodePath, ColOp)] -> MergePreAggTrans
+      -- That should not happen, but not a problem
+      makeMPTFan on [] [] = MPTNormal on
+      -- Only direct aggregations. No need to insert a transform.
+      makeMPTFan on (_:_) [] = MPTNormal on
+      -- Some pre-transforms, and maybe some direct aggregations.
+      -- Note that we have lost the ordering, but this is not a problem here.
+      makeMPTFan on directAggPaths (x:t) =
+        MPTFan on transOn prePaths childAggPaths where
+          pres = x : t
+          childAggPaths = directAggPaths ++ (f' <$> pres) where
+            f' (_, aggPath, _) = aggPath
+          prePaths = f' <$> pres where
+            f' (on', _, _) = onPath on'
+          -- For now, this is not going to be optimal: the structure has a
+          -- special _0 field that maps the identity (pass-through field).
+          -- Used by the fields that directly call the aggregation.
+          -- It can be removed subsequently through analysis.
+          colOps = directCo : (f' <$> pres) where
+            f' (_, _, co') = co'
+            directCo = ColExtraction emptyFieldPath
+          -- Note: the indexes are shifted: the first index refers to the
+          -- start element.
+          fnames = f' <$> zip [(1::Int)..] colOps where
+            f' (idx, _) = unsafeFieldName (sformat ("_"%sh) idx)
+          co = ColStruct . V.fromList $ uncurry TransformField <$> zip fnames colOps
+          childDts = f' <$> pres where f' (parentOn, _, _) = onType parentOn
+          dt = structTypeTuple' (onType on :| childDts)
+          npath = nodePathAppendSuffix (onPath on) "_ks_aggstruct"
+          cni = coreNodeInfo dt Distributed (NodeStructuredTransform co)
+          transOn = OperatorNode emptyNodeId npath cni
+
+    -- Reverse the graph again and this time replace the mergeable aggregators
+    -- by the identity nodes.
+    g1 = reverseGraph rcg0
+    opNode :: MergePreAggTrans -> OperatorNode
+    opNode (MPTNormal on) = on
+    opNode (MPTAgg on _) = on
+    opNode (MPTPre on _ _ _) = on
+    opNode (MPTFan on _ _ _) = on
+    -- This will be a compute graph. This is the base graph before adding
+    -- the extra nodes and vertices.
+    cg1t = computeGraphMapVertices g1 f' where
+      f' x l = f0 x (filterParentNodes l)
+      f0 (x @ MPTNormal {}) _ = pure x
+      f0 (x @ MPTFan {}) _ = pure x
+      -- A pre node that has a single parent, which is a fan.
+      -- Look up the index of the node in the combined paths.
+      -- This index is then used to rewrite the aggregator extraction.
+      f0 (MPTPre on np co _) [MPTFan _ _ combinedPaths _] = do
+          idx <- tryMaybe (elemIndex (onPath on) combinedPaths) $ sformat ("mergePreStructuredAggregators: Could not find element "%sh%" in the combined paths "%sh) on combinedPaths
+          return $ MPTPre on np co (Just idx)
+      -- A pre node for which we could not deduce interesting things after that.
+      -- Nothing to do.
+      f0 (x @ MPTPre {}) _ = pure x
+      -- An aggregator node with a known fan at the top.
+      -- This is a direct aggregation, so it should use the first field (_1).
+      f0 (MPTAgg on ao) [MPTFan{}] = pure $ MPTAgg on' ao' where
+        fn = FieldName "_1"
+        ao' = _wrapAgg fn ao
+        cni = coreNodeInfo (onType on) Local (NodeReduction ao')
+        on' = OperatorNode emptyNodeId (onPath on) cni
+      -- An aggregator node with a pre-transform and a known aggregator.
+      -- It should refer to one of the other fields (_2...)
+      f0 (MPTAgg on ao) [MPTPre _ _ _ (Just idx)] = pure $ MPTAgg on' ao' where
+        -- The _1 index is reserved to the id.
+        fn = FieldName $ "_"<>show' (idx+2)
+        ao' = _wrapAgg fn ao
+        cni = coreNodeInfo (onType on) Local (NodeReduction ao')
+        on' = OperatorNode emptyNodeId (onPath on) cni
+      -- An aggregator node for which we could not infer anything particular
+      -- Nothing to do.
+      f0 (x @ MPTAgg {}) _ = pure x
+    -- The extra vertices (the combined nodes).
+    extraVxs cg' = concatMap f' (graphVertexData cg') where
+      f' (MPTFan _ combinedOn _ _) = [nodeAsVertex combinedOn]
+      f' _ = []
+    -- The new edges between the original fanning node and the new combined
+    -- transform.
+    extraEdges1 cg' = concatMap f' (graphVertexData cg') where
+      f' (MPTFan on combinedOn _ _) =
+        [makeParentEdge (onPath on) (onPath combinedOn)]
+      f' _ = []
+    -- The edges between the combined node its descendant aggregators.
+    extraEdges2 cg' = concatMap f' (graphVertexData cg') where
+      f' (MPTFan _ combinedOn _ aggPaths) =
+        makeParentEdge (onPath combinedOn) <$> aggPaths
+      f' _ = []
+    -- The nodes that get removed: only the nodes for which we could confirm
+    -- they were linked to a fan.
+    removedNodePaths cg' = S.fromList $ concatMap f' (graphVertexData cg') where
+      f' (MPTPre on _ _ (Just _)) = [onPath on]
+      f' _ = []
+    -- Also remove the direct edges between aggregator nodes and the original
+    -- fanning node.
+    deletedEdges cg' = S.fromList $ concatMap f' (graphVertexData cg') where
+      f' (MPTFan on _ _ aggPaths) = (,onPath on) <$> aggPaths
+      f' _ = []
+    edgeFilter cg' onFrom _ = f' onFrom where
+      s = removedNodePaths cg'
+      es = deletedEdges cg'
+      f' onFrom' onTo' =
+          not ((onPath onFrom', onPath onTo') `S.member` es) &&
+          not (onPath onFrom' `S.member` s) &&
+          not (onPath onTo' `S.member` s)
+
+{-| Takes an agg and wraps the extraction patterns so that it accesses inside
+the group instead of the top-level field path.
+-}
+_wrapAgg :: FieldName -> AggOp -> AggOp
+_wrapAgg fn (AggUdaf ua ucn fp) = AggUdaf ua ucn (_wrapFieldPath fn fp)
+_wrapAgg fn (AggFunction sfn fp t) = AggFunction sfn (_wrapFieldPath fn fp) t
+_wrapAgg fn' (AggStruct v) = AggStruct (f <$> v) where
+  f (AggField fn v') = AggField fn (_wrapAgg fn' v')
+
+_wrapFieldPath :: FieldName -> FieldPath -> FieldPath
+_wrapFieldPath fn (FieldPath v) = FieldPath v' where
+  v' = V.fromList (fn : V.toList v)
+
 
 {-| For local transforms, removes the broadcasting references by either
 directly pointing to the single input, or packing the inputs and then
@@ -364,8 +553,8 @@ _traceGraph :: forall v e. (Show v, Show e) => T.Text -> ComputeDag v e -> Compu
 _traceGraph txt cg = traceHint (txt <> txt') cg where
   txt1 = V.foldl (<>) "" $ f <$> cdVertices cg where
     f v = "vertex: " <> show' v <> "\n"
-  txt2 = foldl (<>) "" $ f <$> (M.toList (cdEdges cg)) where
-    f :: (VertexId, (V.Vector (VertexEdge e v))) -> T.Text
+  txt2 = foldl (<>) "" $ f <$> M.toList (cdEdges cg) where
+    f :: (VertexId, V.Vector (VertexEdge e v)) -> T.Text
     f (k, v) = "edge group: " <> show' k <> " -> " <> V.foldl (<>) "" (f' <$> v) <> "\n" where
         f' :: VertexEdge e v -> T.Text
         f' (VertexEdge (Vertex vid _) (Edge fromId toId x)) = "(" <> show' fromId <> "->"<>show' x<>"->"<>show' toId<>":"<>show' vid<>"), "

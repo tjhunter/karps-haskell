@@ -11,9 +11,7 @@ module Spark.Core.Internal.PathsUntyped(
 ) where
 
 import qualified Data.Vector as V
-import qualified Data.Map.Strict as M
 import Data.Maybe(fromMaybe)
-import Data.Foldable(toList)
 import Data.List(nub)
 import Control.Arrow((&&&))
 import Formatting

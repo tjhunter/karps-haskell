@@ -14,8 +14,10 @@ module Spark.Core.Internal.StructuredFlattening(
 import Formatting
 import Spark.Core.Internal.Utilities
 import Data.List(nub)
+import Data.Maybe(mapMaybe)
 import qualified Data.Vector as V
 import qualified Data.List.NonEmpty as N
+import qualified Data.Map.Strict as M
 import Data.List.NonEmpty(NonEmpty(..))
 
 import Spark.Core.Internal.StructureFunctions
@@ -23,13 +25,14 @@ import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.NodeBuilder(nbName)
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.ContextStructures(ComputeGraph)
-import Spark.Core.Internal.BrainStructures(makeParentEdge)
+import Spark.Core.Internal.DAGStructures(Vertex(..), Edge(..), IndexedEdge(..), gIndexedEdges)
+import Spark.Core.Internal.BrainStructures(makeParentEdge, nodeAsVertex)
 import Spark.Core.Internal.TypesStructures(DataType(..), StrictDataType(Struct), StructType(..), StructField(..))
 import Spark.Core.Internal.TypesFunctions(extractFields, structType', extractFields2)
 import Spark.Core.Internal.DatasetStructures(OperatorNode(..), StructureEdge(ParentEdge), onOp, onPath, onType, onLocality)
 import Spark.Core.Internal.DatasetFunctions(filterParentNodes)
 import Spark.Core.InternalStd.Filter(filterBuilder)
-import Spark.Core.StructuresInternal(FieldName(..), FieldPath(..), NodePath)
+import Spark.Core.StructuresInternal(FieldName(..), FieldPath(..), NodePath, nodePathAppendSuffix)
 import Spark.Core.Try
 
 {-| Takes a graph that may contain some functional nodes, and attempts to
@@ -61,8 +64,9 @@ structuredFlatten cg = do
   trans <- _mainTransform analyzed
   -- -- Some post-processing for filter?
   -- undefined
-  -- Convert the graph back to a compute graph.
-  return $ _mainTransformReturn trans
+  -- Convert the graph back to a compute graph, and add the preprocessing nodes.
+  withPre <- _mainTransformReturn trans
+  return withPre
   -- -- fg <- _fgraph cg
   -- -- fg' <- _performTrans fg
   -- -- _fgraphBack cg fg'
@@ -334,9 +338,51 @@ _mainTransform cg = computeGraphMapVertices cg fun where
         tryError $ sformat ("Found more than one parent in the stack parents="%sh%" node="%sh) parents' on
     -- else tryError $ sformat ("Trying to use unrecognized node inside a keyed function:"%sh%" its parents are "%sh) on l
 
-_mainTransformReturn :: CDag FPostNode -> ComputeGraph
--- TODO: take into account the pre and post nodes.
-_mainTransformReturn = mapVertexData fpnNode
+_mainTransformReturn :: CDag FPostNode -> Try ComputeGraph
+-- TODO: this is pretty heavy and completely reconstructs the graph from
+-- scratch using indexed edges. There should be a function that does
+-- add-nodes-and-swap
+_mainTransformReturn cg = tryEither $
+    buildGraphFromList' vertices' (iedges2 ++ edges1) inputs outputs where
+  -- Find all the pairs of pre-nodes and nodes.
+  -- For these, we need to a) insert an edge between the two, and b) swap the
+  -- incoming edges.
+  -- The pairs of nodes that will need to be modified: (preNode, node)
+  withPre = mapMaybe f (V.toList (cdVertices cg)) where
+    f (Vertex _ fpn) = (,fpnNode fpn) <$> fpnPreNode fpn
+  vertices1 = nodeAsVertex . fst <$> withPre
+  vertices2 = fmap fpnNode <$> V.toList (cdVertices cg)
+  vertices' = vertices2 ++ vertices1
+  -- We should not have changed inputs and outputs, so no need to perform
+  -- swapping here.
+  inputs = vertexId <$> V.toList (cdInputs cg)
+  outputs = vertexId <$> V.toList (cdOutputs cg)
+  iedges = gIndexedEdges (computeGraphToGraph cg)
+  numEdges = length iedges
+  edges1 = f <$> zip [numEdges..] withPre where
+    f (idx, (pre, n)) = IndexedEdge {
+          iedgeFromIndex = idx,
+          iedgeFrom = edgeFrom e,
+          iedgeToIndex = idx,
+          iedgeTo = edgeTo e,
+          iedgeData = edgeData e
+        } where e = makeParentEdge (onPath pre) (onPath n)
+  -- The new vertices
+  -- TODO: I always get confused which one is the first or the last, so just
+  -- putting the two there. It should not be a problem because we are adding
+  -- a new node.
+  swapDct = M.fromList $ concatMap f edges1 where
+    f v = [(iedgeFrom v, iedgeTo v), (iedgeTo v, iedgeFrom v)]
+  -- For all the edges that were coming to the node, point them to the
+  -- prenode instead.
+  iedges2 = f <$> iedges where
+    f ie = ie1 where
+        ie1 = case iedgeFrom ie `M.lookup` swapDct of
+          Just vid -> ie { iedgeFrom = vid }
+          Nothing -> ie
+        -- ie2 = case iedgeTo ie1 `M.lookup` swapDct of
+        --   Just vid -> ie1 { iedgeTo = vid }
+        --   Nothing -> ie1
 
 -- Given the current stack, transforms the current operation.
 -- Most of the actual work is delegated to subfunctions.
@@ -528,7 +574,8 @@ _performFilter (h:|t) parentDt np = do
           ]
     no = NodeStructuredTransform co
     nid = error "_performFilter: id not computed"
-    preNode dt' = OperatorNode nid np $ coreNodeInfo dt' Distributed no
+    npPre = nodePathAppendSuffix np "_kagg_filter"
+    preNode dt' = OperatorNode nid npPre $ coreNodeInfo dt' Distributed no
     filtNode dt' = OperatorNode nid np cni where
       so = StandardOperator (nbName filterBuilder) dt' emptyExtra
       no' = NodeDistributedOp so

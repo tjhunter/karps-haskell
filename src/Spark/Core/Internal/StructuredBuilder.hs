@@ -119,11 +119,11 @@ a structured transform.
 This function also checks the broadcasts and fills the function return types.
 -}
 -- TODO reorder the arguments
-colTypeStructured ::
+colTypeStructured :: (HasCallStack) =>
   StructuredBuilderRegistry ->
   ColOp ->
   Maybe DataType -> -- The type of the refering dataframe / column (in the distributed case)
-  [DataType] -> -- The types of extra local nodes that may be required.
+  [DataType] -> -- The types of extra local nodes that may be required (in order).
   Try (ColOp, DataType) -- Returns the colop if it needed to be updated with type info
 colTypeStructured _ (ColBroadcast idx) _ l | idx >= length l || idx < 0 =
   tryError $ sformat ("colTypeStructured: trying to access index "%sh%" but the only observables provided are "%sh) idx l

@@ -82,7 +82,12 @@ localTransformBuilder reg = buildOpVariableExtra nameLocalStructuredTransform $ 
   co <- fromProto col
   -- Take the node shapes and check that they are all local.
   dts <- _checkLocal nss
-  (co', resDt) <- colTypeStructured reg co Nothing dts
+  -- The first parent (if it exists) is used as a special parent for the
+  -- extraction operations.
+  let parentDt = case dts of
+        (h:_) -> Just h
+        _ -> Nothing
+  (co', resDt) <- colTypeStructured reg co parentDt dts
   return $ coreNodeInfo resDt Local (NodeLocalStructuredTransform co')
 
 _checkLocal :: (HasCallStack) => [NodeShape] -> Try [DataType]

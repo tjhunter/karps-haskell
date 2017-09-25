@@ -24,6 +24,7 @@ structuredRegistry = buildStructuredRegistry sqls udfs aggs where
           eqCBuilder,
           greaterCBuilder,
           greaterEqCBuilder,
+          inverseCBuilder,
           lowerCBuilder,
           lowerEqCBuilder,
           minusCBuilder,

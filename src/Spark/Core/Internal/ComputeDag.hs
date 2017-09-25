@@ -112,11 +112,6 @@ mapVertices f cd = ComputeDag {
   } where
     f' vx = vx { vertexData = f vx }
     g' = DAG.graphMapVertices' f (DAG.completeVertices (_cdGraph cd))
-  -- let
-  -- in ComputeDag {
-  --     cdEdges = _mapVerticesAdj f (cdEdges cd),
-  --     cdVertices = f' <$> cdVertices cd,
-  --   }
 
 mapVertexData :: (Show v, Show v', Show e) => (v -> v') -> ComputeDag v e -> ComputeDag v' e
 mapVertexData f = mapVertices (f . vertexData)

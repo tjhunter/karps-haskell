@@ -20,6 +20,7 @@ module Spark.Core.InternalStd.Column(
   asDouble,
   castDoubleCBuilder,
   eqCBuilder,
+  inverseCBuilder,
   plusCBuilder,
   minusCBuilder,
   multiplyCBuilder,
@@ -70,6 +71,11 @@ multiplyCBuilder = _mathOp "multiply"
 
 divideCBuilder :: ColumnSQLBuilder
 divideCBuilder = colBuilder2Homo "divide" $ \dt -> do
+  checkStrictDataTypeList [DoubleType] dt
+  return dt
+
+inverseCBuilder :: ColumnSQLBuilder
+inverseCBuilder = colBuilder1 "inverse" $ \dt -> do
   checkStrictDataTypeList [DoubleType] dt
   return dt
 
