@@ -22,10 +22,6 @@ import Data.ProtoLens.Message(def)
 import Spark.Core.Types
 import Spark.Core.Try
 
-import Spark.Core.Internal.Utilities(forceRight)
-import Spark.Core.Internal.DatasetFunctions(asDF, emptyDataset, emptyLocalData)
-import Spark.Core.Internal.TypesStructures(SQLType(..))
-import Spark.Core.Internal.ContextStructures(SparkState)
 import Spark.Core.Internal.BrainStructures(ResourcePath, resourcePath, unResourcePath)
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.OpFunctions(decodeExtra', convertToExtra')
@@ -107,7 +103,7 @@ instance FromProto PIO.SourceDescription SourceDescription where
 instance ToProto PIO.SourceDescription SourceDescription where
   toProto sd = msg2 where
     msg0 = (def :: PIO.SourceDescription)
-        & PIO.path .~ (unResourcePath (inputPath sd))
+        & PIO.path .~ unResourcePath (inputPath sd)
         & PIO.source .~ s where
           s = case inputSource sd of
             JsonFormat -> "json"

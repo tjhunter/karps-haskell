@@ -220,16 +220,16 @@ refineColBuilderPost :: ColumnSQLBuilder -> (DataType -> Try DataType) -> Column
 refineColBuilderPost (ColumnSQLBuilder n f) f' = ColumnSQLBuilder n f'' where
   f'' x = f x >>= f'
 
-_extraction' :: FieldPath -> DataType -> Try DataType
+_extraction' :: (HasCallStack) => FieldPath -> DataType -> Try DataType
 _extraction' fp = _extraction (V.toList (unFieldPath fp))
 
-_extraction :: [FieldName] -> DataType -> Try DataType
+_extraction :: (HasCallStack) => [FieldName] -> DataType -> Try DataType
 _extraction [] dt = pure dt
 _extraction (h : t) (StrictType (Struct st)) = _extractionStrict h t st NoNull
 _extraction (h : t) (NullableType (Struct st)) = _extractionStrict h t st CanNull
 _extraction l dt = tryError $ sformat ("_extraction:Cannot extract a subtype from "%sh%" given requested path "%sh) dt l
 
-_extractionStrict :: FieldName -> [FieldName] -> StructType -> Nullable -> Try DataType
+_extractionStrict :: (HasCallStack) => FieldName -> [FieldName] -> StructType -> Nullable -> Try DataType
 _extractionStrict h t (StructType v) nl = case find (\(StructField n _) -> n == h) (V.toList v) of
   Just (StructField _ dt) -> f <$> _extraction t dt where
     f (StrictType sdt) | nl == CanNull = NullableType sdt

@@ -28,14 +28,11 @@ import qualified Data.List.NonEmpty as N
 import Control.Monad.State(get, put)
 import Control.Monad(when)
 import Data.Functor.Identity(runIdentity)
-import qualified Data.Text as T
-import qualified Data.ByteString.Char8 as C8
 import qualified Data.Vector as V
 import Data.Text(pack)
 import Data.Maybe(mapMaybe, catMaybes)
 import Data.Either(isRight)
 import Data.Foldable(toList)
-import Control.Arrow((&&&))
 import Data.List(nub)
 import Formatting
 import qualified Data.Map.Strict as M
@@ -47,7 +44,7 @@ import Spark.Core.Row
 import Spark.Core.Types
 import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.BrainFunctions
-import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..), prettyNodePath)
+import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..))
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.CachingUntyped
 import Spark.Core.Internal.ContextStructures
@@ -55,16 +52,15 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
-import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..), Locality(..))
+import Spark.Core.Internal.OpStructures(NodeShape(..), Locality(..))
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()
 import Spark.Core.Internal.DAGFunctions(buildVertexList, graphMapVertices)
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry)
 import Spark.Core.Internal.Utilities
-import Spark.IO.Internal.InputStructures(extractResourcePath, updateResourceStamp)
+import Spark.IO.Internal.InputStructures(extractResourcePath)
 
 -- The result from querying the status of a computation
 type FinalResult = Either NodeComputationFailure NodeComputationSuccess
@@ -145,9 +141,8 @@ buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
   dagWithPaths <- assignPathsUntyped cg
-  dagWithCorrectIds <- _usePathsForIds dagWithPaths
+  _usePathsForIds dagWithPaths
   -- let cg' = mapVertexData nodeOpNode dagWithCorrectIds
-  return dagWithCorrectIds
 
 {-| Performs all the operations that are done on the compute graph:
 
@@ -230,8 +225,6 @@ _buildComputation session cg =
       terminalNodes = vertexData <$> toList (cdOutputs cg)
       terminalNodePaths = onPath <$> terminalNodes
       terminalNodeIds = onId <$> terminalNodes
-      tiedCg = convertToTiedGraph cg
-      allTiedNodes = vertexData <$> toList (gVertices tiedCg)
   -- TODO it is missing the first node here, hoping it is the first one.
   in case terminalNodePaths of
     [p] ->
@@ -239,7 +232,7 @@ _buildComputation session cg =
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
 _updateVertex :: M.Map ResourcePath ResourceStamp -> OperatorNode -> Try OperatorNode
-_updateVertex m un = undefined
+_updateVertex = undefined
   -- let no = onOp un in case hdfsPath no of
   --   Just p -> case M.lookup p m of
   --     Just dis ->

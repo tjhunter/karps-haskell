@@ -16,7 +16,6 @@ module Spark.Core.Internal.ContextIOInternal(
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Network.Wreq as W
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
@@ -26,40 +25,32 @@ import Control.Monad(forM, forM_)
 import Control.Monad.State(mapStateT, get)
 import Control.Monad.Trans(lift)
 import Control.Monad.Logger(runStdoutLoggingT, LoggingT, logDebugN, logInfoN, MonadLoggerIO)
-import Control.Monad.Except(MonadError)
 import Control.Monad.IO.Class
 import Data.List(find)
 import Data.ProtoLens.Message(Message, def)
 import Data.ProtoLens.Encoding(decodeMessage, encodeMessage)
-import Data.ByteString.Lazy(ByteString)
 import Data.Functor.Identity(runIdentity)
 import Data.Word(Word8)
-import Data.Maybe(mapMaybe)
 import Data.Text(Text, pack)
 import Network.Wreq(responseBody)
-import Network.Wreq.Types(Postable)
 import System.Random(randomIO)
 
 import Spark.Core.Dataset
 import Spark.Core.Internal.BrainStructures
-import Spark.Core.Internal.BrainFunctions
 import Spark.Core.Internal.Client
 import Spark.Core.Internal.ContextInternal
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.ContextStructures
-import Spark.Core.Internal.DatasetFunctions(untypedLocalData, nodePath)
-import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, nodeOpNode, onId, onPath)
-import Spark.Core.Internal.OpStructures(DataInputStamp(..), NodeShape(..))
+import Spark.Core.Internal.DatasetFunctions(untypedLocalData)
+import Spark.Core.Internal.DatasetStructures(UntypedLocalData, onShape, onId, onPath)
+import Spark.Core.Internal.OpStructures(NodeShape(..))
 import Spark.Core.Internal.RowGenericsFrom(cellToValue)
 import Spark.Core.Row
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
 import Spark.Core.Internal.Utilities
 import qualified Proto.Karps.Proto.Interface as PI
-import qualified Proto.Karps.Proto.Computation as PC
-import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.ApiInternal as PAI
-import qualified Proto.Karps.Proto.Io as PI
 
 returnPure :: forall a. SparkStatePure a -> SparkState a
 returnPure p = lift $ mapStateT (return . runIdentity) p
@@ -75,7 +66,7 @@ createSparkSession conf = do
     "" -> liftIO _randomSessionName
     x -> pure x
   let session = _createSparkSession conf sessionName 0
-  logDebugN $ "Creating spark session"
+  logDebugN "Creating spark session"
   -- TODO get the current counter from remote
   _ <- _ensureSession session
   return session

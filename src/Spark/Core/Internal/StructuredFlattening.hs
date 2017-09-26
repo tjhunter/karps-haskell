@@ -65,8 +65,7 @@ structuredFlatten cg = do
   -- -- Some post-processing for filter?
   -- undefined
   -- Convert the graph back to a compute graph, and add the preprocessing nodes.
-  withPre <- _mainTransformReturn trans
-  return withPre
+  _mainTransformReturn trans
   -- -- fg <- _fgraph cg
   -- -- fg' <- _performTrans fg
   -- -- _fgraphBack cg fg'
@@ -398,7 +397,7 @@ f1 ::
   Try FPostNode -- The result of the operation.
 -- Enters: they should have only one parent.
 f1 [] [dt] FEnter on = _performEnter0 dt on
-f1 (h:t) _ FEnter on = _performEnter (h:|t) on
+f1 (h:t) [dt] FEnter on = _performEnter (h:|t) dt (onPath on)
 f1 _ _ FEnter on = tryError $ "_flatteningMain: wrong FEnter on "<>show' on
 -- Exits: should have one parent and be inside a stack.
 f1 [] _ FExit on = tryError $ sformat ("Trying to exit a functional group, but there no group to exit from. node:"%sh) on
@@ -447,8 +446,31 @@ _performEnter0 dt on = do
     p = onPath on
 
 {-| Entering within a stack. -}
-_performEnter :: FStack' -> OperatorNode -> Try FPostNode
-_performEnter = undefined
+_performEnter :: FStack' -> DataType -> NodePath -> Try FPostNode
+_performEnter (h:|t) dt np = do
+    -- The parent data type should be a struct of the form:
+    -- {key:{...}, value:{key:keyDT, value:valueDT}}
+    -- We need to shift the inner key to the other ones and move the value
+    -- one level up.
+    (keyDt1:|keyDts, groupDt) <- _getGroupedType dt
+    (innerKeyDt, valueDt) <- _getStartPair groupDt
+    let dt' = _keyGroupType (innerKeyDt:|keyDt1:keyDts) valueDt
+    let on' = OperatorNode nid np $ coreNodeInfo dt' Distributed no
+    return $ fpostNode on' (FPDistributedTransform co) (np:h:t)
+  where
+    -- The initial number of keys, which is how we are going to build
+    -- the extraction.
+    numKeys = length (h:t)
+    -- The original keys, nothing special other than moving them.
+    fields = f <$> [1..numKeys] where
+      f idx = TransformField (_keyIdx idx) $ _extraction [_key, _keyIdx idx]
+    newField = TransformField (_keyIdx (numKeys + 1)) $ _extraction [_value, _key]
+    co = _colStruct [
+        TransformField _key (_colStruct (fields ++ [newField])),
+        TransformField _group $ _extraction [_group, _value]
+      ]
+    no = NodeStructuredTransform co
+    nid = error "_performEnter: id not computed"
 
 {-| Exit: the top key is moved from the stack onto the value group.
 
@@ -470,10 +492,14 @@ _performExit (_:|t) dt np loc = do
         return $ fpostNode on' (exitFTrans co) t
       (hdt:tdt) -> do
         -- We still have some keys that need to be kept around.
+        -- Move the last key from the key group into the value group.
         -- Drop the last key from the key group.
         let co = _colStruct [
                 TransformField _key keyCo,
-                TransformField _group $ _extraction [_group]]
+                TransformField _group $ _colStruct [
+                  TransformField _key $ _extraction [_key, _keyIdx (numRemKeys + 1)],
+                  TransformField _value $ _extraction [_group]
+                ]]
         let no = exitTrans co
         let dt' = _keyGroupType (hdt:|tdt) groupDt
         let on' = OperatorNode nid np $ coreNodeInfo dt' loc no
@@ -485,7 +511,7 @@ _performExit (_:|t) dt np loc = do
     nid = error "_performExit: id not computed"
     numRemKeys = length t -- The number of remaining keys
     keyCo = _colStruct (f <$> [1..numRemKeys]) where
-      f idx = TransformField (_keyIdx idx) $ _extraction [_group, _keyIdx idx]
+      f idx = TransformField (_keyIdx idx) $ _extraction [_key, _keyIdx idx]
 
 _performDistributedTrans ::
   FStack' ->
@@ -569,7 +595,7 @@ _performFilter (h:|t) parentDt np = do
             TransformField "filter" $ _extraction [_group, "filter"],
             TransformField "value" $ _colStruct [
               TransformField _key $ _extraction [_key],
-              TransformField _group $ _extraction ["value"]
+              TransformField _group $ _extraction [_group, "value"]
             ]
           ]
     no = NodeStructuredTransform co

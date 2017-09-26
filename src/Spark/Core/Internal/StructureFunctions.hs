@@ -69,7 +69,7 @@ transformBuilder :: (HasCallStack) => StructuredBuilderRegistry -> NodeBuilder
 transformBuilder reg = buildOpDExtra nameStructuredTransform $ \dt (s @ StructuredTransform {}) -> do
   col <- extractMaybe s PS.maybe'colOp "col_op"
   co <- fromProto col
-  (co', resDt) <- colTypeStructured reg co (Just dt) [] -- TODO add the node shapes of the extra nodes too.
+  (co', resDt) <- traceHint ("transformBuilder: dt="<>show' dt<>" co="<>show' co<>" res=") $ colTypeStructured reg co (Just dt) [] -- TODO add the node shapes of the extra nodes too.
   return $ coreNodeInfo resDt Distributed (NodeStructuredTransform co')
 
 {-| The low-level observable -> observable structured transform builder.
