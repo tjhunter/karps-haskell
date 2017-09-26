@@ -5,13 +5,11 @@
 
 module Spark.Core.Internal.Client where
 
-import Data.Text(Text, pack)
+import Data.Text(Text)
 import Lens.Family2((^.), (&), (.~))
 import Data.Default(def)
 
 import Spark.Core.StructuresInternal
-import Spark.Core.Dataset(UntypedNode)
-import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Internal.RowUtils()
 import Spark.Core.Internal.TypesStructures(DataType)
@@ -19,13 +17,9 @@ import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Internal.BrainFunctions()
 import Spark.Core.Internal.BrainStructures(LocalSessionId, ComputeGraph)
-import Spark.Core.Internal.ProtoUtils
 import Spark.Core.Try
 import qualified Proto.Karps.Proto.Computation as PC
 import qualified Proto.Karps.Proto.Interface as PI
-import qualified Proto.Karps.Proto.Computation as PC
-import qualified Proto.Karps.Proto.Computation as PC
-import qualified Proto.Karps.Proto.ApiInternal as PAI
 
 {-| The ID of an RDD in Spark.
 -}

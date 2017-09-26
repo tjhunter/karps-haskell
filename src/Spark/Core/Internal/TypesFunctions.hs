@@ -15,6 +15,7 @@ module Spark.Core.Internal.TypesFunctions(
   canNull,
   structField,
   structType,
+  structType',
   structTypeFromFields,
   structTypeTuple,
   structTypeTuple',
@@ -23,6 +24,7 @@ module Spark.Core.Internal.TypesFunctions(
   structName,
   iSingleField,
   extractFields,
+  extractFields2,
   isNumber,
   mapDataType
 ) where
@@ -90,7 +92,7 @@ colTypeFromFrame st @ (StructType fs) = case V.toList fs of
 
 {-| Attempts to extract the types of fields in a struct, given an expected
 list of field names. -}
-extractFields :: [FieldName] -> DataType -> Try [DataType]
+extractFields :: (HasCallStack) => [FieldName] -> DataType -> Try [DataType]
 extractFields fieldNames (StrictType (Struct (StructType v))) = do
   when (length fieldNames /= length v) $
     tryError $ sformat ("extractFields: the expected number of fields does not match the number in the structure expected:"%sh%", provided: "%sh) fieldNames v
@@ -101,6 +103,13 @@ extractFields fieldNames (StrictType (Struct (StructType v))) = do
   sequence $ f' <$> zip fieldNames (V.toList v)
 extractFields _ dt =
   tryError $ sformat ("extractFields: expected a strict structure, got"%sh) dt
+
+extractFields2 :: (HasCallStack) => FieldName -> FieldName -> DataType -> Try (DataType, DataType)
+extractFields2 f1 f2 dt = do
+  l <- extractFields [f1, f2] dt
+  case l of
+    [dt1, dt2] -> pure (dt1, dt2)
+    _ -> tryError "_extractFields2: programming error"
 
 compatibleTypes :: DataType -> DataType -> Bool
 compatibleTypes (StrictType sdt) (StrictType sdt') = _compatibleTypesStrict sdt sdt'
@@ -211,6 +220,9 @@ structField txt = StructField (FieldName txt)
 -- TODO: use a non-empty list
 structType :: [StructField] -> DataType
 structType = StrictType . Struct . StructType . V.fromList
+
+structType' :: NonEmpty StructField -> DataType
+structType' (h:|t) = structType (h:t)
 
 -- The strict array type
 arrayType' :: DataType -> DataType

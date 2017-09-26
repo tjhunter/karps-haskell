@@ -210,6 +210,56 @@ instance Data.ProtoLens.Message LocalPointer where
                     ("local_path", localPath__field_descriptor),
                     ("data_type", dataType__field_descriptor)])
 
+data LocalStructuredTransform = LocalStructuredTransform{_LocalStructuredTransform'colOp
+                                                         ::
+                                                         !(Prelude.Maybe
+                                                             Proto.Karps.Proto.StructuredTransform.Column)}
+                              deriving (Prelude.Show, Prelude.Eq, Prelude.Ord)
+
+instance (a ~ Proto.Karps.Proto.StructuredTransform.Column,
+          b ~ Proto.Karps.Proto.StructuredTransform.Column,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "colOp" f LocalStructuredTransform
+         LocalStructuredTransform a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _LocalStructuredTransform'colOp
+                 (\ x__ y__ -> x__{_LocalStructuredTransform'colOp = y__}))
+              (Data.ProtoLens.maybeLens Data.Default.Class.def)
+
+instance (a ~
+            Prelude.Maybe Proto.Karps.Proto.StructuredTransform.Column,
+          b ~ Prelude.Maybe Proto.Karps.Proto.StructuredTransform.Column,
+          Prelude.Functor f) =>
+         Lens.Labels.HasLens "maybe'colOp" f LocalStructuredTransform
+         LocalStructuredTransform a b where
+        lensOf _
+          = (Prelude..)
+              (Lens.Family2.Unchecked.lens _LocalStructuredTransform'colOp
+                 (\ x__ y__ -> x__{_LocalStructuredTransform'colOp = y__}))
+              Prelude.id
+
+instance Data.Default.Class.Default LocalStructuredTransform where
+        def
+          = LocalStructuredTransform{_LocalStructuredTransform'colOp =
+                                       Prelude.Nothing}
+
+instance Data.ProtoLens.Message LocalStructuredTransform where
+        descriptor
+          = let colOp__field_descriptor
+                  = Data.ProtoLens.FieldDescriptor "col_op"
+                      (Data.ProtoLens.MessageField ::
+                         Data.ProtoLens.FieldTypeDescriptor
+                           Proto.Karps.Proto.StructuredTransform.Column)
+                      (Data.ProtoLens.OptionalField maybe'colOp)
+                      :: Data.ProtoLens.FieldDescriptor LocalStructuredTransform
+              in
+              Data.ProtoLens.MessageDescriptor
+                (Data.Text.pack "karps.core.LocalStructuredTransform")
+                (Data.Map.fromList
+                   [(Data.ProtoLens.Tag 1, colOp__field_descriptor)])
+                (Data.Map.fromList [("col_op", colOp__field_descriptor)])
+
 data Placeholder = Placeholder{_Placeholder'locality ::
                                !Proto.Karps.Proto.Graph.Locality,
                                _Placeholder'dataType ::

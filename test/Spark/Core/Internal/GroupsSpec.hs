@@ -15,6 +15,7 @@ import Spark.Core.Dataset
 import Spark.Core.Column
 import Spark.Core.Row
 import Spark.Core.Types
+import Spark.Core.TestUtils
 import Spark.Core.Internal.Groups
 
 
@@ -39,10 +40,10 @@ spec = do
     let values = ds // myVal'
     let g = groupByKey keys values
     let sqlt1 = buildType :: SQLType MyPair
-    it "group" $ do
+    xit "group" $ do
       let tds2 = castType sqlt1 (groupAsDS g)
       tds2 `shouldSatisfy` isRight
-    it "map group" $ do
+    xit "map group" $ do
       let g2 = g `mapGroup` \c -> c + c
       let tds2 = castType sqlt1 (groupAsDS g2)
       tds2 `shouldSatisfy` isRight

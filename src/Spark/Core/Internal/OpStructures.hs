@@ -46,12 +46,14 @@ import Lens.Family2 ((&), (.~), (^.))
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Internal.ProtoUtils
+import Spark.Core.Internal.RowUtils()
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Try
 import Spark.Core.Internal.Utilities(sh)
 import Spark.Core.Internal.TypesStructures(DataType, SQLType, SQLType(unSQLType))
 import qualified Proto.Karps.Proto.Graph as PG
 import qualified Proto.Karps.Proto.Std as PS
+import qualified Proto.Karps.Proto.Row as PR
 import qualified Proto.Karps.Proto.StructuredTransform as PST
 
 {-| The name of a SQL function.
@@ -136,13 +138,6 @@ data StandardOperator = StandardOperator {
   soExtra :: !OpExtra
 } deriving (Eq, Show)
 
--- -- | A scala method of a singleton object.
--- data ScalaStaticFunctionApplication = ScalaStaticFunctionApplication {
---   sfaObjectName :: !T.Text,
---   sfaMethodName :: !T.Text
---   -- TODO add the input and output types?
--- }
-
 {-| The outside information of a node.
 
 The is the visible information about a node, and the
@@ -175,15 +170,14 @@ coreNodeInfo dt loc op =
       cniOp = op
     }
 
--- TODO: remove
--- type CoreNodeBuilder = OpExtra -> [NodeShape] -> Try CoreNodeInfo
-
 -- | The different kinds of column operations that are understood by the
 -- backend.
 --
 -- These operations describe the physical operations on columns as supported
 -- by Spark SQL. They can operate on column -> column, column -> row, row->row.
 -- Of course, not all operators are valid for each configuration.
+-- TODO: this should be split between the user-facing operator and the
+-- backend-facing operator.
 data ColOp =
     -- | A projection onto a single column
     -- An extraction is always direct.
@@ -192,7 +186,9 @@ data ColOp =
     -- In this case, the other columns may matter
     -- TODO(kps) add if this function is partition invariant.
     -- It should be the case most of the time.
-  | ColFunction !SqlFunctionName !(Vector ColOp)
+    -- It also contains the expected return type, it helps a lot on the spark side.
+    -- Not required by the compiler though, it will be recomputed.
+  | ColFunction !SqlFunctionName !(Vector ColOp) !(Maybe DataType)
     -- | A constant defined for each element.
     -- The type should be the same as for the column
     -- A literal is always direct
@@ -200,6 +196,11 @@ data ColOp =
     -- | A structure.
     -- TODO: have a function for constructor with NonEmpty
   | ColStruct !(Vector TransformField)
+    -- A broadcast filler.
+    -- The index is expected to correspond to the position in the parent of
+    -- an observable.
+    -- This node should not be expected by the backend.
+  | ColBroadcast Int
   deriving (Eq, Show)
 
 -- | A field in a structure.
@@ -225,7 +226,11 @@ data AggOp =
     -- The name of the UDAF and the field path to apply it onto.
     AggUdaf !UdafApplication !UdafClassName !FieldPath
     -- A column function that can be applied (sum, max, etc.)
-  | AggFunction !SqlFunctionName !FieldPath
+    -- It also contains the return type that should be expected by the runtime.
+    -- Spark has a tendency to forget about nullability. Also, this is convenient
+    -- for types that are not supported and need to be coerced such as Long or
+    -- big decimal.
+  | AggFunction !SqlFunctionName !FieldPath !(Maybe DataType)
   | AggStruct !(Vector AggField)
   deriving (Eq, Show)
 
@@ -238,6 +243,7 @@ data AggField = AggField {
 
 {-| The different sorts of aggregations supported in the engine.
 -}
+-- TODO: remove
 data AggTransform =
     OpaqueAggTransform !StandardOperator
   | InnerAggOp !AggOp deriving (Eq, Show)
@@ -336,18 +342,20 @@ data NodeOp =
   | NodeBroadcastJoin
     -- | Some aggregator that does not respect any particular invariant.
   | NodeOpaqueAggregator StandardOperator
+    -- The shuffle, or keyed reduction.
     -- It implicicty expects a dataframe with 2 fields:
     --  - the first field is used as a key
     --  - the second field is passed to the reducer
   | NodeGroupedReduction !AggOp
+    -- The structured reduction.
   | NodeReduction !AggOp
     -- TODO: remove these
     -- | A universal aggregator.
   -- | NodeAggregatorReduction UniversalAggregatorOp
   | NodeAggregatorLocalReduction UniversalAggregatorOp
-    -- | A structured transform, performed either on a local node or a
-    -- distributed node.
+    -- | A structured transform, performed on a distributed node.
   | NodeStructuredTransform !ColOp
+    -- A structured transform, performed on an observable.
   | NodeLocalStructuredTransform !ColOp
     -- | A distributed dataset (with no partition information)
   | NodeDistributedLit !DataType !(Vector Cell)
@@ -388,14 +396,21 @@ instance FromProto PST.Column ColOp where
         l'' = (f <$>) <$> l'
         l2 = join (sequence <$> l'')
     _funFromProto :: PST.ColumnFunction -> Try ColOp
-    _funFromProto (PST.ColumnFunction fname l) = ColFunction fname <$> x where
+    -- We drop the extra type info, but it should not be a problem here.
+    _funFromProto (PST.ColumnFunction fname l _) = (\x' -> ColFunction fname x' Nothing) <$> x where
         l2 = _fromProto' <$> V.fromList l
         x = (snd <$>) <$> sequence l2
+    _litFromProto :: PST.ColumnLiteral -> Try ColOp
+    _litFromProto cl = do
+      (c', dt) <- extractMaybe' cl PST.maybe'content "cont"
+      return $ ColLit dt c'
     _fromProto :: PST.Column'Content -> Try ColOp
+    _fromProto (PST.Column'Broadcast (PST.ColumnBroadcastObservable int')) = pure (ColBroadcast (fromIntegral int'))
     _fromProto (PST.Column'Struct cs) = _structFromProto cs
     _fromProto (PST.Column'Function f) = _funFromProto f
     _fromProto (PST.Column'Extraction ce) =
       pure . ColExtraction . fieldPathFromProto $ ce
+    _fromProto (PST.Column'Literal cl) = _litFromProto cl
     _fromProto' :: PST.Column -> Try (Maybe FieldName, ColOp)
     _fromProto' c' = do
       x <- case c' ^. PST.maybe'content of
@@ -411,11 +426,14 @@ instance FromProto PST.Aggregation AggOp where
 
 instance ToProto PST.Aggregation AggOp where
   toProto AggUdaf{} = error "_aggOpToProto: not implemented: AggUdaf"
-  toProto (AggFunction sfn v) =
-    (def :: PST.Aggregation) & PST.op .~ x where
+  toProto (AggFunction sfn v tp) =
+    (def :: PST.Aggregation) & PST.op .~ x' where
       x = (def :: PST.AggregationFunction)
           & PST.functionName .~ sfn
           & PST.inputs .~ [fieldPathToProto v]
+      x' = case tp of
+        Just dt -> x & PST.expectedType .~ toProto dt
+        Nothing -> x
   toProto (AggStruct v) =
     (def :: PST.Aggregation) & PST.struct .~ x where
       f :: AggField -> PST.Aggregation
@@ -430,16 +448,28 @@ instance ToProto PS.LocalPointer Pointer where
         & PS.dataType .~ toProto dt
 
 _colOpToProto :: Maybe FieldName -> ColOp -> PST.Column
-_colOpToProto _ (ColLit _ _) = error "_colOpToProto: literal"
+_colOpToProto fn (ColBroadcast idx) =
+  _colProto fn & PST.broadcast .~ b where
+    b = (def :: PST.ColumnBroadcastObservable)
+          & PST.observableIndex .~ fromIntegral idx
+_colOpToProto fn (ColLit dt c) = _colProto fn & PST.literal .~ cl where
+    cwt = (def :: PR.CellWithType)
+          & PR.cell .~ toProto c
+          & PR.cellType .~ toProto dt
+    cl = (def :: PST.ColumnLiteral)
+          & PST.content .~ cwt
 _colOpToProto fn (ColExtraction (FieldPath l)) =
   _colProto fn & PST.extraction .~ e where
     e = (def :: PST.ColumnExtraction) & PST.path .~ V.toList (unFieldName <$> l)
-_colOpToProto fn (ColFunction txt cols) =
-  _colProto fn & PST.function .~ f where
+_colOpToProto fn (ColFunction txt cols expectedType) =
+  _colProto fn & PST.function .~ f' where
     l = V.toList (_colOpToProto Nothing <$> cols)
     f = (def :: PST.ColumnFunction)
           & PST.functionName .~ txt
           & PST.inputs .~ l
+    f' = case expectedType of
+      Just dt -> f & PST.expectedType .~ toProto dt
+      Nothing -> f
 _colOpToProto fn (ColStruct v) =
   _colProto fn & PST.struct .~ s where
     s = (def :: PST.ColumnStructure) & PST.fields .~ l
@@ -461,8 +491,9 @@ _aggOpFromProto a =  (f, y) where
       Just (PST.Aggregation'Struct s) -> _aggStructFromProto s
 
 _aggFunFromProto :: PST.AggregationFunction -> Try AggOp
-_aggFunFromProto (PST.AggregationFunction sfn [fpp]) =
-  pure $ AggFunction sfn (fieldPathFromProto fpp)
+-- We drop the expected type provided by the proto, this is recomputed internally.
+_aggFunFromProto (PST.AggregationFunction sfn [fpp] _) =
+  pure $ AggFunction sfn (fieldPathFromProto fpp) Nothing
 _aggFunFromProto x = tryError $ sformat ("_aggFunFromProto: deserialization failed on "%sh) x
 
 _aggStructFromProto :: PST.AggregationStructure -> Try AggOp

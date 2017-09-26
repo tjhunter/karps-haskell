@@ -63,7 +63,7 @@ cellWithTypeFromProto (P.CellWithType (Just c) (Just pdt)) = do
   dt <- case fromProto pdt of
     Right x -> Right x
     Left s -> Left (show' s) -- TODO: this is bad.
-  cell <- cellFromProto (traceHint "dt=" dt) (traceHint "c=" c)
+  cell <- cellFromProto dt c
   return (cell, dt)
 cellWithTypeFromProto cwt =
   throwError $ sformat ("cellWithTypeFromProto: missing data in "%sh) cwt

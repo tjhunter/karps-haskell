@@ -15,20 +15,24 @@ module Spark.Core.Internal.Utilities(
   failure,
   failure',
   forceRight,
+  throwError',
   show',
+  error',
   withContext,
   strictList,
   traceHint,
   SF.sh,
   (<&>),
   (<>),
-  NonEmpty( (:|) )
+  -- NonEmpty( (:|) ),
+  NonEmpty(..)
 ) where
 
 import qualified Data.Text as T
 import qualified Formatting.ShortFormatters as SF
 import qualified Data.List.NonEmpty as N
 import qualified Data.Map.Strict as M
+import Control.Monad.Except(MonadError(throwError))
 import Control.Arrow ((&&&))
 import Data.List
 import Data.Function
@@ -36,9 +40,9 @@ import Data.Text(Text)
 import Data.Maybe(mapMaybe)
 import Formatting
 import Debug.Trace(trace)
-import Data.Monoid((<>))
+import Data.Semigroup((<>))
 import  Data.List.NonEmpty( NonEmpty( (:|) ) )
-import GHC.Stack(HasCallStack)
+import GHC.Stack(HasCallStack, prettyCallStack, callStack)
 
 -- import qualified Spark.Core.Internal.LocatedBase as LB
 
@@ -60,12 +64,16 @@ myGroupBy' f l = l4 where
   l3 = g <$> l2
   l4 = sortBy (compare `on` fst) l3
 
+throwError' :: (HasCallStack, MonadError Text m) => Text -> m a
+throwError' txt = throwError (T.pack (prettyCallStack callStack) <> txt)
+
 -- | group by
--- TODO: have a non-empty list instead
+-- This implementation is not great, but it should respect the general contract.
 myGroupBy :: (Ord a) => [(a, b)] -> M.Map a (NonEmpty b)
-myGroupBy l = let
-  l2 = myGroupBy' fst l in
-  M.map (snd <$>) $ M.fromList l2
+myGroupBy l = foldl' f M.empty l' where
+  f = M.unionWith (<>)
+  l' = g <$> l where
+    g (a, b) = M.singleton a (b :| [])
 
 
 error' :: (HasCallStack) => Text -> a

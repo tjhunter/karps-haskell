@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 {-| Exposes some of Spark's joining algorithms.
 -}
 module Spark.Core.Internal.Joins(
@@ -49,7 +50,7 @@ joinInner' :: Column' -> Column' -> Column' -> Column' -> DataFrame
 joinInner' key1 val1 key2 val2 = do
   df1 <- pack' (struct' [key1, val1])
   df2 <- pack' (struct' [key2, val2])
-  dt <- _joinTypeInner key1 val1 val2
+  _ <- _joinTypeInner key1 val1 val2
   let extra = PStd.Join PStd.Join'INNER
   fromBuilder2Extra df1 df2 joinBuilder extra undefined undefined
   --
@@ -62,7 +63,7 @@ joinInner' key1 val1 key2 val2 = do
 joinBuilder :: NodeBuilder
 joinBuilder = buildOpDDExtra "org.spark.Join" f where
   f :: DataType -> DataType -> PStd.Join -> Try CoreNodeInfo
-  f dt1 dt2 j = do
+  f _ _ j = do
     let dt = error "joinBuilder: data type: "
     return $ cniStandardOp Distributed "org.spark.Join" dt j
 

@@ -14,7 +14,8 @@ module Spark.Core.Try(
   tryMaybe,
   eMessage,
   eCallStack,
-  nodeError
+  nodeError,
+  forceTry
   ) where
 
 import qualified Data.Text as T
@@ -35,6 +36,13 @@ instance Eq NodeError where
 -- | The common result of attempting to build something.
 -- TODO: should hide the type
 type Try = Either NodeError
+
+{-| For the occasions we know that the result should be a success,
+this forces the result.
+-}
+forceTry :: (HasCallStack) => Try a -> a
+forceTry (Right x) = x
+forceTry (Left e) = error (show e)
 
 eCallStack :: NodeError -> CallStack
 eCallStack = _eStack

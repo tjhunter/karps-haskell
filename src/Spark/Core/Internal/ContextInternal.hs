@@ -20,22 +20,19 @@ module Spark.Core.Internal.ContextInternal(
   insertSourceInfo,
   updateCache,
   convertToTiedGraph,
-  parseNodeId,
   currentCacheNodes,
   compileComputation
 ) where
 
+import qualified Data.List.NonEmpty as N
 import Control.Monad.State(get, put)
 import Control.Monad(when)
 import Data.Functor.Identity(runIdentity)
-import qualified Data.Text as T
-import qualified Data.ByteString.Char8 as C8
 import qualified Data.Vector as V
 import Data.Text(pack)
 import Data.Maybe(mapMaybe, catMaybes)
 import Data.Either(isRight)
 import Data.Foldable(toList)
-import Control.Arrow((&&&))
 import Data.List(nub)
 import Formatting
 import qualified Data.Map.Strict as M
@@ -47,7 +44,7 @@ import Spark.Core.Row
 import Spark.Core.Types
 import Spark.Core.Internal.BrainStructures
 import Spark.Core.Internal.BrainFunctions
-import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..), prettyNodePath)
+import Spark.Core.StructuresInternal(NodeId, NodePath, ComputationID(..))
 import Spark.Core.Internal.Caching
 import Spark.Core.Internal.CachingUntyped
 import Spark.Core.Internal.ContextStructures
@@ -55,16 +52,15 @@ import Spark.Core.Internal.Client
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.PathsUntyped
 import Spark.Core.Internal.Pruning
-import Spark.Core.Internal.OpStructures(HdfsPath(..), DataInputStamp, NodeShape(..), Locality(..))
+import Spark.Core.Internal.OpStructures(NodeShape(..), Locality(..))
 -- Required to import the instances.
 import Spark.Core.Internal.Paths()
 import Spark.Core.Internal.DAGFunctions(buildVertexList, graphMapVertices)
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures
-import Spark.Core.Internal.StructuredBuilder(StructuredBuilderRegistry)
 import Spark.Core.Internal.Utilities
-import Spark.IO.Internal.InputStructures(extractResourcePath, updateResourceStamp)
+import Spark.IO.Internal.InputStructures(extractResourcePath)
 
 -- The result from querying the status of a computation
 type FinalResult = Either NodeComputationFailure NodeComputationSuccess
@@ -144,10 +140,9 @@ TODO(kps) use the caching information to have a correct fringe
 buildComputationGraph :: ComputeNode loc a -> Try ComputeGraph
 buildComputationGraph ld = do
   cg <- tryEither $ buildCGraph (untyped ld)
-  dagWithPaths <- traceHint "buildComputationGraph: res=" $ assignPathsUntyped (traceHint "buildComputationGraph: cg=" cg)
-  dagWithCorrectIds <- _usePathsForIds dagWithPaths
+  dagWithPaths <- assignPathsUntyped cg
+  _usePathsForIds dagWithPaths
   -- let cg' = mapVertexData nodeOpNode dagWithCorrectIds
-  return dagWithCorrectIds
 
 {-| Performs all the operations that are done on the compute graph:
 
@@ -178,10 +173,6 @@ performGraphTransforms session cg = do
     _ -> tryError $ sformat ("Found some caching errors: "%sh) failures
   -- TODO: we could add an extra pruning pass here
 
-{-| Wraps the path of a node as a vertex id. -}
-parseNodeId :: NodePath -> VertexId
-parseNodeId = VertexId . C8.pack . T.unpack . prettyNodePath
-
 convertToTiedGraph :: ComputeGraph -> TiedComputeGraph
 convertToTiedGraph cg =
   computeGraphToGraph $ runIdentity (computeGraphMapVertices cg f) where
@@ -193,29 +184,33 @@ convertToTiedGraph cg =
 {-| Switches the IDs of the graph from node ids to paths (which should be available and computed at that point) -}
 -- TODO: it should be able to do all that with just graph traversals.
 _usePathsForIds :: ComputeDag UntypedNode StructureEdge -> Try ComputeGraph
-_usePathsForIds d =
-  let g = computeGraphToGraph d
-      -- Collect the ids and the corresponding paths
-      vertexPairs = f <$> V.toList (gVertices g) where
-          f (Vertex vid n) = (vid, parseNodeId (nodePath n))
-      m = myGroupBy vertexPairs
-      replaceVid vid = case M.lookup vid m of
-          Just (vid' :| _) -> return vid'
-          _ -> fail $ "_usePathsForIds: programming error: cannot find id " ++ show vid ++ " in map " ++ show m
-      replaceVertex (Vertex vid v) = Vertex <$> (replaceVid vid) <*> (pure v)
-      replaceEdge (Edge vid1 vid2 e) = Edge <$> (replaceVid vid1) <*> (replaceVid vid2) <*> (pure e)
-      replaceVE (VertexEdge v e) = VertexEdge <$> (replaceVertex v) <*> (replaceEdge e)
-      l :: Try ([(VertexId, V.Vector (VertexEdge StructureEdge UntypedNode))])
-      l = sequence (f' <$> (M.toList . gEdges $ g)) where
-          f' (vid, v) = (,) <$> replaceVid vid <*> sequence (replaceVE <$> v)
-  in do
-    l0 <- l
-    let m2 = M.fromList l0 :: AdjacencyMap UntypedNode StructureEdge
-    vertices <- sequence (replaceVertex <$> gVertices g)
-    let g2 = Graph { gEdges = m2, gVertices = vertices }
-    let cg2 = graphToComputeGraph g2
-    let cg' = mapVertexData nodeOpNode cg2
-    return cg'
+_usePathsForIds d = tryEither $
+    buildGraphFromList' vxs ieds inputs outputs
+  where
+    g = computeGraphToGraph d
+    -- Collect the ids and the corresponding paths
+    m :: M.Map VertexId VertexId
+    m = M.map N.head . myGroupBy $ f <$> V.toList (gVertices g) where
+        f (Vertex vid n) = (vid, parseNodeId (nodePath n))
+    -- This function uses unsafe functions because it should always succeed.
+    replaceVid vid = case M.lookup vid m of
+        Just vid' -> vid'
+        _ -> error' $ "_usePathsForIds: programming error: cannot find id " <> show' vid <> " in map " <> show' m
+    changeVertex :: Vertex UntypedNode -> Vertex OperatorNode
+    changeVertex vx = Vertex {
+          vertexId = parseNodeId . nodePath . vertexData $ vx,
+          vertexData = nodeOpNode (vertexData vx)
+        }
+    vxs = changeVertex <$> V.toList (cdVertices d)
+    ieds = f <$> gIndexedEdges g where
+      f ie = ie {
+        iedgeFrom = replaceVid (iedgeFrom ie),
+        iedgeTo = replaceVid (iedgeTo ie)
+      }
+    inputs :: [VertexId]
+    inputs = replaceVid . vertexId <$> V.toList (cdInputs d)
+    outputs :: [VertexId]
+    outputs = replaceVid . vertexId <$> V.toList (cdOutputs d)
 
 _convertToUntiedGraph :: TiedComputeGraph -> ComputeGraph
 _convertToUntiedGraph tcg =
@@ -230,8 +225,6 @@ _buildComputation session cg =
       terminalNodes = vertexData <$> toList (cdOutputs cg)
       terminalNodePaths = onPath <$> terminalNodes
       terminalNodeIds = onId <$> terminalNodes
-      tiedCg = convertToTiedGraph cg
-      allTiedNodes = vertexData <$> toList (gVertices tiedCg)
   -- TODO it is missing the first node here, hoping it is the first one.
   in case terminalNodePaths of
     [p] ->
@@ -239,7 +232,7 @@ _buildComputation session cg =
     _ -> tryError $ sformat ("Programming error in _build1: cg="%sh) cg
 
 _updateVertex :: M.Map ResourcePath ResourceStamp -> OperatorNode -> Try OperatorNode
-_updateVertex m un = undefined
+_updateVertex = undefined
   -- let no = onOp un in case hdfsPath no of
   --   Just p -> case M.lookup p m of
   --     Just dis ->

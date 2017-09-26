@@ -11,16 +11,15 @@ module Spark.Core.Internal.PathsUntyped(
 ) where
 
 import qualified Data.Vector as V
-import qualified Data.Map.Strict as M
 import Data.Maybe(fromMaybe)
-import Data.Foldable(toList)
 import Data.List(nub)
 import Control.Arrow((&&&))
 import Formatting
 import Control.Monad.Identity
 
+import qualified Spark.Core.Internal.DAGFunctions as DAG
 import Spark.Core.Internal.DAGStructures
-import Spark.Core.Internal.DAGFunctions
+-- import Spark.Core.Internal.DAGFunctions
 import Spark.Core.Internal.ComputeDag
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.DatasetFunctions
@@ -82,7 +81,7 @@ tieNodes cd =
                   _cnLogicalDeps = logDeps,
                   _cnLogicalParents = Nothing }
         in return res
-      g2 = runIdentity $ graphMapVertices g f
+      g2 = runIdentity $ DAG.graphMapVertices g f
   in graphToComputeGraph g2
 
 -- Assigns the paths, and drops the scoping edges.
@@ -92,9 +91,9 @@ assignPathsUntyped cd = do
   let pathCGraph = _getPathCDag cd
   paths <- computePaths pathCGraph
   let g = computeGraphToGraph $ assignPaths' paths cd
-  let f ScopeEdge = []
-      f (DataStructureEdge x) = [x]
-  let g' = graphFlatMapEdges g  f
+  let f _ ScopeEdge _ = Nothing
+      f _ (DataStructureEdge x) _ = Just x
+  let g' = DAG.graphFilterEdges g  f
   return $ graphToComputeGraph g'
 
 
@@ -122,8 +121,33 @@ _cleanEdges (h : t) =
         Nothing -> rest
     in res
 
+-- transforms node edges into path edges
+_cleanEdges' :: (HasCallStack) => [IndexedEdge NodeEdge] -> [IndexedEdge PathEdge]
+_cleanEdges' [] = []
+_cleanEdges' (h : t) =
+  let vid = iedgeTo h
+      others = [ie | ie <- t, (iedgeTo $ ie) /= vid]
+      sames = [ie | ie <- t, (iedgeTo $ ie) == vid]
+      rest = _cleanEdges' others
+      -- If there multiple edges between nodes, they are dropped.
+      -- This distinction is not required for names.
+      eData = nub $ iedgeData <$> (h : sames)
+      eData' = case eData of
+        [DataStructureEdge ParentEdge] -> Just InnerEdge
+        [DataStructureEdge ParentEdge, ScopeEdge] -> Just SameLevelEdge
+        [ScopeEdge, DataStructureEdge ParentEdge] -> Just SameLevelEdge
+        [ScopeEdge] -> Just SameLevelEdge
+        [DataStructureEdge LogicalEdge] -> Nothing
+        l -> failure (sformat ("Could not understand combination "%shown) l)
+      res = case eData' of
+        Just v -> h {iedgeData = v} : rest
+        Nothing -> rest
+    in res
 
-_getPathCDag :: (HasCallStack) => ComputeDag v NodeEdge -> ComputeDag v PathEdge
-_getPathCDag cd =
-  let adj' = M.map (V.fromList . _cleanEdges . toList) (cdEdges cd)
-  in cd { cdEdges = adj' }
+_getPathCDag :: (HasCallStack, Show v) => ComputeDag v NodeEdge -> ComputeDag v PathEdge
+_getPathCDag cd = forceRight . tryEither $ updateGraph (const g) cd where
+  vxs = V.toList . cdVertices $ cd
+  ies = _cleanEdges' (gIndexedEdges (computeGraphToGraph cd))
+  g =  DAG.buildGraphFromList' vxs ies
+  -- let adj' = M.map (V.fromList . _cleanEdges . toList) (cdEdges cd)
+  -- in cd { cdEdges = adj' }

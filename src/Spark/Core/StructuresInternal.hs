@@ -23,6 +23,8 @@ module Spark.Core.StructuresInternal(
   prettyNodePath,
   fieldPathToProto,
   fieldPathFromProto,
+  nodePathAppendSuffix,
+  emptyNodeId
 ) where
 
 import qualified Data.Text as T
@@ -69,6 +71,8 @@ data ComputationID = ComputationID {
   unComputationID :: !T.Text
 } deriving (Eq, Show, Generic)
 
+emptyNodeId :: NodeId
+emptyNodeId = NodeId "NOID"
 
 -- | A safe constructor for field names that fixes all the issues relevant to
 -- SQL escaping
@@ -99,6 +103,15 @@ headFieldPath (FieldPath v) = Just $ V.head v
 fieldPath' :: [FieldName] -> FieldPath
 fieldPath' = FieldPath . V.fromList
 
+{-| Appends a suffix to the last element of the nodepath.
+
+This does not make the path deeper.
+-}
+nodePathAppendSuffix :: NodePath -> T.Text -> NodePath
+nodePathAppendSuffix (NodePath v) t = NodePath $ V.snoc (V.init v) x' where
+    x = unNodeName (V.last v)
+    x' = NodeName (x <> t)
+
 -- | The concatenated path. This is the inverse function of fieldPath.
 -- | TODO: this one should be hidden?
 catNodePath :: NodePath -> T.Text
@@ -111,11 +124,12 @@ prettyNodePath :: NodePath -> T.Text
 prettyNodePath np = "/" <> catNodePath np
 
 instance Show NodeId where
-  show (NodeId bs) = let s = show bs in
-    if length s > 9 then
-      (drop 1 . take 6) s ++ ".."
-    else
-      s
+  show (NodeId bs) = s' where
+    s = show bs
+    n = 10
+    s' = if length s > n
+      then (drop 1 . take (n - 3)) s ++ ".."
+      else s
 
 instance Show NodeName where
   show (NodeName nn) = T.unpack nn

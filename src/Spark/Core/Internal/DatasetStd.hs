@@ -69,7 +69,6 @@ dataframe :: DataType -> [Cell] -> DataFrame
 dataframe dt l = fromBuilder0Extra' literalBuilderD =<< cwt where
   cwt = tryEither $ cellWithTypeToProto (arrayType' dt) (RowArray (V.fromList l))
 
-
 literalBuilderD :: NodeBuilder
 literalBuilderD = buildOpExtra "org.spark.DistributedLiteral" f where
   f :: PRow.CellWithType -> Try CoreNodeInfo
@@ -80,6 +79,15 @@ literalBuilderD = buildOpExtra "org.spark.DistributedLiteral" f where
         pure $ CoreNodeInfo (NodeShape dt Distributed) op where
           op = NodeDistributedLit dt v
       _ -> tryError $ sformat ("builderDistributedLiteral: Expected an array of cells and an array type, got "%sh) (cells', dt')
+
+literalBuilderL :: NodeBuilder
+literalBuilderL = buildOpExtra "org.spark.LocalLiteral" f where
+  f :: PRow.CellWithType -> Try CoreNodeInfo
+  f cwt = do
+    (cells', dt) <- tryEither (cellWithTypeFromProto cwt)
+    let op = NodeLocalLit dt cells'
+    return $ CoreNodeInfo (NodeShape dt Local) op where
+
 
 localityFromProto :: PGraph.Locality -> Locality
 localityFromProto PGraph.LOCAL = Local

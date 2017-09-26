@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 -- A number of standard aggregation functions.
 
@@ -24,15 +25,13 @@ import Debug.Trace(trace)
 
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.ColumnStructures
-import Spark.Core.Internal.ColumnFunctions(untypedCol, colType, colOp, iUntypedColData, colOrigin, castTypeCol, dropColReference, genColOp)
+import Spark.Core.Internal.ColumnFunctions(untypedCol, colType, colOp, iUntypedColData, castTypeCol, dropColReference, genColOp)
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.LocalDataFunctions()
 import Spark.Core.Internal.FunctionsInternals
-import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields, extractFields)
+import Spark.Core.Internal.TypesFunctions(tupleType, structTypeFromFields)
 import Spark.Core.Internal.OpStructures
-import Spark.Core.Internal.Projections
 import Spark.Core.Internal.TypesStructures
-import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.RowStructures(Cell)
 import Spark.Core.Try
@@ -69,16 +68,6 @@ A group data type with no typing information.
 -}
 type UntypedGroupData = GroupData Cell Cell
 
--- type GroupTry a = Either T.Text a
-
--- A useful type when chaining operations withing groups.
-data PipedTrans =
-    PipedError !T.Text
-  | PipedDataset !UntypedDataset
-  | PipedGroup !UntypedGroupData
-  deriving (Show)
-
-
 {-| Performs a logical group of data based on a key.
 -}
 groupByKey :: (HasCallStack) => Column ref key -> Column ref val -> GroupData key val
@@ -95,15 +84,6 @@ mapGroup g f =
       -- TODO: deal with broadcast eventually
       gVals = forceRight $ _groupCol c'
   in g {  _gdValue = gVals }
-
-{-| The generalized value transform.
-
-This generalizes mapGroup to allow more complex transforms involving joins,
-groups, etc.
--}
--- TODO: this can fail
--- magGroupGen :: (forall ref. Column ref val -> Dataset val') -> GroupData key val -> GroupData key val'
--- magGroupGen _ _ = undefined
 
 {-| Given a group and an aggregation function, aggregates the data.
 
@@ -126,31 +106,6 @@ aggKey gd f = trace "aggKey" $
       tud = traceHint "aggKey: tud: " $ _aggKey ugd f'
       res = castType' t tud
   in forceRight res
-
-{-| Creates a group by 'expanding' a value into a potentially large collection.
-
-Note on performance: this function is optimized to work at any scale and may not
-be the most efficient when the generated collections are small (a few elements).
--}
--- TODO: it should be a try, this can fail
--- expand :: Column ref key -> Column ref val -> (LocalData val -> Dataset val') -> GroupData key val'
--- expand = undefined
-
-{-| Builds groups within groups.
-
-This function allows groups to be constructed from each collections inside a
-group.
-
-This function is usually not used directly by the user, but rather as part of
-more complex pipelines that may involve multiple levels of nesting.
--}
--- groupInGroup :: GroupData key val -> (forall ref. Column ref val -> GroupData key' val') -> GroupData (key', key) val'
--- groupInGroup _ _ = undefined
-
-{-| Reduces a group in group into a single group.
--}
--- aggGroup :: GroupData (key, key') val -> (forall ref. LocalData key -> Column ref val -> LocalData val') -> GroupData key val
--- aggGroup _ _ = undefined
 
 {-| Returns the collapsed representation of a grouped dataset, discarding group
 information.
@@ -194,41 +149,6 @@ _valueCol gd = ColumnData {
     _cOp = genColOp . _gcOp . _gdValue $ gd,
     _cReferingPath = _gcRefName . _gdValue $ gd
   }
-
-
-_pError :: T.Text -> PipedTrans
-_pError = PipedError
-
-_unrollTransform :: PipedTrans -> NodeId -> UntypedNode -> PipedTrans
-_unrollTransform start nid un | nodeId un == nid = start
-_unrollTransform start nid un = case nodeParents un of
-    [p] ->
-      let pt' = _unrollTransform start nid p in _unrollStep pt' un
-    _ ->
-      _pError $ sformat (sh%": operations with multiple parents cannot be used in groups yet.") un
-
-_unrollStep :: PipedTrans -> UntypedNode -> PipedTrans
-_unrollStep pt un = traceHint ("_unrollStep: pt=" <> show' pt <> " un=" <> show' un <> " res=") $
-  let op = nodeOp un
-      dt = unSQLType (nodeType un) in case nodeParents un of
-    [p] ->
-      case (pt, op) of
-        (PipedError e, _) -> PipedError e
-        (PipedDataset ds, NodeStructuredTransform _) ->
-          -- This is simply dointg a DS -> DS transform.
-          -- TODO: this breaks the encapsulation of ComputeNode
-          let ds' = updateNode un (\un' -> un' { _cnParents = V.singleton (untyped ds)})
-          in PipedDataset ds'
-        (PipedGroup g, NodeStructuredTransform co) ->
-          _unrollGroupTrans g co
-        -- (PipedGroup g, NodeAggregatorReduction uao) ->
-        --   case uaoInitialOuter uao of
-        --     OpaqueAggTransform x -> _pError $ sformat ("Cannot apply opaque transform in the context of an aggregation: "%sh) x
-        --     InnerAggOp ao ->
-        --       PipedDataset $ _applyAggOp dt ao g
-        _ -> _pError $ sformat (sh%": Operation not supported with trans="%sh%" and parents="%sh) op pt p
-    l -> _pError $ sformat (sh%": expected one parent but got "%sh) un l
-
 -- dt: output type of the aggregation op
 _applyAggOp :: (HasCallStack) => DataType -> AggOp -> UntypedGroupData -> UntypedDataset
 _applyAggOp dt ao ugd = traceHint ("_applyAggOp dt=" <> show' dt <> " ao=" <> show' ao <> " ugd=" <> show' ugd <> " res=") $
@@ -247,17 +167,6 @@ _applyAggOp dt ao ugd = traceHint ("_applyAggOp dt=" <> show' dt <> " ao=" <> sh
       ds2 = emptyDataset (NodeGroupedReduction ao) resDt `parents` [untyped ds]
   in ds2
 
-_unrollGroupTrans :: UntypedGroupData -> ColOp -> PipedTrans
-_unrollGroupTrans ugd co =
-  let gco = colOp (_valueCol ugd) in case colOpNoBroadcast gco of
-    Left x -> _pError $ "_unrollGroupTrans (1): using unimplemented feature:" <> show' x
-    Right co' -> case _combineColOp co' co of
-      -- TODO: this is ugly, we are loosing the error structure.
-      Left x -> _pError $ "_unrollGroupTrans (2): failure with " <> show' x
-      Right co'' -> case _groupCol $ _transformCol co'' (_valueCol ugd) of
-        Left x -> _pError $ "_unrollGroupTrans (3): failure with " <> show' x
-        Right g -> PipedGroup $ ugd { _gdValue = g }
-
 -- TODO: this should be moved to ColumnFunctions
 _transformCol :: ColOp -> UntypedColumnData -> UntypedColumnData
 -- TODO: at this point, it should be checked for correctness (the fields
@@ -266,9 +175,10 @@ _transformCol co ucd = ucd { _cOp = genColOp co }
 
 -- Takes a column operation and chain it with another column operation.
 _combineColOp :: ColOp -> ColOp -> Try ColOp
+_combineColOp _ (ColBroadcast _) = missing "_combineColOp: ColBroadcast"
 _combineColOp _ (x @ (ColLit _ _)) = pure x
-_combineColOp x (ColFunction fn v) =
-  ColFunction fn <$> sequence (_combineColOp x <$> v)
+_combineColOp x (ColFunction fn v _) =
+  (\x' -> ColFunction fn x' Nothing) <$> sequence (_combineColOp x <$> v)
 _combineColOp x (ColExtraction fp) = _extractColOp x (V.toList (unFieldPath fp))
 _combineColOp x (ColStruct v) =
   ColStruct <$> sequence (f <$> v) where
@@ -286,18 +196,7 @@ _extractColOp x y =
   tryError $ sformat ("Cannot perform extraction "%sh%" on column operation "%sh) y x
 
 _aggKey :: UntypedGroupData -> (UntypedColumnData -> Try UntypedLocalData) -> Try UntypedDataset
-_aggKey ugd f =
-  let inputDt = unSQLType . colType . _valueCol $ ugd
-      p = error "_aggKey: not implemented"
-      --p = placeholder inputDt :: UntypedDataset
-      startNid = nodeId p in do
-  uld <- f (_unsafeCastColData (asCol p))
-  case _unrollTransform (PipedGroup ugd) startNid (untyped uld) of
-    PipedError t -> tryError t
-    PipedGroup g ->
-      -- This is a programming error
-      tryError $ sformat ("Expected a dataframe at the output but got a group: "%sh) g
-    PipedDataset ds -> pure ds
+_aggKey = error "_aggKey: not implemented"
 
 _unsafeCastColData :: Column ref a -> Column ref' a'
 _unsafeCastColData c = c { _cType = _cType c }
@@ -322,25 +221,7 @@ _untypedGroup :: GroupData key val -> UntypedGroupData
 _untypedGroup gd = gd { _gdRef = _gdRef gd }
 
 _groupByKey :: UntypedColumnData -> UntypedColumnData -> LogicalGroupData
-_groupByKey keys vals =
-  if nodeId (colOrigin keys) == nodeId (colOrigin vals)
-  then
-    -- Get the latest data (packed)
-    -- TODO: put a scoping
-    let s = struct (keys, vals) :: Column UnknownReference (Cell, Cell)
-        ds = pack1 s
-        keys' = ds // _1
-        vals' = ds // _2
-    in do
-      gKeys <- _groupCol keys'
-      gVals <- _groupCol vals'
-      return GroupData {
-                _gdRef = colOrigin keys',
-                _gdKey = gKeys,
-                _gdValue = gVals
-              }
-  else
-    tryError $ sformat ("The columns have different origin: "%sh%" and "%sh) keys vals
+_groupByKey = undefined
 
 _groupCol :: Column ref a -> Try GroupColumn
 _groupCol c = do

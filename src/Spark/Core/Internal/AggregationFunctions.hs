@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- A number of standard aggregation functions.
 -- TODO: completely redo the module based on the builders.
@@ -71,7 +72,7 @@ collect' = applyAggCol' collectAggBuilder
 
 applyAggCol' :: AggSQLBuilder -> Column' -> Observable'
 applyAggCol' b c' = Observable' $ do
-  c2 <- unColumn' $ c'
+  c2 <- unColumn' c'
   let ds = pack1 c2
   _applyAgg b ds
 
@@ -85,8 +86,7 @@ applyAggD b ds = forceRight $ do
   let dt1 = buildType :: SQLType b
   uds <- asDF ds
   uld <- _applyAgg b uds
-  ld <- castType dt1 uld
-  return ld
+  castType dt1 uld
 
 {-| Applies the builder and returns a new node. -}
 _applyAgg :: AggSQLBuilder -> UntypedDataset -> Try UntypedLocalData
@@ -94,5 +94,5 @@ _applyAgg b ds = do
   let f = asbBuilder b
   (dt', _) <- f (unSQLType . nodeType $ ds)
   let no = NodeReduction ao where
-        ao = AggFunction (asbName b) emptyFieldPath
+        ao = AggFunction (asbName b) emptyFieldPath (Just dt')
   return $ emptyLocalData no (SQLType dt') `parents` [untyped ds]

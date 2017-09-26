@@ -55,7 +55,7 @@ run s f = it s $ do
   return ()
 
 xrun :: String -> IO () -> SpecWith (Arg (IO ()))
-xrun s f = it s $ do
+xrun s _ = it s $ do
   pendingWith s
   return ()
 
@@ -66,7 +66,7 @@ spec = do
       smallSum (1 :: Int) (2 :: Int)
     run "zero_ints1" $
       smallSum (0 :: Int) (2 :: Int)
-    run "negation_ints1" $
+    xrun "negation_ints1" $
       negation (1 :: Int) (2 :: Int)
-    run "negate_ints1" $
+    xrun "negate_ints1" $
       checkNegate (1 :: Int)

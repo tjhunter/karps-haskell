@@ -9,26 +9,29 @@ Because I could not find a public library for such transforms.
 Most Karps manipulations are converted into graph manipulations.
 -}
 module Spark.Core.Internal.DAGFunctions(
-  DagTry,
   FilterOp(..),
   -- Building
   buildGraph,
   buildVertexList,
   buildGraphFromList,
+  buildGraphFromList',
   -- Queries
   graphSinks,
   graphSources,
   -- Transforms
   graphMapVertices,
   graphMapVertices',
+  graphMapVerticesI,
+  graphAdd,
   vertexMap,
-  graphFlatMapEdges,
+  -- graphFlatMapEdges,
   graphMapEdges,
   reverseGraph,
   verticesAndEdges,
   graphFilterVertices,
-  pruneLexicographic,
-  completeVertices
+  -- pruneLexicographic,
+  completeVertices,
+  graphFilterEdges
 ) where
 
 import qualified Data.Set as S
@@ -36,9 +39,9 @@ import qualified Data.Map.Strict as M
 import qualified Data.Vector as V
 import qualified Data.List.NonEmpty as N
 import Data.List(sortBy)
+import Data.Function(on)
 import Data.Maybe
 import Data.Foldable(toList)
-import Data.Text(Text)
 import Control.Arrow((&&&))
 import Control.Monad.Except
 import Formatting
@@ -46,10 +49,7 @@ import Control.Monad.Identity
 
 import Spark.Core.Internal.DAGStructures
 import Spark.Core.Internal.Utilities
-
--- | Separate type of error to make it more general and easier
--- to test.
-type DagTry a = Either Text a
+import Spark.Core.Try
 
 {-| The different filter modes when pruning a graph.
 
@@ -58,6 +58,79 @@ CutChildren: keep the current node, but do not consider the children.
 Remove: remove the current node, do not consider the children.
 -}
 data FilterOp = Keep | Remove | CutChildren
+
+{-| Builds a graph from a list of vertices and edges. The edges and vertices
+need not be sorted or correct, it will be checked.
+All indices have to be distinct at each node, but they need not be consecutive.
+
+They are updated to be consecutive at the outcome.
+-}
+buildGraphFromList' :: forall v e. (HasCallStack, Show v, Show e) =>
+  [Vertex v] -> [IndexedEdge e] -> DagTry (Graph v e)
+buildGraphFromList' vxs ies = do
+    -- Verify and compact the indices.
+    ies' <- _reindexEdges ies
+    -- Build the vertex map and check for duplicates.
+    vxById <- _vertexById vxs
+    -- Check that the edge vertex ids match the list of given vertices.
+    edgeMap' <- sequence $ edgeMap vxById <$> ies'
+    let edgeMap0 = M.map N.toList (myGroupBy edgeMap')
+    -- Merge the edge information with the sequence of vertices.
+    -- This way, we keep the order of the vertices when building the graph.
+    let vxs' = mergeWithEdge edgeMap0 <$> vxs
+    let indexedVxs = [(idx, vx, l) | (idx, (vx, l)) <- _zipWithIndex vxs']
+    lexico' <- _lexicographic vertexId indexedVxs
+    return $ _buildGraphFromListUnsafe lexico' ies'
+  where
+    -- The id of the first vertex and then the second vertex.
+    edgeMap :: M.Map VertexId (Vertex v) -> IndexedEdge e -> DagTry (VertexId, Vertex v)
+    edgeMap m ie = case (M.lookup (iedgeFrom ie) m, M.lookup (iedgeTo ie) m) of
+      (Just v1, Just v2) -> pure (vertexId v1, v2)
+      _ -> throwError' $ "Edge has vertices not present in the list of vertices: " <> show' ()
+    mergeWithEdge :: M.Map VertexId [Vertex v] -> Vertex v -> (Vertex v, [Vertex v])
+    mergeWithEdge m v = case M.lookup (vertexId v) m of
+        Nothing -> (v, [])
+        Just l -> (v, l)
+
+{-| Reindexs the edges to make sure that the indexes of each element make
+a compact segment. Also checks that all the indices are distinct for each
+sink and output.
+-}
+_reindexEdges :: forall e. (HasCallStack, Show e) => [IndexedEdge e] -> DagTry [IndexedEdge e]
+_reindexEdges l = do
+  l1 <- _doPass iedgeFrom iedgeFromIndex (\ie idx -> ie {iedgeFromIndex = idx}) l
+  l2 <- _doPass iedgeTo iedgeToIndex (\ie idx -> ie {iedgeToIndex = idx}) l1
+  return l2
+
+    -- Group edges by start vertex
+_doPass :: forall e. (HasCallStack, Show e) =>
+  (IndexedEdge e -> VertexId) -> -- The grouping vertex
+  (IndexedEdge e -> Int) -> -- The slot to compact
+  (IndexedEdge e -> Int -> IndexedEdge e) -> -- The update of the slot.
+  [IndexedEdge e] -> -- The list to manipulate
+  DagTry [IndexedEdge e]
+_doPass getVertexId getSlot updateSlot l = l2t where
+  -- Sorts by the first int, checks that there is no duplicate
+  reorganize :: [(Int, Int, IndexedEdge e)] -> DagTry [(Int, IndexedEdge e)]
+  reorganize l' =
+    let getIdx (idx, _, _) = idx
+        f2 (_, pos, ie) = (pos, ie)
+        s = S.fromList (getIdx <$> l')
+    in if length s == length l'
+        then pure $ f2 <$> sortBy (compare `on` getIdx) l'
+        else throwError' $ "_reindexEdges: Duplicate positions in " <> show' l' <> " with l=" <> show' l
+  -- If we succeed, we need to return the edges in the same order.
+  -- Associate them with an index.
+  lIdx = _zipWithIndex l
+  -- First index is slot, second is pos.
+  m1 :: [[(Int, Int, IndexedEdge e)]]
+  m1 = fmap N.toList . M.elems . myGroupBy $ f <$> lIdx where
+    f (pos, ie) = (getVertexId ie, (getSlot ie, pos, ie))
+  m1t = sequence $ reorganize <$> m1
+  l1t = concatMap f <$> m1t where
+    f l0 = g <$> _zipWithIndex l0 where
+      g (newFromIdx, (pos, ie)) = (pos, updateSlot ie newFromIdx)
+  l2t = (fmap snd . sortBy (compare `on` fst)) <$> l1t
 
 {-| Starts from a vertex and expands the vertex to reach all the transitive
 closure of the vertex.
@@ -68,40 +141,31 @@ multiple sources. The nodes are ordered so that all the parents are visited
 before the node itself.
 -}
 buildVertexList :: (GraphVertexOperations v, Show v) => v -> DagTry [v]
-buildVertexList x = buildVertexListBounded x []
-
-{-| Builds the list of vertices, up to a boundary.
--}
-buildVertexListBounded :: (GraphVertexOperations v, Show v) =>
-  v -> [v] -> DagTry [v]
-buildVertexListBounded x boundary =
-  let
-    boundaryIds = S.fromList $ vertexToId <$> boundary
-    traversals = toList $ _buildList boundaryIds [x] M.empty
-    lexico = _lexicographic vertexToId traversals in lexico
+buildVertexList x = _lexicographic vertexToId traversals where
+  traversals = toList $ _buildList S.empty [x] M.empty
 
 -- | Builds a graph by expanding a start vertex.
-buildGraph :: forall v e. (GraphOperations v e, Show v) =>
+buildGraph :: forall v e. (GraphOperations v e, Show v, Show e) =>
   v -> DagTry (Graph v e)
-buildGraph start = buildVertexList start <&> \vxData ->
-  let vertices = [Vertex (vertexToId vx) vx | vx <- vxData]
-      -- The edges and vertices are already in the right order, no need
-      -- to do further checks
-      f :: v -> (VertexId, V.Vector (VertexEdge e v))
-      f x =
-        let vid = vertexToId x
-            g :: (e, v) -> VertexEdge e v
-            g (ed, x') =
-              let toId = vertexToId x'
-                  v' = Vertex toId x'
-                  e = Edge vid toId ed
-              in VertexEdge v' e
-            vedges = g <$> expandVertex x
-        in (vid, V.fromList vedges)
-      vxs = V.fromList vertices
-      edges = f <$> vxData
-      adj = M.fromList edges
-  in Graph adj vxs
+buildGraph start = do
+    vxs <- buildVertexList start
+    iedges <- edgeList vxs
+    buildGraphFromList' (f <$> vxs) iedges
+  where
+    f v = Vertex (vertexToId v) v
+    edgeList1 :: v -> [IndexedEdge e]
+    edgeList1 vx = g <$> expandVertex vx where
+      vidFrom = vertexToId vx
+      g (e, vTo) = IndexedEdge {
+              iedgeFromIndex = -1,
+              iedgeFrom = vidFrom,
+              iedgeToIndex = -1,
+              iedgeTo = vertexToId vTo,
+              iedgeData = e
+            }
+    -- Give a unique index for each slot at the end.
+    edgeList vxs = pure . fmap g . _zipWithIndex . concat $ edgeList1 <$> vxs where
+      g (idx, ie) = ie { iedgeFromIndex = idx, iedgeToIndex = idx }
 
 {-| Attempts to build a graph from a collection of vertices and edges.
 
@@ -110,37 +174,29 @@ be in topological order.
 
 All the vertices referred by edges must be present in the list of vertices.
 -}
-buildGraphFromList :: forall v e. (Show v) =>
+buildGraphFromList :: forall v e. (Show e, Show v) =>
   [Vertex v] -> [Edge e] -> DagTry (Graph v e)
-buildGraphFromList vxs eds = do
-  -- 1. Group the edges by start point
-  -- 2. Find the lexicgraphic order (if possible)
-  vxById <- _vertexById vxs
-  -- The topological information
-  let edTopo = M.map N.toList $ myGroupBy $ (edgeFrom &&& edgeTo) <$> eds
-  let vertexById :: VertexId -> DagTry (Vertex v)
-      vertexById vid = case M.lookup vid vxById of
-        Nothing -> throwError $ sformat ("buildGraphFromList: vertex id found in edge but not in vertices: "%sh) vid
-        Just vx -> pure vx
-  let f :: Vertex v -> DagTry (Vertex v, [Vertex v])
-      f vx =
-        let links = M.findWithDefault [] (vertexId vx) edTopo
-        in sequence (vertexById <$> links) <&> \l -> (vx, l)
-  verticesWithEnds <- sequence $ f <$> vxs
-  let indexedVertices = zip [1..] verticesWithEnds <&> \(idx, (vx, l)) -> (idx, vx, l)
-  -- The nodes in lexicographic order.
-  lexico <- _lexicographic vertexId indexedVertices
-  -- Build the edge map:
-  -- vertexFromId -> vertexEdge
-  let vertexEdge :: Edge e -> DagTry (VertexId, VertexEdge e v)
-      vertexEdge e = do
-        vxTo <- vertexById (edgeTo e)
-        -- Used to confirm that the start vertex is here
-        _ <- vertexById (edgeFrom e)
-        return (edgeFrom e, VertexEdge vxTo e)
-  vEdges <- sequence $ vertexEdge <$> eds
-  let edgeMap = M.map (V.fromList . N.toList) (myGroupBy vEdges)
-  return $ Graph edgeMap (V.fromList lexico)
+buildGraphFromList vxs eds =
+  buildGraphFromList' vxs eds' where
+    eds' = f <$> _zipWithIndex eds where
+      f (idx, e) = _indexEdge idx e
+
+{-| This function builds the graph but does not check crucial elements such as
+the absence of loops.
+
+It should be used only when the graph is 'known to be correct'.
+-}
+_buildGraphFromListUnsafe :: forall v e.
+  [Vertex v] -> [IndexedEdge e] -> Graph v e
+_buildGraphFromListUnsafe vxs ieds = Graph adjMap (V.fromList vxs) where
+  gs = myGroupBy $ f <$> ieds where
+    f ied = (iedgeFrom ied, ied)
+  adjMap = M.map f gs where
+    f (h :| t) = f' <$> l where
+      -- IMPORTANT: do not forget to reorganize the vertices in order of
+      -- indices, we rely on it for the completion of algorithms.
+      l = sortBy (compare `on` iedgeFromIndex) (h : t)
+      f' ied = (iedgeData ied, iedgeTo ied, iedgeToIndex ied)
 
 _vertexById :: (Show v) => [Vertex v] -> DagTry (M.Map VertexId (Vertex v))
 _vertexById vxs =
@@ -172,6 +228,17 @@ _lexicographic f m =
           tl = _lexicographic f m'
       in (v :) <$> tl
 
+_indexEdge :: Int -> Edge e -> IndexedEdge e
+_indexEdge idx e = IndexedEdge {
+        iedgeFromIndex = idx,
+        iedgeFrom = edgeFrom e,
+        iedgeToIndex = idx,
+        iedgeTo = edgeTo e,
+        iedgeData = edgeData e
+      }
+
+_zipWithIndex :: [a] -> [(Int, a)]
+_zipWithIndex = zip [0..]
 
 _buildList :: (Show v, GraphVertexOperations v) =>
   S.Set VertexId -> -- boundary ids, they will not be traversed
@@ -230,25 +297,18 @@ graphSinks g =
   in filter f (toList (gVertices g))
 
 -- | Flips the edges of this graph (it is also a DAG)
-reverseGraph :: forall v e. Graph v e -> Graph v e
-reverseGraph g =
-  let
-    vxMap = M.fromList ((vertexId &&& id) <$> toList (gVertices g))
-    flipVEdge :: (VertexId, V.Vector (VertexEdge e v)) -> [(VertexId, VertexEdge e v)]
-    flipVEdge (fromNid, vec) = case M.lookup fromNid vxMap of
-      Nothing -> [] -- Should be a programming error
-      Just endVx ->
-        toList vec <&> \ve ->
-          let ed = veEdge ve
-              oldEndVx = veEndVertex ve
-              oldEndVid = vertexId oldEndVx
-              ed' = Edge {
-                edgeFrom = oldEndVid,
-                edgeTo = fromNid,
-                edgeData = edgeData ed }
-          in (oldEndVid, VertexEdge { veEdge = ed', veEndVertex = endVx })
-    edges = M.map N.toList $ myGroupBy $ concat $ flipVEdge <$> M.toList (gEdges g)
-  in Graph (V.fromList <$> edges) (V.reverse (gVertices g))
+reverseGraph :: forall v e. (Show e, Show v) => Graph v e -> Graph v e
+-- For safety, fully rebuild the graph from scratch.
+reverseGraph g = forceRight . tryEither $ buildGraphFromList' vxs ieds where
+  vxs = V.toList (gVertices g)
+  ieds = f <$> gIndexedEdges g where
+    f ie = IndexedEdge {
+          iedgeFromIndex = iedgeToIndex ie,
+          iedgeFrom = iedgeTo ie,
+          iedgeToIndex = iedgeFromIndex ie,
+          iedgeTo = iedgeFrom ie,
+          iedgeData = iedgeData ie
+        }
 
 -- | A generic transform over the graph that may account for potential failures
 -- in the process.
@@ -285,25 +345,79 @@ graphMapVertices g f =
         f (vertexData vx) parents2 >>= merge0
   in do
     verts2 <- fun M.empty (toList (gVertices g))
-    let
-      idxs2 = M.fromList [(vertexId vx2, vx2) | vx2 <- verts2]
-      trans :: Vertex v -> Vertex v2
-      trans vx = fromJust $ M.lookup (vertexId vx) idxs2
-      conv :: VertexEdge e v -> VertexEdge e v2
-      conv (VertexEdge vx1 e1) = VertexEdge (trans vx1) e1
-      adj2 = M.map (conv <$>) (gEdges g)
-    return Graph { gEdges = adj2, gVertices = V.fromList verts2 }
+    return g { _gVertices = V.fromList verts2 }
+    -- let
+    --   -- idxs2 = M.fromList [(vertexId vx2, vx2) | vx2 <- verts2]
+    --   -- trans :: Vertex v -> Vertex v2
+    --   -- trans vx = fromJust $ M.lookup (vertexId vx) idxs2
+    --   -- conv :: VertexEdge e v -> VertexEdge e v2
+    --   -- conv (VertexEdge vx1 e1) = VertexEdge (trans vx1) e1
+    --   -- adj2 = M.map (conv <$>) (gEdges g)
+    -- return
+
+{-| Maps the graph, taking the edges into account.
+
+This is the non-monadic version of graphMapVertices.
+-}
+graphMapVerticesI :: forall v e v2. (HasCallStack, Show v2) =>
+  Graph v e -> -- The start graph
+  (v -> [(v2,e)] -> v2) -> -- The transform
+  Graph v2 e
+graphMapVerticesI g f = runIdentity (graphMapVertices g f') where
+  f' x l = pure (f x l)
+
+{-| Attempts to add some extra edges and vertices to the graph.
+
+Here are the rules:
+ - new edges on existing nodes: new ones are appended to the list of parents.
+
+No cycle are allowed.
+-}
+graphAdd :: forall v e. (Show e, Show v) =>
+  Graph v e -> -- The start graph
+  [Vertex v] -> -- The vertices to add
+  [Edge e] -> -- The edges to add
+  DagTry (Graph v e)
+graphAdd g vs es = buildGraphFromList' (oldVs ++ vs) (oldEs ++ ies)
+  where
+    oldVs = V.toList (gVertices g)
+    oldEs = gIndexedEdges g
+    numOldEs = length oldEs
+    -- The indexes are starting after everything else so that there is no
+    -- collision and so that the edges get added at the end.
+    ies = uncurry _indexEdge <$> zip [numOldEs..] es
+
+{-| Filters the edges, taking into account the values of the origin and
+destination vertices too.
+
+-}
+graphFilterEdges :: forall v e e'. (HasCallStack, Show v, Show e') =>
+  Graph v e -> -- The start DAG
+  (v -> e -> v -> Maybe e') -> -- The filtering function: vertex from -> edge -> vertex to -> maybe a new edge data
+  Graph v e'
+-- This transform should always work.
+graphFilterEdges g f = forceTry . tryEither $ (buildGraphFromList' vs =<< iest) where
+  -- The vertices are the same.
+  vs = V.toList (gVertices g)
+  indexed = M.fromList $ f' <$> vs where
+    f' v = (vertexId v, vertexData v)
+  -- This function is unsafe because it should work by construction
+  lookup' :: VertexId -> DagTry v
+  lookup' vid = case vid `M.lookup` indexed of
+    Just x -> pure x
+    Nothing -> throwError' $ "graphFilterEdges: construction failure: could not find vertex id " <> show' vid
+  iest = fmap catMaybes . sequence $ f' <$> gIndexedEdges g where
+    f' ie = do
+      xFrom <- lookup' (iedgeFrom ie)
+      xTo <- lookup' (iedgeTo ie)
+      return $ (\e' -> ie { iedgeData = e' }) <$> f xFrom (iedgeData ie) xTo
+
 
 -- | (internal) Maps the edges
 graphMapEdges :: Graph v e -> (e -> e') -> Graph v e'
-graphMapEdges g f = graphFlatMapEdges g ((:[]) . f)
-
--- | (internal) Maps and the edges, and may create more or less.
-graphFlatMapEdges :: Graph v e -> (e -> [e']) -> Graph v e'
-graphFlatMapEdges g f = g { gEdges = edges } where
-  fun (VertexEdge vx ed) =
-    f (edgeData ed) <&> \ed' -> VertexEdge vx (ed { edgeData = ed' })
-  edges = (V.fromList . concatMap fun) <$> gEdges g
+graphMapEdges g f = g { _gAdjMap = m' } where
+  m' = M.map (f' <$> ) (_gAdjMap g) where
+    f' (e, vidTo, idxTo) = (f e, vidTo, idxTo)
 
 -- | (internal) Maps the vertices.
 graphMapVertices' :: (Show v, Show e, Show v') => (v -> v') -> Graph v e -> Graph v' e
@@ -317,17 +431,12 @@ All the corresponding edges and the unreachable chunks of the graph are removed.
 -}
 graphFilterVertices :: (Show v, Show e) =>
   (v -> FilterOp) -> Graph v e -> Graph v e
-graphFilterVertices f g =
-  -- Tag all the vertices that we are going to remove first.
-  let f' v l = return $ _transFilter f v l
-      g' = runIdentity (graphMapVertices g f')
-      -- In a second step, directly remove all these elements from the graph.
-      -- TODO: use more recent version of Vector.
-      vxs = V.fromList $ mapMaybe _filt (V.toList (gVertices g'))
-      keptIds = S.fromList $ V.toList (vertexId <$> vxs)
-      eds = M.mapMaybeWithKey (_filtEdge keptIds) (gEdges g)
-  -- We are guaranteed that the result is still a DAG.
-  in Graph eds vxs
+graphFilterVertices f g = forceRight . tryEither $ buildGraphFromList' vxs eds where
+  g' = graphMapVerticesI g (_transFilter f)
+  vxs = mapMaybe _filt (V.toList (gVertices g'))
+  keptIds = S.fromList $ vertexId <$> vxs
+  eds = filter f' (gIndexedEdges g') where
+    f' ie = S.member (iedgeFrom ie) keptIds && S.member (iedgeTo ie) keptIds
 
 
 -- | The map of vertices, by vertex id.
@@ -346,36 +455,33 @@ verticesAndEdges g =
         lres = [(vertexData vx', edgeData e') | (VertexEdge vx' e') <- l]
     in (lres, n)
 
-{-| Given a list of elements with vertex/edge information and a start vertex,
-builds the graph from all the reachable vertices in the list.
-
-It returns the vertices in a DAG traversal order.
-
-Note that this function is robust and silently drops the missing vertices.
--}
-pruneLexicographic :: VertexId -> [(VertexId, [VertexId], a)] -> [a]
-pruneLexicographic hvid l =
-  let f (vid, l', a) = (vid, (l', a))
-      allVertices = myGroupBy (f <$> l)
-      allVertices' = M.map N.head allVertices
-  in reverse $ _pruneLexicographic allVertices' S.empty [hvid]
+-- {-| Given a list of elements with vertex/edge information and a start vertex,
+-- builds the graph from all the reachable vertices in the list.
+--
+-- It returns the vertices in a DAG traversal order.
+--
+-- Note that this function is robust and silently drops the missing vertices.
+-- -}
+-- pruneLexicographic :: VertexId -> [(VertexId, [VertexId], a)] -> [a]
+-- pruneLexicographic hvid l =
+--   let f (vid, l', a) = (vid, (l', a))
+--       allVertices = myGroupBy (f <$> l)
+--       allVertices' = M.map N.head allVertices
+--   in reverse $ _pruneLexicographic allVertices' S.empty [hvid]
 
 {-| Makes the vertex information (including node id) available as part of the
 vertex data.
 -}
 completeVertices :: forall e v. Graph v e -> Graph (Vertex v) e
-completeVertices g = Graph edges vertices where
+completeVertices g = g { _gVertices = v } where -- Graph edges vertices where
   f1 vx = vx {vertexData=vx}
-  vertices = f1 <$> gVertices g
-  edges = M.map (f <$>) (gEdges g) where
-    f :: VertexEdge e v -> VertexEdge e (Vertex v)
-    f (VertexEdge vx e) = VertexEdge (f1 vx) e
+  v = f1 <$> gVertices g
 
 -- Recursive traversal of the graph, dropping everything that looks suspiscious.
 _pruneLexicographic ::
-  M.Map VertexId ([VertexId], a) ->
-  S.Set VertexId ->
-  [VertexId] ->
+  M.Map VertexId ([VertexId], a) -> -- The complete topology
+  S.Set VertexId -> -- The set of visited vertices
+  [VertexId] -> -- The fringe to visit
   [a]
 _pruneLexicographic _ _ [] = []
 _pruneLexicographic vertices visited (hvid : t) =

@@ -46,13 +46,13 @@ data PathEdge = SameLevelEdge | InnerEdge deriving (Show, Eq)
 
 -- Assigns paths in a graph.
 --
-computePaths :: (HasNodeName v) =>
+computePaths :: (Show v, HasNodeName v) =>
   ComputeDag v PathEdge -> Try (M.Map VertexId NodePath)
 computePaths cd =
   let nodecg = mapVertexData getNodeName cd
   in _computePaths nodecg
 
-assignPaths' :: (HasNodeName v) =>
+assignPaths' :: (Show v, Show e, HasNodeName v) =>
   M.Map VertexId NodePath -> ComputeDag v e -> ComputeDag v e
 assignPaths' m cd =
   let f vx =

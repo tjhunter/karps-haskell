@@ -6,16 +6,30 @@ module Spark.Server.Registry(
 ) where
 
 import Spark.Core.InternalStd.Aggregation
+import Spark.Core.InternalStd.Column
+import Spark.Core.InternalStd.Filter
+import Spark.Core.InternalStd.Dataset
+import Spark.Core.InternalStd.Observable
 import Spark.Core.Internal.StructuredBuilder
 import Spark.Core.Internal.NodeBuilder
 import Spark.Core.Internal.DatasetStd
 import Spark.Core.Internal.Joins
 import Spark.Core.Internal.StructureFunctions
 
--- TODO: fill the values
+
 structuredRegistry :: StructuredBuilderRegistry
 structuredRegistry = buildStructuredRegistry sqls udfs aggs where
-  sqls = []
+  sqls = [castDoubleCBuilder,
+          divideCBuilder,
+          eqCBuilder,
+          greaterCBuilder,
+          greaterEqCBuilder,
+          inverseCBuilder,
+          lowerCBuilder,
+          lowerEqCBuilder,
+          minusCBuilder,
+          multiplyCBuilder,
+          plusCBuilder]
   udfs = []
   aggs = [collectAggBuilder,
           countABuilder,
@@ -23,10 +37,12 @@ structuredRegistry = buildStructuredRegistry sqls udfs aggs where
           minABuilder,
           sumABuilder]
 
--- TODO: fill the values
+
 nodeRegistry :: NodeBuilderRegistry
 nodeRegistry = buildNodeRegistry [
+  autocacheBuilder,
   broadcastPairBuilder,
+  filterBuilder,
   functionalShuffleBuilder,
   functionalTransformBuilder,
   functionalLocalTransformBuilder,
@@ -35,6 +51,8 @@ nodeRegistry = buildNodeRegistry [
   identityBuilderL,
   -- joinBuilder,
   literalBuilderD,
+  literalBuilderL,
+  localPackBuilder,
   localTransformBuilder structuredRegistry,
   placeholderBuilder,
   pointerBuilder,

@@ -174,7 +174,7 @@ spec = do
                 , ("v2", [[]]) ]
       gatherPaths' [v1, v2] `shouldBe` gatherings res
   describe "Real paths" $ do
-    it "simple test" $ do
+    xit "simple test" $ do
       let c0 = constant (1 :: Int) @@ "c0"
       let c1 = identity c0 @@ "c1"
       let c2 = identity c1 `logicalParents` [untyped c0] @@ "c2"

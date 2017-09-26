@@ -11,11 +11,6 @@ module Spark.IO.Internal.InputGeneric(
   updateResourceStamp
 ) where
 
-import qualified Data.Map.Strict as M
-import Data.Text(Text)
-import Lens.Family2((^.), (&), (.~))
-import Data.ProtoLens.Message(def)
-
 import Spark.Core.Types
 import Spark.Core.Try
 import Spark.Core.Dataset
@@ -24,13 +19,10 @@ import Spark.Core.Internal.Utilities(forceRight)
 import Spark.Core.Internal.DatasetFunctions(asDF, emptyDataset, emptyLocalData)
 import Spark.Core.Internal.TypesStructures(SQLType(..))
 import Spark.Core.Internal.ContextStructures(SparkState)
-import Spark.Core.Internal.BrainStructures(ResourcePath(..))
 import Spark.Core.Internal.OpStructures
+import Spark.Core.Internal.OpFunctions(convertToExtra')
 import Spark.Core.Internal.ContextIOInternal(executeCommand1)
-import Spark.Core.Internal.OpFunctions(decodeExtra', convertToExtra')
-import Spark.Core.Internal.ProtoUtils
 import Spark.IO.Internal.InputStructures
-import qualified Proto.Karps.Proto.Io as PIO
 
 {-| Generates a dataframe from a source description.
 

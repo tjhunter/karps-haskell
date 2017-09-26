@@ -8,6 +8,7 @@ module Spark.Core.Internal.DatasetStructures where
 
 import Data.Vector(Vector)
 import qualified Data.Vector as V
+import qualified Data.Text as T
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
@@ -120,7 +121,7 @@ data OperatorNode = OperatorNode {
   onPath :: NodePath,
   {-| The core node information. -}
   onNodeInfo :: !CoreNodeInfo
-} deriving (Eq, Show)
+} deriving (Eq)
 -- Some helper functions:
 
 onShape :: OperatorNode -> NodeShape
@@ -251,6 +252,9 @@ instance CheckedLocalityCast LocLocal where
 
 instance CheckedLocalityCast LocDistributed where
   _validLocalityValues = [TypedLocality Distributed]
+
+instance Show OperatorNode where
+  show (OperatorNode _ np _) = "OperatorNode[" ++ T.unpack (prettyNodePath np) ++ "]"
 
 -- LocLocal is a locality associated to Local
 instance IsLocality LocLocal where

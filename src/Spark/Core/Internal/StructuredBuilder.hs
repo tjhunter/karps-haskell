@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 {-| Contains a registry of all the known aggregation functions -}
 module Spark.Core.Internal.StructuredBuilder(
@@ -113,35 +114,70 @@ buildStructuredRegistry sqls udfs sqlAggs = StructuredBuilderRegistry f1 f2 f3 w
 
 
 {-| Given the data type of a column, infers the type of the output through
-a structured transform. -}
-colTypeStructured :: StructuredBuilderRegistry -> ColOp -> DataType -> Try DataType
-colTypeStructured _ (ColExtraction fp) dt = _extraction' fp dt
-colTypeStructured _ (ColLit dt' _) _ = pure dt'
-colTypeStructured reg (ColFunction fname v) dt = do
+a structured transform.
+
+This function also checks the broadcasts and fills the function return types.
+-}
+-- TODO reorder the arguments
+colTypeStructured :: (HasCallStack) =>
+  StructuredBuilderRegistry ->
+  ColOp ->
+  Maybe DataType -> -- The type of the refering dataframe / column (in the distributed case)
+  [DataType] -> -- The types of extra local nodes that may be required (in order).
+  Try (ColOp, DataType) -- Returns the colop if it needed to be updated with type info
+colTypeStructured _ (ColBroadcast idx) _ l | idx >= length l || idx < 0 =
+  tryError $ sformat ("colTypeStructured: trying to access index "%sh%" but the only observables provided are "%sh) idx l
+colTypeStructured _ (ColBroadcast idx) _ l =
+  -- TODO: this is actually not pure
+  pure (ColBroadcast idx, l !! idx)
+colTypeStructured _ (ColExtraction fp) (Just dt) _ = (ColExtraction fp,) <$> _extraction' fp dt
+colTypeStructured _ (ColExtraction _) Nothing _ = tryError "colTypeStructured: bad call"
+colTypeStructured _ (ColLit dt' c) _ _ = pure (ColLit dt' c, dt')
+colTypeStructured reg (ColFunction fname v _) dt l = do
   fun <- case registrySqlCol reg fname of
     Just b -> pure b
     Nothing -> tryError $ sformat ("colTypeStructured: cannot find sql column builder for name "%sh) fname
-  args <- sequence $ (\co -> colTypeStructured reg co dt) <$> V.toList v
-  fun args
-colTypeStructured reg (ColStruct v) dt = StrictType . Struct . StructType <$> l where
-  f (TransformField n val) = StructField n <$> colTypeStructured reg val dt
-  l = sequence (f <$> v)
+  args <- sequence $ (\co -> colTypeStructured reg co dt l) <$> V.toList v
+  let colArgs = V.fromList (fst <$> args)
+  let dtArgs = snd <$> args
+  dt' <- fun dtArgs
+  return (ColFunction fname colArgs (Just dt'), dt')
+colTypeStructured reg (ColStruct v) dt l = do
+  let f (TransformField n val) = do
+        (col', dt') <- colTypeStructured reg val dt l
+        return (TransformField n col', StructField n dt')
+  l' <- sequence (f <$> v)
+  let tf' = fst <$> l'
+  let sf' = snd <$> l'
+  return (ColStruct tf', StrictType . Struct . StructType $ sf')
 
 {-| Given the datatype of a column, infers the type of the output Observable through
 a structured aggregation. -}
-aggTypeStructured :: StructuredBuilderRegistry -> AggOp -> DataType -> Try DataType
-aggTypeStructured _ AggUdaf {} _ =
+aggTypeStructured ::
+  StructuredBuilderRegistry -> -- The registry
+  DataType -> -- The datatype of the input
+  AggOp -> -- The operation to perform
+  Try (AggOp, DataType) -- The updated operation and the datatype of the aggregate.
+aggTypeStructured _ _ AggUdaf {} =
   tryError $ sformat "aggTypeStructured: UDAF not implemented"
-aggTypeStructured reg (AggFunction fname fp) dt = do
+aggTypeStructured reg dt (AggFunction fname fp _) = do
   dt' <- _extraction' fp dt
   fun <- case reg `registrySqlAgg` fname of
     Just fun' -> pure fun'
     Nothing -> tryError $ sformat ("Cannot find SQL aggregation function "%sh%" in registry") fname
   -- TODO: it currently drops the semi group information
-  fst <$> fun dt'
-aggTypeStructured reg (AggStruct v) dt = StrictType . Struct . StructType <$> l where
-  f (AggField n val) = StructField n <$> aggTypeStructured reg val dt
-  l = sequence (f <$> v)
+  resDt <- fst <$> fun dt'
+  return (AggFunction fname fp (Just resDt), resDt)
+aggTypeStructured reg dt (AggStruct v) =
+  do
+    l <- sequence (convertFields <$> v)
+    return (aggStruct l, typeStruct l)
+  where
+     convertFields (AggField n val) = (n, ) <$> aggTypeStructured reg dt val
+     aggStruct l = AggStruct $ f <$> l where
+       f (n, (ao, _)) = AggField n ao
+     typeStruct l = StrictType . Struct . StructType $ f <$> l where
+       f (n, (_, dt')) = StructField n dt'
 
 checkNumber :: DataType -> Try ()
 checkNumber dt =
@@ -184,16 +220,16 @@ refineColBuilderPost :: ColumnSQLBuilder -> (DataType -> Try DataType) -> Column
 refineColBuilderPost (ColumnSQLBuilder n f) f' = ColumnSQLBuilder n f'' where
   f'' x = f x >>= f'
 
-_extraction' :: FieldPath -> DataType -> Try DataType
+_extraction' :: (HasCallStack) => FieldPath -> DataType -> Try DataType
 _extraction' fp = _extraction (V.toList (unFieldPath fp))
 
-_extraction :: [FieldName] -> DataType -> Try DataType
+_extraction :: (HasCallStack) => [FieldName] -> DataType -> Try DataType
 _extraction [] dt = pure dt
 _extraction (h : t) (StrictType (Struct st)) = _extractionStrict h t st NoNull
 _extraction (h : t) (NullableType (Struct st)) = _extractionStrict h t st CanNull
 _extraction l dt = tryError $ sformat ("_extraction:Cannot extract a subtype from "%sh%" given requested path "%sh) dt l
 
-_extractionStrict :: FieldName -> [FieldName] -> StructType -> Nullable -> Try DataType
+_extractionStrict :: (HasCallStack) => FieldName -> [FieldName] -> StructType -> Nullable -> Try DataType
 _extractionStrict h t (StructType v) nl = case find (\(StructField n _) -> n == h) (V.toList v) of
   Just (StructField _ dt) -> f <$> _extraction t dt where
     f (StrictType sdt) | nl == CanNull = NullableType sdt

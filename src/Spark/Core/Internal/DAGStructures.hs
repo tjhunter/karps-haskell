@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-| Data structures to represent Directed Acyclic Graphs (DAGs).
 
@@ -9,6 +10,8 @@ module Spark.Core.Internal.DAGStructures where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
+import qualified Data.List.NonEmpty as N
+import qualified Data.Vector as V
 import Data.ByteString(ByteString)
 import Data.Vector(Vector)
 import Data.Foldable(toList)
@@ -17,6 +20,12 @@ import GHC.Generics(Generic)
 import Formatting
 
 import Spark.Core.Internal.Utilities
+import Spark.Core.Try
+
+-- | Separate type of error to make it more general and easier
+-- to test.
+type DagTry a = Either T.Text a
+
 
 -- | The unique ID of a vertex.
 newtype VertexId = VertexId { unVertexId :: ByteString } deriving (Eq, Ord, Generic)
@@ -28,6 +37,20 @@ data Edge e = Edge {
   edgeTo :: !VertexId,
   edgeData :: !e
 }
+
+{-| An edge in the graph that also contains some slot information about the
+start and the end of the edge.
+
+This is critical for computing accurate graph reverses, and this is used as
+a cheap way to check the integrity of the graph.
+-}
+data IndexedEdge e = IndexedEdge {
+  iedgeFromIndex :: !Int,
+  iedgeFrom :: !VertexId,
+  iedgeToIndex :: !Int,
+  iedgeTo :: !VertexId,
+  iedgeData :: !e
+} deriving (Show)
 
 -- | A vertex in a graph, parametrized by some payload.
 data Vertex v = Vertex {
@@ -49,13 +72,44 @@ same node.
 -}
 type AdjacencyMap v e = M.Map VertexId (Vector (VertexEdge e v))
 
+-- The starting index is implicit in the list.
+type InternalAdjMap e = M.Map VertexId [(e, VertexId, Int)]
+
 -- | The representation of a graph.
 --
 -- In all the project, it is considered as a DAG.
 data Graph v e = Graph {
-  gEdges :: !(AdjacencyMap v e),
-  gVertices :: !(Vector (Vertex v))
+  _gAdjMap :: !(InternalAdjMap e),
+  -- _gEdges :: !(AdjacencyMap v e),
+  _gVertices :: !(Vector (Vertex v))
 }
+
+gEdges :: forall v e. Graph v e -> AdjacencyMap v e
+gEdges g = m where
+  vIdx :: M.Map VertexId v
+  vIdx = M.map N.head $ myGroupBy $ f <$> V.toList (_gVertices g) where
+    f (Vertex vid x) = (vid, x)
+  lup vid = forceRight $ tryMaybe (M.lookup vid vIdx) "gEdges: failure"
+  m = M.mapWithKey f (_gAdjMap g) where
+    f fromVid v = V.fromList $ f' fromVid <$> v
+    f' fromVid (e, toVid, _) = VertexEdge {
+            veEndVertex = Vertex { vertexId = toVid, vertexData = lup toVid },
+            veEdge = Edge {
+              edgeFrom = fromVid,
+              edgeTo = toVid,
+              edgeData = e
+            }
+          }
+
+gIndexedEdges :: Graph v e -> [IndexedEdge e]
+gIndexedEdges g = concat l' where
+  l = M.mapWithKey f (_gAdjMap g)
+  l' = M.elems l
+  f vidFrom v = g' <$> zip [(0::Int)..] v where
+    g' (idxFrom, (e, vidTo, idxTo)) = IndexedEdge idxFrom vidFrom idxTo vidTo e
+
+gVertices :: Graph v e -> Vector (Vertex v)
+gVertices = _gVertices
 
 -- | Graph operations on types that are supposed to
 -- represent vertices.
@@ -87,11 +141,9 @@ instance (Show v, Show e) => Show (Graph v e) where
   show g =
     let vxs = toList $ gVertices g <&> \(Vertex vid x) ->
           sformat (sh%":"%sh) vid x
-        vedges = foldMap toList (M.elems (gEdges g))
-        edges = (veEdge <$> vedges) <&> \(Edge efrom eto x) ->
-          sformat (sh%"->"%sh%"->"%sh) efrom x eto
-        -- eds = (M.elems (gEdges g)) `foldMap` \v ->
-        --   (toList v) <&>
+        edges = f <$> gIndexedEdges g where
+          f (IndexedEdge fromIdx fromVid toIdx toVid e) =
+            sformat (sh%":"%sh%"->"%sh%"->"%sh%":"%sh) fromVid fromIdx e toIdx toVid
         vxs' = T.intercalate "," vxs
         eds' = T.intercalate " " edges
         str = T.concat ["Graph{", vxs', ", ", eds', "}"]

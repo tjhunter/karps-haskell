@@ -20,12 +20,15 @@ module Spark.Core.InternalStd.Column(
   asDouble,
   castDoubleCBuilder,
   eqCBuilder,
+  inverseCBuilder,
   plusCBuilder,
   minusCBuilder,
-  timesCBuilder,
+  multiplyCBuilder,
   divideCBuilder,
   lowerCBuilder,
-  greaterCBuilder
+  lowerEqCBuilder,
+  greaterCBuilder,
+  greaterEqCBuilder
 ) where
 
 import Data.Text(Text)
@@ -63,11 +66,16 @@ plusCBuilder = _mathOp "plus"
 minusCBuilder :: ColumnSQLBuilder
 minusCBuilder = _mathOp "minus"
 
-timesCBuilder :: ColumnSQLBuilder
-timesCBuilder = _mathOp "times"
+multiplyCBuilder :: ColumnSQLBuilder
+multiplyCBuilder = _mathOp "multiply"
 
 divideCBuilder :: ColumnSQLBuilder
 divideCBuilder = colBuilder2Homo "divide" $ \dt -> do
+  checkStrictDataTypeList [DoubleType] dt
+  return dt
+
+inverseCBuilder :: ColumnSQLBuilder
+inverseCBuilder = colBuilder1 "inverse" $ \dt -> do
   checkStrictDataTypeList [DoubleType] dt
   return dt
 
@@ -80,8 +88,14 @@ _compOp n = colBuilder2Homo n $ \dt ->
 eqCBuilder :: ColumnSQLBuilder
 eqCBuilder = _compOp "eq"
 
+lowerEqCBuilder :: ColumnSQLBuilder
+lowerEqCBuilder = _compOp "lower_equal"
+
 lowerCBuilder :: ColumnSQLBuilder
 lowerCBuilder = _compOp "lower"
+
+greaterEqCBuilder :: ColumnSQLBuilder
+greaterEqCBuilder = _compOp "greater_equal"
 
 greaterCBuilder :: ColumnSQLBuilder
 greaterCBuilder = _compOp "greater"

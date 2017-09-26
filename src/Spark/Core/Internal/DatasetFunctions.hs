@@ -29,6 +29,7 @@ module Spark.Core.Internal.DatasetFunctions(
   fromBuilder1,
   fromBuilder2Extra,
   fromBuilder2,
+  filterParentNodes,
   -- builderDistributedLiteral,
   castLocality,
   emptyDataset,
@@ -57,7 +58,8 @@ module Spark.Core.Internal.DatasetFunctions(
   -- Operator node functions
   updateOpNode,
   updateOpNodeOp,
-  buildOpNode
+  buildOpNode,
+  buildOpNode'
 ) where
 
 import qualified Crypto.Hash.SHA256 as SHA
@@ -247,6 +249,16 @@ buildOpNode cni np nc = updateOpNode on nc id where
     onNodeInfo = cni
   }
 
+buildOpNode' :: NodeBuilder -> OpExtra -> NodePath -> [(OperatorNode, StructureEdge)] -> Try OperatorNode
+buildOpNode' nb extra np l = do
+  let shapes = fmap (onShape . fst) . filter ((ParentEdge==) . snd) $ l
+  cni <- nbBuilder nb extra shapes
+  let c = NodeContext {
+        ncParents = f ParentEdge,
+        ncLogicalDeps = f LogicalEdge
+      } where f et = fmap fst . filter ((et==) . snd) $ l
+  return $ buildOpNode cni np c
+
 -- (internal)
 -- This operation should always be used to make sure that the
 -- various caches inside the compute node are maintained.
@@ -275,6 +287,12 @@ updateOpNodeOp n nc no = updateOpNode n nc $ \n' ->
           cniOp = no
         }
       }
+
+filterParentNodes :: [(v, StructureEdge)] -> [v]
+filterParentNodes [] = []
+filterParentNodes ((v, ParentEdge):t) = v : filterParentNodes t
+filterParentNodes (_ : t) = filterParentNodes t
+
 
 -- (internal)
 -- The locality of the node

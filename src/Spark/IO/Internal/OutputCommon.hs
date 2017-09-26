@@ -1,9 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
-
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Spark.IO.Internal.OutputCommon(
   SaveMode(..),
+  SaveOutput(..),
   OutputBucket,
   DynOutputBucket,
   OutputPartition,
@@ -25,7 +26,6 @@ import Spark.Core.Internal.ColumnStructures(UnknownReference, UntypedColumnData)
 import Spark.Core.Internal.ColumnFunctions(dropColReference)
 import Spark.Core.Internal.OpStructures(HdfsPath)
 import Spark.Core.Internal.Utilities
-import Spark.IO.Internal.InputGeneric
 import Spark.IO.Internal.InputStructures
 
 {-| The mode when saving the data.
