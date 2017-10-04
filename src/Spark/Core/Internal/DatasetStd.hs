@@ -40,7 +40,7 @@ unionBuilder :: NodeBuilder
 unionBuilder = buildOpDD "org.spark.Union" $ \dt1 dt2 ->
   if dt1 == dt2
     then pure $ cniStandardOp' Distributed "org.spark.Union" dt1
-    else fail $ "unionBuilder: expected same type, but got " ++ show dt1 ++ " and " ++ show dt2
+    else tryError $ "unionBuilder: expected same type, but got "<>show' dt1<>" and "<>show' dt2
 
 
 {-| The identity function.

@@ -116,7 +116,7 @@ data GraphTransformSuccess = GraphTransformSuccess {
   gtsNodes :: !ComputeGraph,
   gtsNodeMapUpdate :: !NodeMap,
   gtsCompilerSteps :: ![(PAI.CompilingPhase, ComputeGraph)]
-}
+} deriving (Show)
 
 {-| The result of a failure in the compiler. On top of the error, it also
 returns information about the successful compiler steps.
@@ -124,7 +124,7 @@ returns information about the successful compiler steps.
 data GraphTransformFailure = GraphTransformFailure {
   gtfMessage :: !NodeError,
   gtfCompilerSteps :: ![(PAI.CompilingPhase, ComputeGraph)]
-}
+} deriving (Show)
 
 {-| internal
 

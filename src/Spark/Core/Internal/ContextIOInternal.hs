@@ -194,7 +194,8 @@ _sendBackend' session function msg = do
   let s = status ^. responseBody
   case decodeMessage (LBS.toStrict s) of
     Left txt ->
-      fail txt
+      -- TODO: remove this fail here
+      fail ("_sendBackend':" ++ txt)
     Right x -> return x
 
 _randomSessionName :: IO Text

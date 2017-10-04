@@ -355,9 +355,9 @@ _fromBuilder'' l nb opExtra tl sqlt = do
   let expectedType = unSQLType sqlt
   -- Check that the final shape from the builder matches the shape provided.
   when (builtLocality /= expectedLocality) $
-    fail $ "_fromBuilder: " ++ show (nbName nb) ++ ": built locality (" ++ show builtLocality ++ ") does not match expected locality (" ++ show expectedLocality ++ ")"
+    tryError $ "_fromBuilder: "<>show' (nbName nb)<>": built locality ("<>show' builtLocality<>") does not match expected locality ("<>show' expectedLocality<>")"
   when (builtType /= expectedType) $
-    fail $ "_fromBuilder: " ++ show (nbName nb) ++ ": built type (" ++ show builtType ++ ") does not match expected type (" ++ show expectedType ++ ")"
+    tryError $ "_fromBuilder: "<>show' (nbName nb)<>": built type ("<>show' builtType<>") does not match expected type ("<>show' expectedType<>")"
   let n = _emptyNodeTyped tl sqlt (cniOp cni)
   let n2 = n `parents` l
   return n2
@@ -376,7 +376,7 @@ _fromBuilder' l nb x tl = do
   let builtType = nsType (cniShape cni)
   -- Check that the final shape from the builder matches the shape provided.
   when (builtLocality /= expectedLocality) $
-    fail $ "_fromBuilder: " ++ show (nbName nb) ++ ": built locality (" ++ show builtLocality ++ ") does not match expected locality (" ++ show expectedLocality ++ ")"
+    tryError $ "_fromBuilder: "<>show' (nbName nb)<>": built locality ("<>show' builtLocality<>") does not match expected locality ("<>show' expectedLocality<>")"
   let n = _emptyNodeTyped tl (SQLType builtType) (cniOp cni)
   let n2 = n `parents` l
   return n2

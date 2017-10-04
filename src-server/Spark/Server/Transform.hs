@@ -47,7 +47,7 @@ import Spark.Core.Dataset(UntypedNode)
 import Spark.Core.Internal.TypesFunctions()
 import Spark.Core.Try
 import Spark.Core.Internal.BrainStructures
-import Spark.Core.Internal.Utilities(myGroupBy, sh)
+import Spark.Core.Internal.Utilities(myGroupBy, sh, traceHint)
 import Spark.Core.Internal.DatasetFunctions
 import Spark.Core.Internal.DatasetStructures(ComputeNode(..), NodeContext(..), unTypedLocality, StructureEdge(..), OperatorNode(..), onShape)
 import Spark.Core.Internal.OpStructures
@@ -95,9 +95,9 @@ loadGraph reg g requestedPaths = do
   let requestedIds = parseNodeId <$> requestedPaths'
   -- Make a first graph with the parsed nodes
   -- TODO: what should the inputs be?
-  cg' <- tryEither $ buildCGraphFromList vertices edges [] requestedIds
+  cg' <- traceHint ("loadGraph: cg'=") $ tryEither $ buildCGraphFromList vertices edges [] requestedIds
   -- Transform this graph to load the content of the nodes.
-  cg <- computeGraphMapVertices cg' (_buildNode reg)
+  cg <- traceHint ("loadGraph: cg=") $ computeGraphMapVertices cg' (_buildNode reg)
   return cg
 
 data ParsedNode = ParsedNode {
@@ -137,11 +137,11 @@ _transform :: CompilerConf -> PAI.PerformGraphTransform -> Try PAI.GraphTransfor
 _transform conf pgt = do
   g <- extractMaybe pgt PAI.maybe'functionalGraph "functional_graph"
   let paths = pgt ^. PAI.requestedPaths
-  nm <- _buildMap $ pgt ^. PAI.availableNodes
-  cg <- loadGraph nodeRegistry g paths
+  nm <- traceHint ("_transform: nm=") $ _buildMap $ pgt ^. PAI.availableNodes
+  cg <- traceHint ("_transform: cg=") $ loadGraph nodeRegistry g paths
   -- TODO add the resource list eventually.
-  let trans = performTransform conf nm [] cg
-  return $ case trans of
+  let trans = traceHint ("_transform: trans=") $ performTransform conf nm [] cg
+  return $ traceHint ("_transform: res=") $ case trans of
     Left err -> toProto err
     Right suc -> toProto suc
 
@@ -152,11 +152,11 @@ _buildMap l = do
 
 _buildNode :: NodeBuilderRegistry -> ParsedNode -> [(OperatorNode, StructureEdge)] -> Try OperatorNode
 _buildNode reg pn l = do
-  nb <- case reg `registryNode` pnOpName pn of
+  nb <- case reg `registryNode` pnOpName ((traceHint "_buildNode: pn=") pn) of
     Nothing -> tryError $ sformat ("_buildNode: could not find op name '"%sh%"' in the registry") (pnOpName pn)
     Just nb' -> pure nb'
   let shapes = fmap (onShape . fst) . filter ((ParentEdge==) . snd) $ l
-  cni <- nbBuilder nb (pnExtra pn) shapes
+  cni <- traceHint "_buildNode: cni=" $ nbBuilder nb (pnExtra pn) shapes
   let c = NodeContext {
         ncParents = f ParentEdge,
         ncLogicalDeps = f LogicalEdge
