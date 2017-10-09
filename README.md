@@ -1,26 +1,17 @@
 # Karps-Haskell - Haskell bindings for Spark Datasets and Dataframes
 
-This project is an exploration vehicle for developing safe, robust and reliable
-data pipelines over Apache Spark. It consists in multiple sub-projects:
-- a specification to describe data pipelines in a language-agnostic manner,
-  and a communication protocol to submit these pipelines to Spark. The
-  specification is currently specified in [this repository](https://github.com/krapsh/karps-interface), using
-   [Protocol Buffers 3](https://developers.google.com/protocol-buffers/docs/proto3) (
-    which is also compatible with JSON).
-- a serving library, called
-  [karps-server](https://github.com/krapsh/kraps-server), that implements this specification on top of Spark.
-  It is written in Scala and is loaded as a standard Spark package.
-- a client written in Haskell that sends pipelines to Spark for execution. In
-  addition, this client serves as an experimental platform for whole-program optimization and verification, as well as compiler-enforced type checking.
+The Haskell side of the [Karps project](). This repository contains:
+
+- a client written in Haskell that sends pipelines to Spark for execution.
+
+- an optimizing compiler that takes high-level graphs of computations and translates them into
+  lower-level, simpler operations. In addition to type checking, this compiler makes a number of
+   whole-program optimization and verification.
 
 There is also a separate set of utilities to visualize such pipelines using
 Jupyter notebooks and IHaskell.
 
 This is a preview, the API may (will) change in the future.
-
-The name is a play on a tasty fish of the family Cyprinidae, and an anagram of Spark. The programming model is strongly influenced by the
-[TensorFlow project](https://www.tensorflow.org/) and follows a similar design.
-
 
 Karps can also take advantage of the [Haskell kernel for Jupyter](https://github.com/gibiansky/IHaskell), which provides a better user
 experience and comes with beautiful introspection tools courtesy of the
@@ -48,18 +39,6 @@ the best experience when playing interactively with the visualizations.
 
 ## Installation (for users)
 
-These instructions assume that the following software is installed on your computer:
- - Spark 2.x (2.1+ strongly recommended). See the [installation instructions](http://spark.apache.org/docs/latest/#downloading) for a local install. It is usually a matter a downloading and unzipping the prebuilt binaries.
- - the [stack build tool](https://docs.haskellstack.org/en/stable/README/)
-
-_Launching Spark locally_ Assuming the `SPARK_HOME` environment variable is set
-to the location of your current installation of Spark, run:
-```sh
-$SPARK_HOME/bin/spark-shell --packages krapsh:karps-server:0.2.0-s_2.11\
-   --name karps-server --class org.karps.Boot --master "local[1]" -v
-```
-
-You should see a flurry of log messages that ends with something like: `WARN SparkContext: Use an existing SparkContext, some configuration may not take effect.` The server is now running.
 
 _Connecting the Karps-Haskell client_ All the integration tests should be able
 to connect to the server and execute some Spark commands:
@@ -154,8 +133,6 @@ possible currently.
 
 What is missing? A lot of things. In particular, users will most probably miss:
  - an input interface. The only way to use the bindings is currently to pass a list of data.
- - filters
- - long types, floats, doubles
  - broadcasting observables (scalar * col). This one is interesting and is probably the next piece.
  - setting the number of partitions of the data
 
@@ -169,3 +146,12 @@ Also, if someone wants to setup a style checker, it will be really helpful.
 
 The API and design goals are slightly more general than Spark's. A more thorough
 explanation can be found in the `INTRO.md` file.
+
+## Developer tools
+
+Modifying the .proto files. These files are maintained in a separate project. Here are some steps to update the interface (from the base directory of karps-haskell)
+
+```bash
+rm -r src/Proto
+protoc --plugin=protoc-gen-haskell=`which proto-lens-protoc`     --haskell_out=src/ -I $KARPS/src/main/protobuf $KARPS/src/main/protobuf/karps/proto/*.proto $KARPS/src/main/protobuf/tensorflow/core/framework/*.proto
+```

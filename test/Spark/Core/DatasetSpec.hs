@@ -23,7 +23,7 @@ spec = do
   describe "create a dataframe" $ do
     it "should not explode" $
       let x = dataset ([1 ,2, 3, 4]::[Int]) in
-        nodeName x `shouldBe` nName "distributedliteral_c87697"
+        nodeName x `shouldBe` nName "distributedliteral_6e1287"
 
     it "renaming should work" $
       let x = dataset ([1 ,2, 3]::[Int]) @@ "ds1" in
@@ -32,7 +32,7 @@ spec = do
   describe "check localset" $ do
     it "should not explode" $
       let x = dataset ([1 ,2, 3]::[Int]) in
-        nodeName x `shouldBe` nName "distributedliteral_1ba31e"
+        nodeName x `shouldBe` nName "distributedliteral_d412ac"
 
     it "renaming should work" $
       let x = dataset ([1 ,2, 3]::[Int]) @@ "ds1" in

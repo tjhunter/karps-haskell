@@ -100,17 +100,17 @@ TODO(kps) put an example here.
 
 
 type family ProjectReturn from proj where
-  ProjectReturn DataFrame DynamicColProjection = DynColumn
-  ProjectReturn DataFrame (StaticColProjection from to) = DynColumn
-  ProjectReturn DataFrame Text = DynColumn
-  ProjectReturn DynColumn DynamicColProjection = DynColumn
-  ProjectReturn DynColumn Text = DynColumn
+  ProjectReturn DataFrame DynamicColProjection = Column'
+  ProjectReturn DataFrame (StaticColProjection from to) = Column'
+  ProjectReturn DataFrame Text = Column'
+  ProjectReturn Column' DynamicColProjection = Column'
+  ProjectReturn Column' Text = Column'
   ProjectReturn (Dataset (x1, x2)) FixedProjection1 = Column (x1, x2) x1
   ProjectReturn (Dataset (x1, x2)) FixedProjection2 = Column (x1, x2) x2
-  ProjectReturn (Dataset x) DynamicColProjection = DynColumn
+  ProjectReturn (Dataset x) DynamicColProjection = Column'
   -- TODO: not sure how to force x ~ x'
   ProjectReturn (Dataset x) (StaticColProjection x y) = Column x y
-  ProjectReturn (Dataset x) Text = DynColumn
+  ProjectReturn (Dataset x) Text = Column'
 
 
 class MyString x where
@@ -122,7 +122,7 @@ instance (a ~ Text) => MyString a where
 class Project from proj where
   _performProject :: from -> proj -> ProjectReturn from proj
 
-instance Project DynColumn DynamicColProjection where
+instance Project Column' DynamicColProjection where
   _performProject = projectDColDCol
 
 instance Project DataFrame DynamicColProjection where
@@ -137,7 +137,7 @@ instance forall a b. Project (Dataset a) (StaticColProjection a b) where
 instance forall a. Project (Dataset a) DynamicColProjection where
   _performProject = projectDSDyn
 
-instance Project DynColumn Text where
+instance Project Column' Text where
   _performProject dc s =
     let s' = T.unpack $ convertToText s
     in _performProjection dc (stringToDynColProj s')
@@ -162,7 +162,7 @@ instance forall x1 x2. Project (Dataset (x1, x2)) FixedProjection2 where
 -- data Bar
 --
 -- test =
---   let dyn1 = undefined :: DynColumn
+--   let dyn1 = undefined :: Column'
 --       pdyn1 = undefined :: DynamicColProjection
 --       p = undefined :: StaticColProjection Foo Bar
 --       ds1 = undefined :: Dataset Foo
@@ -182,26 +182,26 @@ instance forall x1 x2. Project (Dataset (x1, x2)) FixedProjection2 where
 instance forall a to. Projection (Dataset a) (StaticColProjection a to) (Column a to) where
   _performProjection = projectDsCol
 
--- dataset -> dynamic projection -> DynColumn
-instance forall a. Projection (Dataset a) DynamicColProjection DynColumn where
+-- dataset -> dynamic projection -> Column'
+instance forall a. Projection (Dataset a) DynamicColProjection Column' where
   _performProjection = projectDSDyn
 
--- dataset -> string -> DynColumn
-instance forall a . Projection (Dataset a) String DynColumn where
+-- dataset -> string -> Column'
+instance forall a . Projection (Dataset a) String Column' where
   _performProjection ds s = projectDSDyn ds (stringToDynColProj s)
 
--- dataframe -> dynamic projection -> dyncolumn
-instance Projection DataFrame DynamicColProjection DynColumn where
+-- dataframe -> dynamic projection -> Column'
+instance Projection DataFrame DynamicColProjection Column' where
   _performProjection = projectDFDyn
 
--- dataframe -> static projection -> dyncolumn
+-- dataframe -> static projection -> Column'
 -- This is a relaxation as we could return Try (Column to) intead.
 -- It makes more sense from an API perspective to just return a dynamic result.
-instance forall a to. Projection DataFrame (StaticColProjection a to) DynColumn where
+instance forall a to. Projection DataFrame (StaticColProjection a to) Column' where
   _performProjection df proj = projectDFDyn df (colStaticProjToDynProj proj)
 
--- dataframe -> string -> dyncolumn
-instance Projection DataFrame String DynColumn where
+-- dataframe -> string -> Column'
+instance Projection DataFrame String Column' where
   _performProjection df s = projectDFDyn df (stringToDynColProj s)
 
 -- column -> static projection -> column
@@ -209,15 +209,15 @@ instance forall ref a to. Projection (Column ref a) (StaticColProjection a to) (
   _performProjection = projectColCol
 
 
--- dyncolumn -> dynamic projection -> dyncolumn
-instance Projection DynColumn DynamicColProjection DynColumn where
+-- Column' -> dynamic projection -> Column'
+instance Projection Column' DynamicColProjection Column' where
   _performProjection = projectDColDCol
 
-instance forall a to. Projection DynColumn (StaticColProjection a to) DynColumn where
+instance forall a to. Projection Column' (StaticColProjection a to) Column' where
   _performProjection dc proj = projectDColDCol dc (colStaticProjToDynProj proj)
 
--- dyncolumn -> string -> dyncolumn
-instance Projection DynColumn String DynColumn where
+-- Column' -> string -> Column'
+instance Projection Column' String Column' where
   _performProjection dc s = _performProjection dc (stringToDynColProj s)
 
 
@@ -295,15 +295,15 @@ colStaticProjToDynProj (StaticColProjection fProj) =
 -- ****** Functions that perform projections *******
 
 -- TODO: take a compute node instead
-projectDSDyn :: Dataset from -> DynamicColProjection -> DynColumn
-projectDSDyn ds proj = do
+projectDSDyn :: Dataset from -> DynamicColProjection -> Column'
+projectDSDyn ds proj = tryCol' $ do
  (p, dt) <- _dynProjTry proj (unSQLType . nodeType $ ds)
- colExtraction ds dt p
+ return $ colExtraction ds dt p
 
-projectDFDyn :: DataFrame -> DynamicColProjection -> DynColumn
-projectDFDyn df proj = do
+projectDFDyn :: DataFrame -> DynamicColProjection -> Column'
+projectDFDyn df proj = tryCol' $ do
  node <- df
- projectDSDyn node proj
+ return $ projectDSDyn node proj
 
 projectDsCol :: (HasCallStack) => Dataset from -> StaticColProjection from to -> Column from to
 projectDsCol ds proj = let (p, sqlt) = forceRight $ _staticProj proj (nodeType ds) in
@@ -315,14 +315,14 @@ projectColCol c (StaticColProjection fProj) =
   in unsafeProjectCol c fp dt
 
 
-projectColDynCol :: ColumnData ref a -> DynamicColProjection -> DynColumn
+projectColDynCol :: ColumnData ref a -> DynamicColProjection -> Column'
 projectColDynCol cd proj =
- _dynProjTry proj (_cType cd) <&> uncurry (unsafeProjectCol . dropColReference $ cd)
+ column' $ _dynProjTry proj (_cType cd) <&> uncurry (unsafeProjectCol . dropColReference $ cd)
 
-projectDColDCol :: DynColumn -> DynamicColProjection -> DynColumn
-projectDColDCol c proj = do
- cd <- c
- projectColDynCol cd proj
+projectDColDCol :: Column' -> DynamicColProjection -> Column'
+projectDColDCol c proj = tryCol' $ do
+ cd <- unColumn' c
+ return $ projectColDynCol cd proj
 
 _projectNthField :: Int -> SQLType a -> Try (FieldPath, SQLType b)
 _projectNthField n (SQLType (StrictType (Struct (StructType v)))) =

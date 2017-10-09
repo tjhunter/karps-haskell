@@ -4,8 +4,8 @@ module Spark.Core.Row(
   FromSQL,
   valueToCell,
   cellToValue,
-  jsonToCell,
-  rowArray
+  rowArray,
+  rowCell
   ) where
 
 import Spark.Core.Internal.RowStructures

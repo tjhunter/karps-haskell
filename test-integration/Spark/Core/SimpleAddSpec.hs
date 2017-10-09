@@ -5,6 +5,7 @@ module Spark.Core.SimpleAddSpec where
 
 import Test.Hspec
 import qualified Data.Text
+import Data.Default(def)
 
 import Spark.Core.Context
 import Spark.Core.Types
@@ -46,11 +47,16 @@ run s f = it s $ do
   createSparkSessionDef $ defaultConf {
     confRequestedSessionName = Data.Text.pack s,
     confPollingIntervalMillis = 100,
-    confUseNodePrunning = False } -- Disabling caching for now, it causes issues.
+    confCompiler = def } -- Disabling caching for now, it causes issues.
   f
   -- This is horribly not robust to any sort of failure, but it will do for now
   -- TODO(kps) make more robust
   closeSparkSessionDef
+  return ()
+
+xrun :: String -> IO () -> SpecWith (Arg (IO ()))
+xrun s _ = it s $ do
+  pendingWith s
   return ()
 
 spec :: Spec
@@ -60,7 +66,7 @@ spec = do
       smallSum (1 :: Int) (2 :: Int)
     run "zero_ints1" $
       smallSum (0 :: Int) (2 :: Int)
-    run "negation_ints1" $
+    xrun "negation_ints1" $
       negation (1 :: Int) (2 :: Int)
-    run "negate_ints1" $
+    xrun "negate_ints1" $
       checkNegate (1 :: Int)

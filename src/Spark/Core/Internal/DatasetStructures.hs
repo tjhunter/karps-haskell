@@ -7,6 +7,8 @@
 module Spark.Core.Internal.DatasetStructures where
 
 import Data.Vector(Vector)
+import qualified Data.Vector as V
+import qualified Data.Text as T
 
 import Spark.Core.StructuresInternal
 import Spark.Core.Try
@@ -71,11 +73,80 @@ data ComputeNode loc a = ComputeNode {
   _cnPath :: NodePath
 } deriving (Eq)
 
+{-| Converts a compute node to an operator node.
+-}
+nodeOpNode :: ComputeNode loc a -> OperatorNode
+nodeOpNode cn = OperatorNode {
+      onId = _cnNodeId cn,
+      onPath = _cnPath cn,
+      onNodeInfo = CoreNodeInfo {
+        cniShape = NodeShape {
+          nsType = _cnType cn,
+          nsLocality = _cnLocality cn
+        },
+        cniOp = _cnOp cn
+      }
+    }
+
+
+nodeContext :: ComputeNode loc a -> NodeContext
+nodeContext cn = NodeContext {
+    ncParents = nodeOpNode <$> V.toList (_cnParents cn),
+    ncLogicalDeps = nodeOpNode <$> V.toList (_cnLogicalDeps cn)
+  }
+
 -- (internal) Phantom type tags for the locality
 data TypedLocality loc = TypedLocality { unTypedLocality :: !Locality } deriving (Eq, Show)
 data LocLocal
 data LocDistributed
 data LocUnknown
+
+{-| (internal/developer)
+The core data structure that represents an operator.
+This contains all the information that is required in
+the compute graph (except topological info), which is
+expected to be stored in the edges.
+
+These nodes are meant to be used after path resolution.
+-}
+data OperatorNode = OperatorNode {
+  {-| The ID of the node.
+  Lazy because it may be expensive to compute.
+  -- TODO: it should not be here?
+  -}
+  onId :: NodeId,
+  {-| The fully resolved path of the node.
+  Lazy because it may depend on the ID.
+  -}
+  onPath :: NodePath,
+  {-| The core node information. -}
+  onNodeInfo :: !CoreNodeInfo
+} deriving (Eq)
+-- Some helper functions:
+
+onShape :: OperatorNode -> NodeShape
+onShape = cniShape . onNodeInfo
+
+onOp :: OperatorNode -> NodeOp
+onOp = cniOp . onNodeInfo
+
+onType :: OperatorNode -> DataType
+onType = nsType . cniShape . onNodeInfo
+
+onLocality :: OperatorNode -> Locality
+onLocality = nsLocality . cniShape . onNodeInfo
+
+{-| A node and some information about the parents of this node.
+
+This information is enough to calculate most information relative
+to a node.
+
+This is the local context of the compute DAG.
+-}
+data NodeContext = NodeContext {
+  ncParents :: ![OperatorNode],
+  ncLogicalDeps :: ![OperatorNode]
+}
 
 -- (developer) The type for which we drop all the information expressed in
 -- types.
@@ -88,6 +159,7 @@ type UntypedNode = ComputeNode LocUnknown Cell
 -- Used internally by columns.
 type UntypedDataset = Dataset Cell
 
+{-| (internal) An observable which has no associated type information. -}
 type UntypedLocalData = LocalData Cell
 
 {-| A typed collection of distributed data.
@@ -115,6 +187,7 @@ type, which represents types only accessible at runtime).
 TODO(kps) rename to Observable
 -}
 type LocalData a = ComputeNode LocLocal a
+type Observable a = LocalData a
 
 
 {-|
@@ -141,7 +214,8 @@ the Spark computation graph.
 
 TODO(kps) rename to DynObservable
 -}
-type LocalFrame = Try UntypedLocalData
+type LocalFrame = Observable'
+newtype Observable' = Observable' { unObservable' :: Try UntypedLocalData }
 
 type UntypedNode' = Try UntypedNode
 
@@ -178,6 +252,9 @@ instance CheckedLocalityCast LocLocal where
 
 instance CheckedLocalityCast LocDistributed where
   _validLocalityValues = [TypedLocality Distributed]
+
+instance Show OperatorNode where
+  show (OperatorNode _ np _) = "OperatorNode[" ++ T.unpack (prettyNodePath np) ++ "]"
 
 -- LocLocal is a locality associated to Local
 instance IsLocality LocLocal where

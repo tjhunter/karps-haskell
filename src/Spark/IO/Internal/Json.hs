@@ -18,10 +18,13 @@ import Data.Text(pack)
 
 import Spark.Core.Types
 import Spark.Core.Dataset(DataFrame, Dataset, castType')
+import Spark.Core.Internal.BrainStructures(ResourcePath, resourcePath)
+import Spark.Core.Internal.Utilities(forceRight)
 import Spark.Core.Context
 import Spark.Core.Try
 
 import Spark.IO.Internal.InputGeneric
+import Spark.IO.Internal.InputStructures
 
 {-|
 -}
@@ -41,14 +44,19 @@ The source is not read at this point, it is just declared. It may be found to be
 invalid in subsequent computations.
 -}
 json' :: DataType -> String -> DataFrame
-json' dt p = genericWithSchema' dt (_jsonSourceDescription (SparkPath (pack p)) defaultJsonOptions)
+json' dt p = do
+  rp <- resourcePath . pack $ p
+  let d = _jsonSourceDescription rp defaultJsonOptions
+  genericWithSchema' dt d
 
 {-| Declares a source of data of the given data type.
 
 The source is not read at this point, it is just declared.
 -}
 json :: (SQLTypeable a) => String -> Dataset a
-json p = genericWithSchema (_jsonSourceDescription (SparkPath (pack p)) defaultJsonOptions)
+json p = genericWithSchema d where
+  rp = forceRight . resourcePath . pack $ p
+  d = _jsonSourceDescription rp defaultJsonOptions
 
 {-| Reads a source of data expected to be in the JSON format.
 
@@ -56,7 +64,7 @@ The schema is not required and Spark will infer the schema of the source.
 However, all the data contained in the source may end up being read in the
 process.
 -}
-jsonInfer :: SparkPath -> SparkState DataFrame
+jsonInfer :: ResourcePath -> SparkState DataFrame
 jsonInfer = jsonOpt' defaultJsonOptions
 
 {-| Reads a source of data expected to be in the JSON format.
@@ -65,7 +73,7 @@ The schema is not required and Spark will infer the schema of the source.
 However, all the data contained in the source may end up being read in the
 process.
 -}
-jsonOpt' :: JsonOptions -> SparkPath -> SparkState DataFrame
+jsonOpt' :: JsonOptions -> ResourcePath -> SparkState DataFrame
 jsonOpt' jo sp = generic' (_jsonSourceDescription sp jo)
 
 {-| Reads a source of data expected to be in the JSON format.
@@ -74,7 +82,7 @@ The schema is not required and Spark will infer the schema of the source.
 However, all the data contained in the source may end up being read in the
 process.
 -}
-jsonOpt :: forall a. (SQLTypeable a) => JsonOptions -> SparkPath -> SparkState (Try (Dataset a))
+jsonOpt :: forall a. (SQLTypeable a) => JsonOptions -> ResourcePath -> SparkState (Try (Dataset a))
 jsonOpt jo sp =
   let sqlt = buildType :: SQLType a
       dt = unSQLType sqlt
@@ -89,7 +97,7 @@ defaultJsonOptions = JsonOptions {
   jsonSchema = InferSchema
 }
 
-_jsonSourceDescription :: SparkPath -> JsonOptions -> SourceDescription
+_jsonSourceDescription :: ResourcePath -> JsonOptions -> SourceDescription
 _jsonSourceDescription sp jo = SourceDescription {
   inputSource = JsonFormat,
   inputPath = sp,

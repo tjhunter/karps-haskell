@@ -28,17 +28,17 @@ module Spark.Core.Internal.FunctionsInternals(
   colOpNoBroadcast
 ) where
 
-import Control.Arrow
-import Data.Aeson(toJSON)
 import qualified Data.Vector as V
 import qualified Data.Map.Strict as M
 import qualified Data.List.NonEmpty as N
 import qualified Data.Text as T
+import Control.Arrow
 import Formatting
 
 import Spark.Core.Internal.ColumnStructures
 import Spark.Core.Internal.ColumnFunctions
 import Spark.Core.Internal.DatasetFunctions
+import Spark.Core.Internal.DatasetStd(broadcastPair)
 import Spark.Core.Internal.DatasetStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesFunctions
@@ -59,7 +59,7 @@ class DynColPackable a where
   -- Returns (possibly) some form of the type a packed into a single column.
   -- This implementation must make sure that the final column is either a
   -- failure or is well-formed (no name duplicates, etc.)
-  _packAsColumn :: a -> DynColumn
+  _packAsColumn :: a -> Column'
 
 {-| The class of pairs of types that express the fact that some type a can
 be converted to a dataset of type b.
@@ -101,7 +101,7 @@ class TupleEquivalence to tup | to -> tup where
 -- The untyped equivalent
 -- Each of the inputs can be either a column or a try, and the final outcome is always a try
 -- When both types are known to the type system, the 2 calls are equivalent
--- fun' :: (ColumnLike a1, ColumnLike a2, HasCallStack) => a1 -> a2 -> Try DynColumn
+-- fun' :: (ColumnLike a1, ColumnLike a2, HasCallStack) => a1 -> a2 -> Try Column'
 -- fun' = undefined
 
 -- | Represents a dataframe as a single column.
@@ -111,8 +111,8 @@ asCol ds =
   -- The empty path indicates that we are wrapping the whole thing.
   iEmptyCol ds (unsafeCastType $ nodeType ds) (FieldPath V.empty)
 
-asCol' :: DataFrame -> DynColumn
-asCol' = ((iUntypedColData . asCol) <$>)
+asCol' :: DataFrame -> Column'
+asCol' x = column' ((iUntypedColData . asCol) <$> x)
 
 -- | Packs a single column into a dataframe.
 pack1 :: Column ref a -> Dataset a
@@ -127,7 +127,7 @@ typed and untyped).
 -}
 pack' :: (DynColPackable a) => a -> DataFrame
 -- Pack the columns and check that they have the same origin.
-pack' z = pack1 <$> _packAsColumn z
+pack' z = pack1 <$> (unColumn' . _packAsColumn $ z)
 
 {-| Packs a number of columns with the same references into a single dataset.
 
@@ -144,9 +144,9 @@ pack z =
 
 Columns must have different names, or an error is returned.
 -}
-struct' :: [DynColumn] -> DynColumn
-struct' cols = do
-  l <- sequence cols
+struct' :: [Column'] -> Column'
+struct' cols = column' $ do
+  l <- sequence (unColumn' <$> cols)
   let fields = (colFieldName &&& id) <$> l
   _buildStruct fields
 
@@ -159,8 +159,8 @@ struct :: forall ref a b. (StaticColPackable2 ref a b) => a -> Column ref b
 struct = _staticPackAsColumn2
 
 
-checkOrigin :: [DynColumn] -> Try [UntypedColumnData]
-checkOrigin x = _checkOrigin =<< sequence x
+checkOrigin :: [Column'] -> Try [UntypedColumnData]
+checkOrigin x = _checkOrigin =<< sequence (unColumn' <$> x)
 
 {-| Takes a typed function that operates on columns and projects this function
 onto a similar operation for type observables.
@@ -177,22 +177,24 @@ projectColFunction f o =
   let o' = untypedLocalData o
       sqltx = buildType :: SQLType x
       sqlty = buildType :: SQLType y
-      f' :: UntypedColumnData -> Try UntypedColumnData
-      f' x = dropColType . f <$> castTypeCol sqltx x
-      o2 = projectColFunctionUntyped (f' =<<) o'
+      f' :: UntypedColumnData -> Column'
+      f' x = column' $ dropColType . f <$> castTypeCol sqltx x
+      f'' :: Column' -> Column'
+      f'' x = tryCol' $ f' <$> unColumn' x
+      o2 = unObservable' $ projectColFunctionUntyped f'' o'
       o3 = castType sqlty =<< o2
   in forceRight o3
 
 projectColFunctionUntyped ::
-  (DynColumn -> DynColumn) -> UntypedLocalData -> LocalFrame
-projectColFunctionUntyped f obs = do
+  (Column' -> Column') -> UntypedLocalData -> LocalFrame
+projectColFunctionUntyped f obs = Observable' $ do
   -- Create a placeholder dataset and a corresponding column.
   let dt = unSQLType (nodeType obs)
   -- Pass them to the function.
   let no = NodeDistributedLit dt V.empty
   let ds = emptyDataset no (SQLType dt)
   let c = asCol ds
-  colRes <- f (pure (dropColType c))
+  colRes <- unColumn' $ f (untypedCol (dropColType c))
   let dtOut = unSQLType $ colType colRes
   -- This will fail if there is a broadcast.
   co <- _replaceObservables M.empty (colOp colRes)
@@ -208,25 +210,39 @@ complex operations such as broadcasting, etc.
 -}
 -- TODO: use for the numerical transforms instead of special stuff.
 projectColFunction' ::
-    (DynColumn -> DynColumn) ->
+    (Column' -> Column') ->
     LocalFrame -> LocalFrame
-projectColFunction' f obs = projectColFunctionUntyped f =<< obs
+projectColFunction' f obs = Observable' $ do
+  cd <- unObservable' obs
+  let x = projectColFunctionUntyped f cd
+  unObservable' x
 
 projectColFunction2' ::
-  (DynColumn -> DynColumn -> DynColumn) ->
+  (Column' -> Column' -> Column') ->
   LocalFrame ->
   LocalFrame ->
   LocalFrame
-projectColFunction2' f o1' o2' = do
-  let f2 :: DynColumn -> DynColumn
+projectColFunction2' f o1' o2' = obsTry $ do
+  let f2 :: Column' -> Column'
       f2 dc = f (dc /- "_1") (dc /- "_2")
-  o1 <- o1'
-  o2 <- o2'
+  o1 <- unObservable' o1'
+  o2 <- unObservable' o2'
   let o = iPackTupleObs $ o1 N.:| [o2]
-  projectColFunctionUntyped f2 o
+  return $ projectColFunctionUntyped f2 o
 
 colOpNoBroadcast :: GeneralizedColOp -> Try ColOp
 colOpNoBroadcast = _replaceObservables M.empty
+
+-- {-| Low-level operator that takes an observable and propagates it along the
+-- content of an existing dataset.
+--
+-- Users are advised to use the Column-based `broadcast` function instead.
+-- -}
+-- broadcastPair :: Dataset a -> LocalData b -> Dataset (a, b)
+-- broadcastPair ds ld = n `parents` [untyped ds, untyped ld]
+--   where n = emptyNodeStandard (nodeLocality ds) sqlt name
+--         sqlt = tupleType (nodeType ds) (nodeType ld)
+--         name = "org.spark.BroadcastPair"
 
 
 _checkOrigin :: [UntypedColumnData] -> Try [UntypedColumnData]
@@ -240,11 +256,11 @@ _checkOrigin l =
 instance forall x. (DynColPackable x) => DynColPackable [x] where
   _packAsColumn = struct' . (_packAsColumn <$>)
 
-instance DynColPackable DynColumn where
+instance DynColPackable Column' where
   _packAsColumn = id
 
 instance forall ref a. DynColPackable (Column ref a) where
-  _packAsColumn = pure . iUntypedColData
+  _packAsColumn = untypedCol . iUntypedColData
 
 instance forall z1 z2. (DynColPackable z1, DynColPackable z2) => DynColPackable (z1, z2) where
   _packAsColumn (c1, c2) = struct' [_packAsColumn c1, _packAsColumn c2]
@@ -320,7 +336,7 @@ _columnOrigin :: [UntypedColumnData] -> [UntypedDataset]
 _columnOrigin l =
   let
     groups = myGroupBy' (nodeId . colOrigin) l
-  in (colOrigin . head . snd) <$> groups
+  in (colOrigin . N.head . snd) <$> groups
 
 -- The packing algorithm
 -- It eliminates the broadcast variables into joins and then wraps the
@@ -358,9 +374,9 @@ _replaceObservables _ (GenColExtraction (FieldPath v)) =
   -- It is a normal extraction, prepend the suffix of the data structure.
   pure (ColExtraction (FieldPath v')) where
     v' = V.cons (unsafeFieldName "_1") v
-_replaceObservables _ (GenColLit dt c) = pure (ColLit dt (toJSON c))
+_replaceObservables _ (GenColLit dt c) = pure (ColLit dt c)
 _replaceObservables m (GenColFunction n v) =
-  ColFunction n <$> sequence (_replaceObservables m <$> v)
+  (\x -> ColFunction n x Nothing) <$> sequence (_replaceObservables m <$> v)
 _replaceObservables m (GenColStruct v) = ColStruct <$> sequence (_replaceField m <$> v)
 _replaceObservables m (BroadcastColOp uld) =
    case M.lookup (nodeId uld) m of

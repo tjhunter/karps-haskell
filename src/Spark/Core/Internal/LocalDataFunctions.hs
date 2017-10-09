@@ -11,9 +11,9 @@ module Spark.Core.Internal.LocalDataFunctions(
   iPackTupleObs
 ) where
 
-import Data.Aeson(toJSON, Value(Null))
 import qualified Data.Text as T
 import qualified Data.List.NonEmpty as N
+import qualified Data.Vector as V
 import Control.Exception.Base(assert)
 
 import Spark.Core.Internal.DatasetFunctions
@@ -23,6 +23,7 @@ import Spark.Core.Internal.TypesStructures
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
 import Spark.Core.Internal.TypesGenerics(SQLTypeable, buildType)
+import Spark.Core.StructuresInternal(emptyFieldPath)
 import Spark.Core.Row
 
 constant :: (ToSQL a, SQLTypeable a) => a -> LocalData a
@@ -30,7 +31,7 @@ constant cst =
   let
     sqlt = buildType
     dt = unSQLType sqlt
-  in emptyLocalData (NodeLocalLit dt (toJSON (valueToCell cst))) sqlt
+  in emptyLocalData (NodeLocalLit dt (valueToCell cst)) sqlt
 
 {-| (developer API)
 
@@ -43,20 +44,19 @@ iPackTupleObs ulds =
       so = StandardOperator {
                 soName = "org.spark.LocalPack",
                 soOutputType = dt,
-                soExtra = Null }
+                soExtra = emptyExtra }
       op = NodeLocalOp so
   in emptyLocalData op (SQLType dt)
         `parents` (untyped <$> N.toList ulds)
 
 instance (Num a, ToSQL a, SQLTypeable a) => Num (LocalData a) where
-  -- TODO: convert all that to use column operations
-  (+) = _binOp "org.spark.LocalPlus"
-  (-) = _binOp "org.spark.LocalMinus"
-  (*) = _binOp "org.spark.LocalMult"
-  abs = _unaryOp "org.spark.LocalAbs"
-  signum = _unaryOp "org.spark.LocalSignum"
+  (+) = _binOp "plus"
+  (-) = _binOp "minus"
+  (*) = _binOp "multiply"
+  abs = _unaryOp "abs"
+  signum = _unaryOp "signum"
   fromInteger x = constant (fromInteger x :: a)
-  negate = _unaryOp "org.spark.LocalNegate"
+  negate = _unaryOp "negate"
 
 instance forall a. (ToSQL a, Enum a, SQLTypeable a) => Enum (LocalData a) where
   toEnum x = constant (toEnum x :: a)
@@ -65,56 +65,45 @@ instance forall a. (ToSQL a, Enum a, SQLTypeable a) => Enum (LocalData a) where
 
 instance (Num a, Ord a) => Ord (LocalData a) where
   compare = failure "You cannot compare instances of LocalData. (yet)."
-  min = _binOp "org.spark.LocalMin"
-  max = _binOp "org.spark.LocalMax"
+  min = _binOp "min"
+  max = _binOp "max"
 
 instance forall a. (Real a, ToSQL a, SQLTypeable a) => Real (LocalData a) where
   toRational = failure "Cannot convert LocalData to rational"
 
 instance (ToSQL a, Integral a, SQLTypeable a) => Integral (LocalData a) where
-  quot = _binOp "org.spark.LocalQuotient"
-  rem = _binOp "org.spark.LocalReminder"
-  div = _binOp "org.spark.LocalDiv"
-  mod = _binOp "org.spark.LocalMod"
+  quot = _binOp "quotient"
+  rem = _binOp "reminder"
+  div = _binOp "divide"
+  mod = _binOp "mod"
   quotRem = failure "quotRem is not implemented (yet). Use quot and rem."
   divMod = failure "divMod is not implemented (yet). Use div and mod."
   toInteger = failure "Cannot convert LocalData to integer"
 
 instance (ToSQL a, SQLTypeable a, Fractional a) => Fractional (LocalData a) where
   fromRational x = constant (fromRational x :: a)
-  (/) = _binOp "org.spark.LocalDiv"
+  (/) = _binOp "divide"
 
 
 _unaryOp :: T.Text -> LocalData a -> LocalData a
-_unaryOp optxt ld =
-  let so = StandardOperator {
-            soName = optxt,
-            soOutputType = unSQLType $ nodeType ld,
-            soExtra = Null }
-      op = NodeLocalOp so in
-  emptyLocalData op (nodeType ld)
-    `parents` [untyped ld]
+_unaryOp optxt ld = emptyLocalData op resDt `parents` [untyped ld] where
+  -- The return type is assumed to be the same as the input type.
+  resDt = nodeType ld
+  resDt' = unSQLType resDt
+  op = NodeLocalStructuredTransform co
+  co' = ColExtraction emptyFieldPath
+  co = ColFunction optxt (V.singleton co') (Just resDt')
 
+-- Homogeneous binary operators.
+-- This implementation uses broadcasts, so it needs to be passed through the
+-- compiler to be effective.
 _binOp :: T.Text -> LocalData a -> LocalData a -> LocalData a
 _binOp optxt ld1 ld2 = assert (nodeType ld1 == nodeType ld2) $
-  let so = StandardOperator {
-          soName = optxt,
-          soOutputType = unSQLType $ nodeType ld1,
-          soExtra = Null }
-      op = NodeLocalOp so in
-  emptyLocalData op (nodeType ld1)
-    `parents` [untyped ld1, untyped ld2]
-
--- TODO(kps) more input tests
-_binOp' :: StandardOperator -> LocalData a -> LocalData a -> LocalData a
-_binOp' so ld1 ld2 = assert (nodeType ld1 == nodeType ld2) $
-  let op = NodeLocalOp so in
-  emptyLocalData op (nodeType ld1)
-    `parents` [untyped ld1, untyped ld2]
-
-_intOperator :: T.Text -> StandardOperator
-_intOperator optxt = StandardOperator {
-  soName = optxt,
-  soOutputType = intType,
-  soExtra = Null
-}
+  emptyLocalData op resDt `parents` [untyped ld1, untyped ld2] where
+    -- The return type is assumed to be the same as the input type.
+    resDt = nodeType ld1
+    resDt' = unSQLType resDt
+    op = NodeLocalStructuredTransform co
+    co1 = ColBroadcast 0
+    co2 = ColBroadcast 1
+    co = ColFunction optxt (V.fromList [co1, co2]) (Just resDt')

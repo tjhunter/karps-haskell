@@ -82,3 +82,6 @@ instance forall loc a s. (s ~ String) => CanRename (ComputeNode loc a) s where
 instance forall loc a s. (s ~ String) => CanRename (Try (ComputeNode loc a)) s where
   (Right n) @@ str = Right (n @@ str)
   (Left n) @@ _ = Left n
+
+instance forall s. (s ~ String) => CanRename Column' s where
+  (Column' x) @@ str = Column' (x @@ str)

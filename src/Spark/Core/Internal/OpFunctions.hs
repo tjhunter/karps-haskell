@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
-
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE TupleSections #-}
 
 module Spark.Core.Internal.OpFunctions(
   simpleShowOp,
@@ -9,97 +10,128 @@ module Spark.Core.Internal.OpFunctions(
   extraNodeOpData,
   hashUpdateNodeOp,
   prettyShowColOp,
-  hdfsPath,
-  updateSourceStamp,
-  prettyShowColFun
+  prettyShowColFun,
+  convertToExtra,
+  convertToExtra',
+  decodeExtra,
+  decodeExtra',
+  -- Special operations names
+  nameLocalLiteral,
+  nameStructuredTransform,
+  nameLocalStructuredTransform,
+  nameDistributedLiteral,
+  nameGroupedReduction,
+  nameReduction,
+  nameBroadcastJoin,
+  namePointer
 ) where
 
-import qualified Data.Text as T
-import qualified Data.Aeson as A
-import qualified Data.Vector as V
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
-import qualified Data.HashMap.Strict as HM
-import Data.Text(Text)
-import Data.Aeson((.=), toJSON)
-import Data.Char(isSymbol)
 import qualified Crypto.Hash.SHA256 as SHA
+import qualified Data.Text as T
+import qualified Data.Vector as V
+import qualified Data.ByteString.Base64 as B64
+import Data.Text.Encoding(encodeUtf8, decodeUtf8)
+import Data.Text(Text)
+import Data.Char(isSymbol)
+import Data.ProtoLens.Message(Message)
+import Data.ProtoLens.Encoding(encodeMessage, decodeMessage)
+import Data.ProtoLens.TextFormat(showMessage)
 
+import Spark.Core.Try
 import Spark.Core.Internal.OpStructures
 import Spark.Core.Internal.Utilities
-import Spark.Core.Try
+import Spark.Core.Internal.ProtoUtils
+import Spark.Core.Internal.TypesFunctions(arrayType')
+import Spark.Core.Internal.RowUtils(cellWithTypeToProto, rowArray)
+import qualified Proto.Karps.Proto.Std as PS
 
 -- (internal)
 -- The serialized type of a node operation, as written in
--- the JSON description.
+-- the JSON and proto description.
 simpleShowOp :: NodeOp -> T.Text
-simpleShowOp (NodeLocalOp op) = soName op
-simpleShowOp (NodeDistributedOp op) = soName op
-simpleShowOp (NodeLocalLit _ _) = "org.spark.LocalLiteral"
-simpleShowOp (NodeOpaqueAggregator op) = soName op
-simpleShowOp (NodeAggregatorReduction ua) =
-  _jsonShowAggTrans . uaoInitialOuter $ ua
+simpleShowOp (NodeLocalOp op') = soName op'
+simpleShowOp (NodeDistributedOp op') = soName op'
+simpleShowOp (NodeLocalLit _ _) = nameLocalLiteral
+simpleShowOp (NodeOpaqueAggregator op') = soName op'
+-- simpleShowOp (NodeAggregatorReduction ua) =
+--   _jsonShowAggTrans . uaoInitialOuter $ ua
 simpleShowOp (NodeAggregatorLocalReduction ua) = _jsonShowSGO . uaoMergeBuffer $ ua
-simpleShowOp (NodeStructuredTransform _) = "org.spark.Select"
-simpleShowOp (NodeDistributedLit _ _) = "org.spark.DistributedLiteral"
-simpleShowOp (NodeGroupedReduction _) = "org.spark.GroupedReduction"
-simpleShowOp (NodeReduction _) = "org.spark.Reduction"
-simpleShowOp NodeBroadcastJoin = "org.spark.BroadcastJoin"
-simpleShowOp (NodePointer _) = "org.spark.PlaceholderCache"
+simpleShowOp (NodeStructuredTransform _) = nameStructuredTransform
+simpleShowOp (NodeLocalStructuredTransform _) = nameLocalStructuredTransform
+simpleShowOp (NodeDistributedLit _ _) = nameDistributedLiteral
+simpleShowOp (NodeGroupedReduction _) = nameGroupedReduction
+simpleShowOp (NodeReduction _) = nameReduction
+simpleShowOp NodeBroadcastJoin = nameBroadcastJoin
+simpleShowOp (NodePointer _) = namePointer
+
+nameLocalLiteral :: T.Text
+nameLocalLiteral = "org.spark.LocalLiteral"
+
+nameStructuredTransform :: T.Text
+nameStructuredTransform = "org.spark.StructuredTransform"
+
+nameLocalStructuredTransform :: T.Text
+nameLocalStructuredTransform = "org.spark.LocalStructuredTransform"
+
+nameDistributedLiteral :: T.Text
+nameDistributedLiteral = "org.spark.DistributedLiteral"
+
+nameGroupedReduction :: T.Text
+nameGroupedReduction = "org.spark.GroupedReduction"
+
+nameReduction :: T.Text
+nameReduction = "org.spark.StructuredReduce"
+
+nameBroadcastJoin :: T.Text
+nameBroadcastJoin = "org.spark.BroadcastJoin"
+
+namePointer :: T.Text
+namePointer = "org.spark.PlaceholderCache"
+
+decodeExtra :: Message x => OpExtra -> Try x
+decodeExtra (OpExtra o _ _) = case decodeMessage o of
+  Right x -> pure x
+  Left msg -> tryError $ "decodeExtra: " <> T.pack msg
+
+decodeExtra' :: (Message x, FromProto x y) => OpExtra -> Try y
+decodeExtra' o = decodeExtra o >>= fromProto
+
+{-| Converts a message to the extra content of an op.
+-}
+convertToExtra :: Message x => x -> OpExtra
+convertToExtra msg = OpExtra bin (T.pack (showMessage msg)) (decodeUtf8 (B64.encode bin)) where
+  bin = encodeMessage msg
+
+{-| Converts a haskell data structure that we know is backed by a proto to
+an opExtra.
+-}
+convertToExtra' :: (Message x, ToProto x y) => y -> OpExtra
+convertToExtra' = convertToExtra . toProto
 
 {-| A text representation of the operation that is appealing for humans.
 -}
 prettyShowOp :: NodeOp -> T.Text
-prettyShowOp (NodeAggregatorReduction uao) =
-  case uaoInitialOuter uao of
-    OpaqueAggTransform so -> soName so
-    -- Try to have a pretty name for the simple reductions
-    InnerAggOp (AggFunction n _) -> n
-    _ -> simpleShowOp (NodeAggregatorReduction uao)
-prettyShowOp x = simpleShowOp x
+-- prettyShowOp (NodeAggregatorReduction uao) =
+--   case uaoInitialOuter uao of
+--     OpaqueAggTransform so -> soName so
+--     -- Try to have a pretty name for the simple reductions
+--     InnerAggOp (AggFunction n _) -> n
+--     _ -> simpleShowOp (NodeAggregatorReduction uao)
+prettyShowOp = simpleShowOp
 
 
 -- A human-readable string that represents column operations.
 prettyShowColOp :: ColOp -> T.Text
+prettyShowColOp (ColBroadcast idx) = T.pack $ "BROADCAST(" ++ show idx ++ ")"
 prettyShowColOp (ColExtraction fpath) = T.pack (show fpath)
-prettyShowColOp (ColFunction txt cols) =
+prettyShowColOp (ColFunction txt cols _) =
   prettyShowColFun txt (V.toList (prettyShowColOp <$> cols))
 prettyShowColOp (ColLit _ cell) = show' cell
 prettyShowColOp (ColStruct s) =
   "struct(" <> T.intercalate "," (prettyShowColOp . tfValue <$> V.toList s) <> ")"
 
-{-| If the node is a reading operation, returns the HdfsPath of the source
-that is going to be read.
--}
-hdfsPath :: NodeOp -> Maybe HdfsPath
-hdfsPath (NodeDistributedOp so) =
-  if soName so == "org.spark.GenericDatasource"
-  then case soExtra so of
-    A.Object o -> case HM.lookup "inputPath" o of
-      Just (A.String x) -> Just . HdfsPath $ x
-      _ -> Nothing
-    _ -> Nothing
-  else Nothing
-hdfsPath _ = Nothing
-
-{-| Updates the input stamp if possible.
-
-If the node cannot be updated, it is most likely a programming error: an error
-is returned.
--}
-updateSourceStamp :: NodeOp -> DataInputStamp -> Try NodeOp
-updateSourceStamp (NodeDistributedOp so) (DataInputStamp dis) | soName so == "org.spark.GenericDatasource" =
-  case soExtra so of
-    A.Object o ->
-      let extra' = A.Object $ HM.insert "inputStamp" (A.toJSON dis) o
-          so' = so { soExtra = extra' }
-      in pure $ NodeDistributedOp so'
-    x -> tryError $ "updateSourceStamp: Expected dict, got " <> show' x
-updateSourceStamp x _ =
-  tryError $ "updateSourceStamp: Expected NodeDistributedOp, got " <> show' x
-
 _jsonShowAggTrans :: AggTransform -> Text
-_jsonShowAggTrans (OpaqueAggTransform op) = soName op
+_jsonShowAggTrans (OpaqueAggTransform op') = soName op'
 _jsonShowAggTrans (InnerAggOp _) = "org.spark.StructuredReduction"
 
 
@@ -111,13 +143,13 @@ _jsonShowSGO (ColumnSemiGroupLaw sfn) = sfn
 
 _prettyShowAggOp :: AggOp -> T.Text
 _prettyShowAggOp (AggUdaf _ ucn fp) = ucn <> "(" <> show' fp <> ")"
-_prettyShowAggOp (AggFunction sfn v) = prettyShowColFun sfn r where
-  r = V.toList (show' <$> v)
+_prettyShowAggOp (AggFunction sfn v _) = prettyShowColFun sfn r where
+  r = [show' v]
 _prettyShowAggOp (AggStruct v) =
   "struct(" <> T.intercalate "," (_prettyShowAggOp . afValue <$> V.toList v) <> ")"
 
 _prettyShowAggTrans :: AggTransform -> Text
-_prettyShowAggTrans (OpaqueAggTransform op) = soName op
+_prettyShowAggTrans (OpaqueAggTransform op') = soName op'
 _prettyShowAggTrans (InnerAggOp ao) = _prettyShowAggOp ao
 
 _prettyShowSGO :: SemiGroupOperator -> Text
@@ -131,43 +163,33 @@ _prettyShowSGO (ColumnSemiGroupLaw sfn) = sfn
 -- We pass the type as seen by Karps (along with some extra information about
 -- nullability). This information is required by spark to analyze the exact
 -- type of some operations.
-extraNodeOpData :: NodeOp -> A.Value
-extraNodeOpData (NodeLocalLit dt cell) =
-  A.object [ "type" .= toJSON dt,
-             "content" .= toJSON cell]
-extraNodeOpData (NodeStructuredTransform st) = toJSON st
-extraNodeOpData (NodeDistributedLit dt lst) =
-  -- The backend deals with all the details translating the augmented type
-  -- as a SQL datatype.
-  A.object [ "cellType" .= toJSON dt,
-             "content" .= toJSON lst]
+extraNodeOpData :: NodeOp -> OpExtra
+extraNodeOpData (NodeLocalLit dt cell) = convertToExtra . forceRight $ cellWithTypeToProto dt cell
+extraNodeOpData (NodeStructuredTransform st) =
+  convertToExtra (PS.StructuredTransform (Just (toProto st)))
+extraNodeOpData (NodeLocalStructuredTransform st) =
+  convertToExtra (PS.LocalStructuredTransform (Just (toProto st)))
+extraNodeOpData (NodeDistributedLit dt v) =
+  convertToExtra . forceRight $ cellWithTypeToProto dt' l' where
+    dt' = arrayType' dt
+    l' = rowArray (V.toList v)
 extraNodeOpData (NodeDistributedOp so) = soExtra so
-extraNodeOpData (NodeGroupedReduction ao) = toJSON ao
-extraNodeOpData (NodeAggregatorReduction ua) =
-  case uaoInitialOuter ua of
-    OpaqueAggTransform so -> toJSON (soExtra so)
-    InnerAggOp ao -> toJSON ao
+extraNodeOpData (NodeGroupedReduction ao) =
+  convertToExtra (PS.Shuffle (Just (toProto ao)))
 extraNodeOpData (NodeOpaqueAggregator so) = soExtra so
 extraNodeOpData (NodeLocalOp so) = soExtra so
-extraNodeOpData NodeBroadcastJoin = A.Null
-extraNodeOpData (NodeReduction _) = A.Null -- TODO: should it send something?
-extraNodeOpData (NodeAggregatorLocalReduction _) = A.Null -- TODO: should it send something?
-extraNodeOpData (NodePointer p) =
-    A.object [
-      "computation" .= toJSON (pointerComputation p),
-      "path" .= toJSON (pointerPath p)
-    ]
+extraNodeOpData NodeBroadcastJoin = emptyExtra
+extraNodeOpData (NodeReduction ao) =
+  convertToExtra (PS.StructuredReduce (Just (toProto ao)))
+extraNodeOpData (NodeAggregatorLocalReduction _) =
+  error "extraNodeOpData: NodeAggregatorLocalReduction"
+extraNodeOpData (NodePointer p) = convertToExtra' p
 
 -- Adds the content of a node op to a hash.
--- Right now, this builds the json representation and passes it
--- to the hash function, which simplifies the verification on
--- on the server side.
--- TODO: this depends on some implementation details such as the hashing
--- function used by Aeson.
 hashUpdateNodeOp :: SHA.Ctx -> NodeOp -> SHA.Ctx
-hashUpdateNodeOp ctx op = _hashUpdateJson ctx $ A.object [
-  "op" .= simpleShowOp op,
-  "extra" .= extraNodeOpData op]
+hashUpdateNodeOp ctx op' = SHA.updates ctx ["op", bsOp, "extra", bsExtra] where
+  bsOp = encodeUtf8 $ simpleShowOp op'
+  (OpExtra bsExtra _ _) = extraNodeOpData op'
 
 
 prettyShowColFun :: T.Text -> [Text] -> T.Text
@@ -184,52 +206,3 @@ prettyShowColFun txt cols =
 
 _isSym :: T.Text -> Bool
 _isSym txt = all isSymbol (T.unpack txt)
-
--- This schema is not great because there is some ambiguity about the final
--- nodes.
--- Someone could craft a JSON that would confuse the object detection.
--- Not sure if this is much of a security risk anyway.
-instance A.ToJSON ColOp where
-  toJSON (ColExtraction fp) = A.object [
-    "colOp" .= T.pack "extraction",
-    "field" .= toJSON fp]
-  toJSON (ColFunction txt cols) = A.object [
-    "colOp" .= T.pack "fun",
-    "function" .= txt,
-    "args" .= (toJSON <$> cols)]
-  toJSON (ColLit _ cell) = A.object [
-    "colOp" .= T.pack "literal",
-    "lit" .= toJSON cell]
-  toJSON (ColStruct v) =
-    let fun (TransformField fn colOp) =
-          A.object ["name" .= T.pack (show fn), "op" .= toJSON colOp]
-    in A.Array $ fun <$> v
-
--- instance A.ToJSON AggTransform where
---   toJSON (OpaqueAggTransform so) = A.object [
---       "aggOpaqueTrans" .= toJSON so
---     ]
-
-instance A.ToJSON UdafApplication where
-  toJSON Algebraic = toJSON (T.pack "algebraic")
-  toJSON Complete = toJSON (T.pack "complete")
-
-instance A.ToJSON AggField where
-  toJSON (AggField fn aggOp) =
-    A.object ["name" .= show' fn, "op" .= toJSON aggOp]
-
-instance A.ToJSON AggOp where
-  toJSON (AggUdaf ua ucn fp) = A.object [
-    "aggOp" .= T.pack "udaf",
-    "udafApplication" .= toJSON ua,
-    "className" .= ucn,
-    "field" .= toJSON fp]
-  toJSON (AggFunction sfn v) = A.object [
-    "aggOp" .= toJSON (T.pack "function"),
-    "functionName" .= toJSON sfn,
-    "fields" .= toJSON (V.toList v)]
-  toJSON (AggStruct v) = toJSON (V.toList v)
-
-_hashUpdateJson :: SHA.Ctx -> A.Value -> SHA.Ctx
-_hashUpdateJson ctx val = SHA.update ctx bs where
-  bs = BS.concat . LBS.toChunks . encodeDeterministicPretty $ val

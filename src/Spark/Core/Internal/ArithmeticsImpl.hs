@@ -1,11 +1,11 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
--- Disabled for old versions
--- {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- Required by old versions
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Strict #-}
 
 {-| This module contains all the class instances and operators related
 to arithmetics with Datasets, Dataframes, Columns and Observables.

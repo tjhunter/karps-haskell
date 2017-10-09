@@ -46,22 +46,20 @@ spec = do
     it "int? 2" $
       v2c (Nothing :: Maybe Int) Empty
     it "TestStruct3" $
-      v2c (TestStruct3 2) (RowArray $ V.fromList [IntElement 2])
+      v2c (TestStruct3 2) (rowCell [IntElement 2])
     it "TestStruct4" $
       v2c (TestStruct4 (TestStruct3 3)) $
-        (RowArray $ V.fromList [
-            RowArray $ V.fromList [IntElement 3]
-          ])
+        (rowCell [rowCell [IntElement 3]])
     it "TestStruct1 - empty" $
-      v2c (TestStruct1 2 Nothing) (RowArray $ V.fromList [IntElement 2, Empty])
+      v2c (TestStruct1 2 Nothing) (rowCell [IntElement 2, Empty])
     it "TestStruct1 - full" $
-      v2c (TestStruct1 2 (Just 4)) (RowArray $ V.fromList [IntElement 2, IntElement 4])
+      v2c (TestStruct1 2 (Just 4)) (rowCell [IntElement 2, IntElement 4])
     it "TestStruct5" $
       v2c (TestStruct5 1 2 (TestStruct3 3)) $
-        (RowArray $ V.fromList [
+        (rowCell [
             IntElement 1,
             IntElement 2,
-            RowArray $ V.fromList [IntElement 3]
+            rowCell[IntElement 3]
           ])
   -- describe "Simple type tests" $ do
   --   it "newtype" $

@@ -9,7 +9,7 @@ import qualified Data.Text
 import Spark.Core.Context
 import Spark.Core.Functions
 import Spark.Core.Column
-import Spark.Core.ColumnFunctions
+import qualified Spark.Core.ColumnFunctions as C
 import Spark.Core.StructuresInternal(ComputationID(..))
 
 
@@ -23,8 +23,8 @@ collectIdempotent l = do
   let ds = dataset l
   let ds' = autocache ds
   let c1 = asCol ds'
-  let s1 = sumCol c1
-  let s2 = count ds'
+  let s1 = C.sum c1
+  let s2 = C.count c1
   let x = s1 + s2
   l2 <- exec1Def x
   l2 `shouldBe` (sum l + length l)
